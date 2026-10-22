@@ -1,0 +1,13 @@
+# Lantern's settings. Values here are read once, at start.
+server:
+  port: 8080
+  cors: ["https://lantern.example"]
+
+database:
+  url: postgres://lantern@localhost:5432/lantern
+  pool: 10
+
+mail:
+  relay: localhost:2525
+  from: shop@lantern.example
+  retry: { times: 3, backoff_ms: 500 }

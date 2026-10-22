@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>textpen harness</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          12px ui-monospace,
+          Menlo,
+          monospace;
+      }
+      body {
+        margin: 0;
+        height: 100vh;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        background: #2b2d31;
+        color: #ccc;
+      }
+      header {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        padding: 6px 10px;
+        background: #1e1f22;
+        border-bottom: 1px solid #111;
+      }
+      header label {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      select,
+      button {
+        font: inherit;
+        background: #313338;
+        color: #ddd;
+        border: 1px solid #444;
+        border-radius: 4px;
+        padding: 2px 6px;
+      }
+      #stage {
+        display: grid;
+        place-items: center;
+        overflow: auto;
+        padding: 16px;
+      }
+      #pane {
+        display: flex;
+        flex-direction: column;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow:
+          0 20px 60px rgba(0, 0, 0, 0.5),
+          0 0 0 1px rgba(255, 255, 255, 0.06);
+      }
+      #strip {
+        height: 24px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 10px;
+        font-size: 11px;
+        background: #111;
+        color: #888;
+      }
+      iframe {
+        border: 0;
+        display: block;
+      }
+      body.bare {
+        grid-template-rows: 1fr;
+      }
+      body.bare header {
+        display: none;
+      }
+      body.bare #stage {
+        padding: 0;
+        overflow: hidden;
+      }
+      body.bare #pane {
+        border-radius: 0;
+        box-shadow: none;
+      }
+      #log {
+        color: #888;
+        flex: 1;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <b>textpen harness</b>
+      <label
+        >theme
+        <select id="theme"></select
+      ></label>
+      <label
+        >pane
+        <select id="size"></select
+      ></label>
+      <button id="reload" type="button">restart view</button>
+      <span id="log"></span>
+    </header>
+    <div id="stage">
+      <div id="pane">
+        <div id="strip">
+          <!-- The icon the program gives (src/server/icon.ts), for a dark ground, as a terminal draws it. -->
+          <svg width="12" height="12" viewBox="2 2 20 20" fill="#f0b25a" aria-hidden="true">
+            <rect x="3" y="3.8" width="18" height="3" rx="1.5" opacity="0.4" />
+            <rect x="6.5" y="9.8" width="11.5" height="3" rx="1.5" opacity="0.7" />
+            <rect x="3" y="15.8" width="6" height="3" rx="1.5" />
+            <rect x="10.6" y="14.3" width="2.2" height="6" rx="1.1" />
+          </svg>
+          textpen · Editor · this machine
+        </div>
+        <iframe id="view" title="view"></iframe>
+      </div>
+    </div>
+    <script type="module" src="./host.ts"></script>
+  </body>
+</html>

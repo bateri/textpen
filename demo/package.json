@@ -1,0 +1,13 @@
+{
+  "name": "lantern",
+  "version": "1.4.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/server.ts",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "postgres": "^3.4.5"
+  }
+}

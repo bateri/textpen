@@ -1,0 +1,11 @@
+:root {
+  --ink: #1c1b19;
+  --brass: #b98b2f;
+}
+
+.receipt {
+  font: 14px/1.5 system-ui, sans-serif;
+  color: var(--ink);
+  border-top: 3px solid var(--brass);
+  padding: 24px clamp(16px, 4vw, 40px);
+}
