@@ -143,12 +143,10 @@ test("binary and huge files are not opened as text", async () => {
   assert.ok("reason" in b && b.reason === "binary");
 });
 
-test("paths stay in the project for what a model may read", () => {
+test("a path travels relative inside the project and absolute outside it", () => {
   assert.equal(project.name(join(dir, "src/a.ts")), "src/a.ts");
   assert.equal(project.name("/elsewhere/x"), "/elsewhere/x");
-  assert.throws(() => project.inside("../outside"));
-  assert.throws(() => project.inside("/etc/passwd"));
-  assert.equal(project.inside("src/../a.ts"), join(dir, "a.ts"));
+  assert.equal(project.name(dir), "");
 });
 
 test("a listing has the folders first, then the files, by name", async () => {

@@ -1,9 +1,9 @@
 // Written by tools/icon.mjs; change the shapes there and run it again.
 
-import type { Icon } from "@modelcontextprotocol/server";
+import type { Icon } from "@pencere/sdk";
 
 /**
- * textpen's icon, the mark its view shows, for a dark ground and a light one (MCP's `theme`),
+ * textpen's icon, the mark its view shows, for a dark ground and a light one (an icon's `theme`),
  * 32 and 64 pixels a side, as PNGs in `data:` URIs: a terminal draws an icon only from the
  * bytes it is given, and never fetches one.
  */

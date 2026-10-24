@@ -14,6 +14,7 @@ import { dirname, join } from "node:path";
 import { TEXT_LIMIT, isBinary, keyOf } from "./project.js";
 import type { Project } from "./project.js";
 import type { BufferInfo, Eol, OpenedBuffer, Unopenable } from "./types.js";
+import { WIRE_BUDGET, unitSize, wireSize } from "./wire.js";
 
 /** One edit: the text from `from` to `to` (in UTF-16 units) becomes `insert`. */
 export type Edit = [from: number, to: number, insert: string];
@@ -105,22 +106,25 @@ export class Buffers {
     return { ...infoOf(buffer), text: buffer.text };
   }
 
-  /** A file's text as textpen has it: the open buffer's, or the disk's, opening nothing. */
-  async peek(path: string): Promise<{ text: string; missing: boolean } | Unopenable> {
-    const absolute = this.project.absolute(path);
-    const open = this.#buffers.get(this.project.name(absolute));
-    if (open) return { text: open.text, missing: open.missing };
-    const read = await readFileText(absolute, this.project.name(absolute));
-    return "reason" in read ? read : { text: read.text, missing: read.missing };
-  }
-
-  /** A piece of a buffer's text, for a view that reads a long one in pieces. */
-  slice(path: string, version: number, from: number, to: number): string {
+  /**
+   * The piece of a buffer's text that begins at `from` and fits one message to the view, for
+   * a view that reads a long one in pieces: the next piece begins at `end`.
+   */
+  slice(path: string, version: number, from: number): { text: string; end: number } {
     const buffer = this.#get(path);
     if (version !== buffer.version) {
       throw new OutOfSync(`${path} is at version ${buffer.version}, not ${version}`);
     }
-    return buffer.text.slice(from, to);
+    const text = buffer.text;
+    let end = from;
+    let used = 0;
+    while (end < text.length) {
+      used += unitSize(text.charCodeAt(end));
+      // A piece always has a unit in it, so that reading goes on.
+      if (used > WIRE_BUDGET && end > from) break;
+      end += 1;
+    }
+    return { text: text.slice(from, end), end };
   }
 
   /** The current text of an open buffer. */
@@ -494,28 +498,9 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** What one message to the view may carry of a text: the terminal's 16 MiB, with room to spare. */
-const WIRE_BUDGET = 12 * 1024 * 1024;
-
-/**
- * How many bytes a text takes in a message to the view: JSON's escapes, and pencere's
- * `\uXXXX` for every code unit outside ASCII, which a frame may not carry raw.
- */
-function wireSize(text: string): number {
-  let size = 0;
-  for (let i = 0; i < text.length; i += 1) {
-    const c = text.charCodeAt(i);
-    if (c >= 0x7f) size += 6;
-    else if (c === 0x22 || c === 0x5c || c === 0x0a || c === 0x09 || c === 0x0d) size += 2;
-    else if (c < 0x20) size += 6;
-    else size += 1;
-  }
-  return size;
-}
-
 /** A buffer as it can go to the view in one message: whole, or announced, to be read in pieces. */
 export function sendable<T extends OpenedBuffer | Unopenable>(opened: T): T {
-  if (!("text" in opened) || opened.text.length * 6 <= WIRE_BUDGET) return opened;
+  if (!("text" in opened) || opened.text.length <= WIRE_BUDGET / 6) return opened;
   if (wireSize(opened.text) <= WIRE_BUDGET) return opened;
   return { ...opened, text: "", partial: { length: opened.text.length } };
 }

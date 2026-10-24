@@ -71,16 +71,6 @@ export class Project {
     return sep === "/" ? rel : rel.split(sep).join("/");
   }
 
-  /** The absolute path of a root-relative path, refusing one that leaves the root. */
-  inside(path: string): string {
-    const absolute = resolve(this.root, path);
-    const rel = relative(this.root, absolute);
-    if (rel.startsWith("..") || isAbsolute(rel)) {
-      throw new Error(`${path} is outside the project`);
-    }
-    return absolute;
-  }
-
   async list(dir: string): Promise<Listing> {
     const absolute = this.absolute(dir);
     const items = await readdir(absolute, { withFileTypes: true });

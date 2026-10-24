@@ -64,7 +64,7 @@ import {
 import type { KeyBinding, ViewUpdate } from "@codemirror/view";
 
 import type { BufferInfo, OpenedBuffer, Place, Settings } from "../../server/types";
-import { ToolError, call } from "../lib/bridge";
+import { CallError, call } from "../lib/page";
 import { callText } from "../lib/text";
 import { isMac } from "../lib/keys";
 import { get, set, toast, updateInfo } from "../state/store";
@@ -298,7 +298,7 @@ class Controller {
     sync.pending = null;
     try {
       for (const edits of batches(pending)) {
-        const info = await call<BufferInfo>("textpen_edit", {
+        const info = await call<BufferInfo>("edit", {
           path: sync.path,
           base: sync.version,
           edits,
@@ -321,7 +321,7 @@ class Controller {
   async #resend(sync: Sync): Promise<void> {
     const text = this.text(sync.path);
     if (text === undefined) return;
-    const current = await callText<OpenedBuffer>("textpen_buffer", {
+    const current = await callText<OpenedBuffer>("buffer", {
       path: sync.path,
       action: "text",
     });
@@ -333,7 +333,7 @@ class Controller {
         current.text.length,
       );
       for (const edits of batches(changes)) {
-        const info = await call<BufferInfo>("textpen_edit", {
+        const info = await call<BufferInfo>("edit", {
           path: sync.path,
           base: sync.version,
           edits,
@@ -596,7 +596,7 @@ function indentationOf(settings: Settings): Extension {
 }
 
 function messageOf(error: unknown): string {
-  return error instanceof ToolError || error instanceof Error ? error.message : String(error);
+  return error instanceof CallError || error instanceof Error ? error.message : String(error);
 }
 
 export const editor = new Controller();

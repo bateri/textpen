@@ -9,8 +9,7 @@ the mouse, on your machine or on a server over plain `ssh`.
 textpen is a [pencere](https://github.com/bateri/pencere) program. Run it in a terminal
 that hosts pencere views ([bateri](https://github.com/bateri/bateri)) and the pane becomes
 the editor, the way `vim` takes the screen and gives it back; quit and the shell is where
-it was. Run it anywhere else and your own `$EDITOR` opens instead. Give it to an MCP client
-and it is an MCP server whose `show_editor` tool shows the same editor there.
+it was. Run it anywhere else and your own `$EDITOR` opens instead.
 
 ## What it does
 
@@ -121,28 +120,25 @@ pencere: nothing listens on a port, the editor travels in the terminal's own str
 runs on your machine in a sandbox that reaches nothing but its program. Its files cross the
 stream once (about 2 MB); after that the terminal keeps them.
 
-**In an MCP client.** Give it `npx -y textpen` as a stdio server, started in the project (in
-Claude Code: `claude mcp add textpen -- npx -y textpen`). The model can list the project's files and read them as textpen has
-them, unsaved changes included (`list_files`, `read_file`, never outside the project), and
-show the editor (`show_editor`); whatever writes is for the person, in the editor.
-
 ## How it works
 
-- `src/server` is an ordinary MCP server, and **holds the text of every open file**. What a
-  view sends its program travels through the terminal's input queue, in frames of 511
-  bytes and messages of at most 1 MiB, so the view never sends a file: it sends what
-  changed, a few hundred milliseconds of typing at a time, as replacements made on a
-  version of the text the program checks; saving is a word to the program. The other way
-  a message can be 16 MiB, but every character outside ASCII crosses as six bytes, so a long
-  text comes to the view in pieces of one version. Holding the text is also what lets it
-  outlive the view — a shell, a restart of the terminal — and become a draft when the
-  program ends.
+- `src/server` is textpen's program, and **holds the text of every open file**. The editor
+  asks it with a handful of calls (open, edit, save, list, search…) and hears from it on one
+  topic, what changed on disk and in git. What the editor sends travels through the terminal's
+  input queue, in frames of 511 bytes and messages of at most 1 MiB, so it never sends a file:
+  it sends what changed, a few hundred milliseconds of typing at a time, as replacements made
+  on a version of the text the program checks; saving is a word to the program. A message the
+  other way is at most 1 MiB too, and every character outside ASCII crosses as six bytes, so a
+  long text, a long folder and the files of a big project come to the editor in pieces. Holding
+  the text is also what lets it outlive the view — a shell, a restart of the terminal — and
+  become a draft when the program ends.
 - `src/server/main.ts` is the one place that knows about the terminal: `serve` from
   `@pencere/sdk` opens the view in the pane; a `ViewControl` closes it for the shell and the
   next view opens where the last one was.
-- `src/view` is the editor: React, CodeMirror and [Tabler icons](https://tabler.io/icons),
-  talking MCP Apps' messages to its host. It asks the program every two seconds for what
-  changed on disk and in git.
+- `src/view` is the editor: React, CodeMirror and [Tabler icons](https://tabler.io/icons).
+  `src/view/lib/page.ts` is all it knows of the protocol: it calls and subscribes, is told the
+  terminal's colours, font and size, and asks to be closed or to open a link. It tells the
+  program where it is (tabs, folders, cursors) every two seconds when that changed.
 
 ## Work on it
 
@@ -160,10 +156,10 @@ npx vite build --watch & npm run dev   # in a pencere terminal: the editor is sh
 How a version is released is in [RELEASING.md](RELEASING.md), and what each one changed in
 [CHANGELOG.md](CHANGELOG.md).
 
-The harness plays the terminal in a browser: it frames the editor with hot reload, sends it
+The harness plays the terminal in a browser: it frames the editor with hot reload, tells it
 the colours of a terminal theme (bateri's, Tokyo Night, Gruvbox, Dracula, Solarized and
-more) and the size of a pane (80×24 up), and passes its calls to the real program, which
-edits `demo/` — a small shop to look at — or the folder `TEXTPEN_ROOT` names. It keeps its
+more) and the size of a pane (80×24 up), and passes its calls and subscriptions to the real
+program, which edits `demo/` — a small shop to look at — or the folder `TEXTPEN_ROOT` names. It keeps its
 settings and drafts in `.scratch/`. In its address, `theme=` and `size=` choose the
 terminal, `bare` shows the pane alone (for screenshots), `built` shows the view `npm run
 build` wrote, and `ui=` (JSON) opens with those tabs and folders.

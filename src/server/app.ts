@@ -12,22 +12,19 @@ import { dirname } from "node:path";
 import { Buffers } from "./buffers.js";
 import { Project, displayName } from "./project.js";
 import { Store } from "./store.js";
-import type { Boot, Entry, PollResult, Returned, Settings, UiState } from "./types.js";
+import type { Boot, Changes, Entry, GitInfo, Returned, Settings, UiState } from "./types.js";
 
 /** The package's version, from its manifest: a release changes it there and nowhere else. */
 export const VERSION: string = JSON.parse(
   readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
 ).version;
 
-export type HandoffRequest = { kind: "shell" } | { kind: "quit" };
-
 /**
  * Who can take the pane from the view: the program's main loop, which closes the view
- * and runs a shell in the terminal, or ends. Absent when the program is an MCP server on
- * stdio, where there is no terminal to hand over and nothing to quit.
+ * and runs a shell in the terminal. Absent where no terminal shows the view (the harness).
  */
 export interface Desk {
-  request(request: HandoffRequest): "scheduled" | "busy";
+  shell(): "scheduled" | "busy";
 }
 
 export interface Focus {
@@ -49,7 +46,7 @@ export class Textpen {
   closeQuits = false;
   /** How the shell the pane was handed to ended; told to the next view that boots, once. */
   returned: Returned | undefined;
-  /** A hand-off the terminal could not make; told to the view with its next poll, once. */
+  /** A hand-off the terminal could not make; told to the view with the next changes, once. */
   handoffFailed: string | undefined;
 
   constructor(root: string) {
@@ -96,7 +93,6 @@ export class Textpen {
       ui: this.ui,
       buffers: this.buffers.all(),
       handoff: this.desk !== undefined,
-      quit: this.desk !== undefined,
       closeQuits: this.closeQuits && this.desk !== undefined,
       ...(returned ? { returned } : {}),
       ...(focus ? { focus } : {}),
@@ -104,11 +100,18 @@ export class Textpen {
     };
   }
 
-  async poll(ui: UiState | undefined): Promise<PollResult & { handoffFailed?: string }> {
-    if (ui !== undefined) {
-      this.ui = ui;
-      this.store.saveUi(this.project.root, ui);
-    }
+  /** The view's own state, kept for the next view and the next run. */
+  keep(ui: UiState): void {
+    this.ui = ui;
+    this.store.saveUi(this.project.root, ui);
+  }
+
+  /**
+   * What happened to the files since the view was last told: git, the open files that
+   * changed on disk, the listed directories that did. Asking marks them as told, so one
+   * subscription asks.
+   */
+  async changes(): Promise<Omit<Changes, "git"> & { git: GitInfo | null }> {
     const handoffFailed = this.handoffFailed;
     this.handoffFailed = undefined;
     const [git, buffers, dirs] = await Promise.all([
@@ -116,7 +119,7 @@ export class Textpen {
       this.buffers.changedOnDisk(),
       this.project.changedDirs(),
     ]);
-    return { at: Date.now(), git, buffers, dirs, ...(handoffFailed ? { handoffFailed } : {}) };
+    return { git, buffers, dirs, ...(handoffFailed ? { handoffFailed } : {}) };
   }
 
   saveSettings(settings: Settings): Settings {

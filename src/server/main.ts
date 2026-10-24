@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
  * textpen. In a terminal that shows pencere views, an editor opens in the pane; in one
- * that does not, the person's own `$EDITOR` does; started by an MCP client over stdio,
- * it is an ordinary MCP server whose `show_editor` tool has the same view.
+ * that does not, the person's own `$EDITOR` does.
  *
  * The view hands the pane over when the person asks for a shell: the program closes
  * the view, runs the shell in the terminal, and shows the view again where it was
@@ -11,16 +10,17 @@
  */
 
 import { bundleFromDirectory, serve, ViewControl } from "@pencere/sdk";
-import type { Bundle, ToolCall } from "@pencere/sdk";
+import type { Bundle } from "@pencere/sdk";
 import { statSync, watch } from "node:fs";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { createInterface } from "node:readline";
 
 import { Textpen, VERSION } from "./app.js";
-import type { Focus, HandoffRequest } from "./app.js";
+import type { Focus } from "./app.js";
 import { runOwnEditor, runShell } from "./handoff.js";
+import { ICONS } from "./icon.js";
 import { trace, traceTty } from "./trace.js";
-import { VIEW_DIRECTORY, createServer } from "./tools.js";
+import { VIEW_DIRECTORY, createProgram } from "./program.js";
 
 const USAGE = `usage: textpen [options] [+line] [path[:line[:column]] ...]
 
@@ -35,8 +35,7 @@ terminal's own colours and font, with the keyboard or the mouse.
   -h, --help           this text
   -v, --version        the version
 
-In a terminal that does not show pencere views it runs $VISUAL or $EDITOR.
-Started by an MCP client, it is an MCP server: give it \`textpen\` as the command.`;
+In a terminal that does not show pencere views it runs $VISUAL or $EDITOR.`;
 
 interface Options {
   paths: string[];
@@ -133,15 +132,10 @@ if (files.length > 0) {
   const focus = options.focus && { ...options.focus, path: resolve(options.focus.path) };
   textpen.startWith(files, focus);
 }
-const server = createServer(textpen);
+const program = createProgram(textpen);
 
-async function viewBundle(): Promise<Bundle | undefined> {
-  try {
-    return await bundleFromDirectory(VIEW_DIRECTORY);
-  } catch {
-    // Without the built files the host reads the one-document view from `resources/read`.
-    return undefined;
-  }
+function viewBundle(): Promise<Bundle> {
+  return bundleFromDirectory(VIEW_DIRECTORY);
 }
 
 /**
@@ -165,101 +159,104 @@ async function tryAgain(reason: string): Promise<boolean> {
   return answer.trim().toLowerCase() !== "q";
 }
 
-if (!process.stdin.isTTY) {
-  // Started by an MCP client: an MCP server on stdio, whose tool shows the same view there.
-  await serve(server, { tool: "show_editor" });
+// ⌃C reaches textpen as SIGINT. While the view is up the SDK gives the terminal back
+// and `serve` ends (with a listener of the program's own, it does not end the process);
+// while a shell or the person's own editor has the pane, ⌃C is theirs.
+process.on("SIGINT", () => {});
+// A dropped connection hangs the program up: what is not saved becomes a draft first.
+process.once("SIGHUP", () => {
   textpen.ending();
-} else {
-  // ⌃C reaches textpen as SIGINT. While the view is up the SDK gives the terminal back
-  // and `serve` ends (with a listener of the program's own, it does not end the process);
-  // while a shell or the person's own editor has the pane, ⌃C is theirs.
-  process.on("SIGINT", () => {});
-  // A dropped connection hangs the program up: what is not saved becomes a draft first.
-  process.once("SIGHUP", () => {
-    textpen.ending();
-    process.kill(process.pid, "SIGHUP");
-  });
+  process.kill(process.pid, "SIGHUP");
+});
 
-  let bundle = await viewBundle();
-  let control: ViewControl | undefined;
-  let exitCode = 0;
+let bundle = await viewBundle();
+let control: ViewControl | undefined;
+let exitCode = 0;
 
-  if (options.dev) {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    watch(VIEW_DIRECTORY, { recursive: true }, () => {
-      clearTimeout(timer);
-      timer = setTimeout(async () => {
-        const next = await viewBundle();
-        if (next === undefined || control === undefined) return;
-        bundle = next;
-        await control.reopen({ bundle: next });
-      }, 300);
-    }).unref();
-  }
-
-  const tool: ToolCall = { name: "show_editor", arguments: {} };
-  let shown = false;
-  for (;;) {
-    const current = new ViewControl();
-    control = current;
-    let pending: HandoffRequest | undefined;
-    textpen.desk = {
-      request(request) {
-        if (pending !== undefined) return "busy";
-        pending = request;
-        // The answer to the view's call goes out first, so that it can show what comes.
-        setTimeout(() => {
-          void current.close().then((closed) => {
-            if (closed.kind === "closed") return;
-            pending = undefined;
-            textpen.handoffFailed =
-              closed.kind === "unsupported"
-                ? "This terminal cannot hand its pane to a command and back."
-                : "The view could not be closed just now.";
-          });
-        }, 120);
-        return "scheduled";
-      },
-    };
-    traceTty(shown ? "reopen" : "open");
-    const asked = Date.now();
-    const result = await serve(server, {
-      tool,
-      ...(bundle ? { bundle } : {}),
-      control: current,
-      // The person's own editor stands in for a terminal that shows no views, at the start
-      // only: once the editor has been shown, what is open is textpen's, and a view that
-      // does not come back is asked about, not replaced with another program.
-      ...(shown
-        ? {}
-        : {
-            fallback: async () => {
-              exitCode = await runOwnEditor(
-                files.length > 0 ? files.map((f) => relative(root, f) || f) : ["."],
-                root,
-              );
-            },
-          }),
-    });
-    textpen.desk = undefined;
-    control = undefined;
-    // How long the wait took tells the no-view reasons apart: at once, the tty's modes could
-    // not be set or the terminal answered `CSI c` and not the `hello`; two seconds, nothing.
-    trace("served", { ...result, ms: Date.now() - asked, pending: pending?.kind });
-    if (result.kind === "closed") shown = true;
-    if (result.kind === "closed" && result.by === "program" && pending?.kind === "shell") {
-      textpen.returned = await runShell(root, textpen.project.root);
-      trace("shell ended", { ...textpen.returned });
-      continue;
-    }
-    if (result.kind === "no-view" && shown && result.reason !== "aborted") {
-      if (await tryAgain(result.reason)) continue;
-    }
-    if (result.kind === "closed" && result.by === "signal") exitCode = 130;
-    else if (result.kind === "closed" && result.by === "error") exitCode = 1;
-    else if (result.kind === "no-view" && result.reason === "aborted") exitCode = 130;
-    break;
-  }
-  textpen.ending();
-  process.exit(exitCode);
+if (options.dev) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  watch(VIEW_DIRECTORY, { recursive: true }, () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const next = await viewBundle().catch(() => undefined);
+      if (next === undefined || control === undefined) return;
+      bundle = next;
+      await control.reopen({ views: [{ kind: "web", bundle: next }] });
+    }, 300);
+  }).unref();
 }
+
+let shown = false;
+for (;;) {
+  const current = new ViewControl();
+  control = current;
+  let shellAsked = false;
+  textpen.desk = {
+    shell() {
+      if (shellAsked) return "busy";
+      shellAsked = true;
+      // The answer to the view's call goes out first, so that it can show what comes.
+      setTimeout(() => {
+        void current.close().then((closed) => {
+          if (closed.kind === "closed") return;
+          shellAsked = false;
+          textpen.handoffFailed =
+            closed.kind === "unsupported"
+              ? "This terminal cannot hand its pane to a command and back."
+              : "The view could not be closed just now.";
+        });
+      }, 120);
+      return "scheduled";
+    },
+  };
+  traceTty(shown ? "reopen" : "open");
+  const asked = Date.now();
+  const result = await serve({
+    views: [{ kind: "web", bundle }],
+    program: "textpen",
+    // What a terminal writes above the view, and the icon it draws beside it.
+    title: "Editor",
+    icons: ICONS,
+    ...program,
+    control: current,
+    // The person's own editor stands in for a terminal that shows no views, at the start
+    // only: once the editor has been shown, what is open is textpen's, and a view that
+    // does not come back is asked about, not replaced with another program.
+    ...(shown
+      ? {}
+      : {
+          fallback: async (why) => {
+            if (why.reason === "no-tty") {
+              // No terminal at all (a script, a pipe): there is no pane for any editor.
+              console.error("textpen: needs a terminal to edit in");
+              exitCode = 1;
+              return;
+            }
+            exitCode = await runOwnEditor(
+              files.length > 0 ? files.map((f) => relative(root, f) || f) : ["."],
+              root,
+            );
+          },
+        }),
+  });
+  textpen.desk = undefined;
+  control = undefined;
+  // How long the wait took tells the no-view reasons apart: at once, the tty's modes could
+  // not be set or the terminal answered `CSI c` and not the `hello`; two seconds, nothing.
+  trace("served", { ...result, ms: Date.now() - asked, shell: shellAsked });
+  if (result.kind === "closed") shown = true;
+  if (result.kind === "closed" && result.by === "program" && shellAsked) {
+    textpen.returned = await runShell(root, textpen.project.root);
+    trace("shell ended", { ...textpen.returned });
+    continue;
+  }
+  if (result.kind === "no-view" && shown && result.reason !== "aborted") {
+    if (await tryAgain(result.reason)) continue;
+  }
+  if (result.kind === "closed" && result.by === "signal") exitCode = 130;
+  else if (result.kind === "closed" && result.by === "error") exitCode = 1;
+  else if (result.kind === "no-view" && result.reason === "aborted") exitCode = 130;
+  break;
+}
+textpen.ending();
+process.exit(exitCode);

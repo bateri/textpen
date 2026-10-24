@@ -1,8 +1,8 @@
 /*
- * textpen's look is the terminal's: every colour comes from the variables the host sends
- * (MCP Apps § Theming), which a pencere terminal fills from its own theme, and every shade
- * in between is mixed from them; the font is the terminal's font. The values after the
- * commas only matter in a host that sends none.
+ * textpen's look is the terminal's: every colour comes from the variables `lib/theme.ts`
+ * sets from the host's `context`, which a pencere terminal fills from its own theme, and
+ * every shade in between is mixed from them; the font is the terminal's font. The values
+ * after the commas only matter before the host has said anything.
  */
 
 :root {

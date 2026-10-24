@@ -1,8 +1,8 @@
 /**
- * textpen's view. It is an MCP App: it talks to its program through whatever host shows
- * it, with the messages MCP Apps defines. In a pencere terminal it is the whole pane,
- * in the terminal's colours and font, and every key but ⌃C and the terminal's own is
- * its.
+ * textpen's view. It is a web page of pencere: it talks to its program through the host
+ * that shows it, with the six messages of the protocol. In a pencere terminal it is the
+ * whole pane, in the terminal's colours and font, and every key but ⌃C and the terminal's
+ * own is its.
  */
 
 import { IconTerminal2 } from "@tabler/icons-react";
@@ -18,42 +18,23 @@ import { StatusBar } from "./components/StatusBar";
 import { Tabs } from "./components/Tabs";
 import { Tooltips } from "./components/Tooltips";
 import { editor } from "./editor/controller";
-import { attach, call } from "./lib/bridge";
-import { Host } from "./lib/host";
-import { closeTab, quit, save, start, stopPolling } from "./state/actions";
+import { call } from "./lib/page";
+import { closeTab, quit, save, start } from "./state/actions";
 import { onKeyDown } from "./state/keyboard";
 import { get, set, sidebarDocked, useStore } from "./state/store";
 import type { Layout } from "./state/store";
 
-/** The package's version, which the build writes in (`vite.config.ts`). */
-declare const __TEXTPEN_VERSION__: string;
-const VERSION = __TEXTPEN_VERSION__;
+/** Asks the program what to show, once: StrictMode mounts twice in development. */
+let booting: Promise<void> | undefined;
 
-function booted(result: { structuredContent?: unknown }): void {
-  const shown = result.structuredContent as { boot?: Boot } | undefined;
-  if (!shown?.boot || get().boot !== null) return;
-  // The keys are the view's from the first moment, without a click into it first.
-  window.focus();
-  void start(shown.boot);
-}
-
-let connection: Promise<Host> | undefined;
-
-/** The one connection to the host, made once: StrictMode mounts twice in development. */
-function connect(): Promise<Host> {
-  connection ??= (async () => {
-    const host = new Host({
-      toolResult: (result) => booted(result),
-      // The host takes the view down: what was typed last goes to the program first.
-      teardown: async () => {
-        stopPolling();
-        await Promise.race([editor.flushAll(), new Promise((r) => setTimeout(r, 900))]);
-      },
-    });
-    await host.connect({ name: "textpen", version: VERSION });
-    return host;
-  })();
-  return connection;
+function boot(): Promise<void> {
+  booting ??= call<Boot>("boot").then((shown) => {
+    if (get().boot !== null) return;
+    // The keys are the view's from the first moment, without a click into it first.
+    window.focus();
+    void start(shown);
+  });
+  return booting;
 }
 
 // `:w`, `:q`, `:wq`, `:qa` in vim's command line.
@@ -61,7 +42,7 @@ editor.onVim = (command, force) => {
   const path = get().active;
   const close = async () => {
     if (path === null) return;
-    if (force) await call("textpen_buffer", { path, action: "revert" }).catch(() => {});
+    if (force) await call("buffer", { path, action: "revert" }).catch(() => {});
     const last = get().tabs.length === 1;
     if (await closeTab(path)) {
       // As in vim, quitting the last window quits.
@@ -87,24 +68,9 @@ export function App() {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    connect().then(
-      (host) => {
-        attach(host);
-        // A host that does not call the view's tool by itself: the view asks for what it shows.
-        timer = setTimeout(() => {
-          if (get().boot !== null) return;
-          void call<{ boot: Boot }>("show_editor", {}).then(
-            (shown) => booted({ structuredContent: shown }),
-            (failure: unknown) =>
-              setError(failure instanceof Error ? failure : new Error(String(failure))),
-          );
-        }, 2500);
-      },
-      (failure: unknown) =>
-        setError(failure instanceof Error ? failure : new Error(String(failure))),
+    boot().catch((failure: unknown) =>
+      setError(failure instanceof Error ? failure : new Error(String(failure))),
     );
-    return () => clearTimeout(timer);
   }, []);
 
   useLayoutEffect(() => {
@@ -193,7 +159,7 @@ export function App() {
           <div className="boot-inner">
             {error ? (
               <>
-                <b>The terminal did not answer</b>
+                <b>The program did not answer</b>
                 <span className="faint">{error.message}</span>
               </>
             ) : (

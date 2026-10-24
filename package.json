@@ -6,8 +6,6 @@
   "keywords": [
     "editor",
     "terminal",
-    "mcp",
-    "mcp-apps",
     "pencere",
     "codemirror",
     "ssh"
@@ -24,7 +22,7 @@
   ],
   "scripts": {
     "build": "npm run build:view && npm run build:server",
-    "build:view": "vite build && vite build --mode single",
+    "build:view": "vite build",
     "build:server": "tsc -p tsconfig.server.json",
     "harness": "npm run build:server && vite --mode harness",
     "start": "node dist/server/main.js",
@@ -37,9 +35,7 @@
     "node": ">=22.12"
   },
   "dependencies": {
-    "@modelcontextprotocol/ext-apps": "^2.0.3",
-    "@modelcontextprotocol/server": "^2.3.1",
-    "@pencere/sdk": "^0.1.1",
+    "@pencere/sdk": "file:../pencere-protocol/sdk/typescript",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -52,7 +48,6 @@
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.15",
     "@lezer/highlight": "^1.2.5",
-    "@modelcontextprotocol/client": "^2.3.1",
     "@replit/codemirror-vim": "^6.4.0",
     "@tabler/icons-react": "^3.49.0",
     "@types/node": "^22.20.5",
@@ -64,7 +59,6 @@
     "react-dom": "^19.3.1",
     "typescript": "^5.9.3",
     "vite": "^8.3.5",
-    "vite-plugin-singlefile": "^2.3.4",
     "zustand": "^5.0.15"
   },
   "repository": {

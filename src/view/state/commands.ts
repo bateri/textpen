@@ -517,7 +517,6 @@ export const COMMANDS: Command[] = [
     title: "Quit textpen",
     category: "textpen",
     keys: ["Ctrl-q"],
-    when: () => get().boot?.quit === true,
     run: () => void quit(),
   },
   // ---- search ------------------------------------------------------------------------------

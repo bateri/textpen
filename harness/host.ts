@@ -1,8 +1,9 @@
 /**
- * A stand-in MCP Apps host for working on the editor in a browser: it frames the view,
- * answers its `ui/` messages the way a pencere terminal does (the theme from a terminal
- * palette, the pane's size, `pencere/pane`), and passes its tool calls to the real
- * server, which the harness's Vite plugin runs over stdio.
+ * A stand-in terminal for working on the editor in a browser: it frames the view, tells it
+ * the terminal's `context` the way a pencere terminal does (the theme from a terminal
+ * palette, the pane's size), handles the page's `close` and `link`, and passes its `call`,
+ * `subscribe` and `cancel` to the real program, which the harness's Vite plugin runs, and
+ * the program's `response`, `push` and `progress` back, unread.
  */
 
 type Rgb = [number, number, number];
@@ -127,51 +128,24 @@ function luminance([r, g, b]: Rgb): number {
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 }
 
-/** The variables a pencere host sends for a terminal theme: the crate's `Theme::variables`, in TypeScript. */
-function variables(p: Palette): Record<string, string> {
+/**
+ * The nine roles a terminal tells a page (specification 11.2): what the palette lacks is made
+ * up as the specification says.
+ */
+function colors(p: Palette): Record<string, string> {
   const bg = parse(p.background);
   const fg = parse(p.foreground);
-  const info = parse(p.info ?? "#58a6ff");
-  const roles: [string, Rgb][] = [
-    ["info", info],
-    ["danger", parse(p.error ?? "#f85149")],
-    ["success", parse(p.success ?? "#3fb950")],
-    ["warning", parse(p.warning ?? "#d29922")],
-  ];
-  const dim = p.dim ? parse(p.dim) : toward(fg, bg, 1 / 3);
-  const accent = p.accent ? parse(p.accent) : info;
-  const border = toward(bg, fg, 0.2);
-  const v: Record<string, string> = {
-    "--color-background-primary": css(bg),
-    "--color-background-secondary": css(toward(bg, fg, 0.06)),
-    "--color-background-tertiary": css(toward(bg, fg, 0.12)),
-    "--color-background-inverse": css(fg),
-    "--color-background-ghost": "transparent",
-    "--color-background-disabled": css(toward(bg, fg, 0.03)),
-    "--color-text-primary": css(fg),
-    "--color-text-secondary": css(dim),
-    "--color-text-tertiary": css(toward(dim, bg, 0.35)),
-    "--color-text-inverse": css(bg),
-    "--color-text-ghost": css(dim),
-    "--color-text-disabled": css(toward(fg, bg, 0.55)),
-    "--color-border-primary": css(border),
-    "--color-border-secondary": css(toward(border, bg, 0.4)),
-    "--color-border-tertiary": css(toward(border, bg, 0.7)),
-    "--color-border-inverse": css(fg),
-    "--color-border-ghost": "transparent",
-    "--color-border-disabled": css(toward(border, bg, 0.5)),
-    "--color-ring-primary": css(accent),
-    "--color-ring-secondary": css(border),
-    "--color-ring-inverse": css(fg),
-    "--font-mono": p.font ?? '"JetBrains Mono", "SF Mono", Menlo, monospace',
+  return {
+    background: p.background,
+    foreground: p.foreground,
+    dim: p.dim ?? css(toward(fg, bg, 1 / 3)),
+    accent: p.accent ?? p.info ?? "#58a6ff",
+    border: css(toward(bg, fg, 0.2)),
+    success: p.success ?? "#3fb950",
+    error: p.error ?? "#f85149",
+    warning: p.warning ?? "#d29922",
+    info: p.info ?? "#58a6ff",
   };
-  for (const [name, role] of roles) {
-    v[`--color-background-${name}`] = css(toward(bg, role, 0.18));
-    v[`--color-text-${name}`] = css(role);
-    v[`--color-border-${name}`] = css(role);
-    v[`--color-ring-${name}`] = css(role);
-  }
-  return v;
 }
 
 function themeOf(p: Palette): "dark" | "light" {
@@ -212,8 +186,6 @@ const size = () => {
   return SIZES.find((s) => s.name === sizeSelect.value) ?? SIZES[0]!;
 };
 
-let tool: unknown;
-
 function place(): void {
   const s = size();
   frame.style.width = `${s.width}px`;
@@ -223,13 +195,18 @@ function place(): void {
   strip.style.color = p.dim ?? css(toward(parse(p.foreground), parse(p.background), 1 / 3));
 }
 
+/** What a terminal tells a page (specification 9.5). */
 function context() {
   const p = palette();
   const s = size();
   return {
-    theme: themeOf(p),
-    styles: { variables: variables(p) },
-    containerDimensions: { width: s.width, height: s.height },
+    mode: themeOf(p),
+    colors: colors(p),
+    font: p.font ?? '"JetBrains Mono", "SF Mono", Menlo, monospace',
+    size: { width: s.width, height: s.height },
+    locale: navigator.language,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    reduceMotion: false,
   };
 }
 
@@ -241,100 +218,49 @@ function note(text: string): void {
   log.textContent = text;
 }
 
-async function callTool(name: string, args: unknown): Promise<unknown> {
+/** The program's words for the page, from Vite's socket: `response`, `push` and `progress`. */
+const socket = import.meta.hot;
+socket?.on("textpen:message", (message: unknown) => post(message));
+
+/** A call of this page's own to the program, answered once: for the state a screenshot starts in. */
+async function callProgram(method: string, params: unknown): Promise<unknown> {
   const response = await fetch("/__harness/call", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, arguments: args ?? {} }),
+    body: JSON.stringify({ method, params: params ?? {} }),
   });
   if (!response.ok) throw new Error(await response.text());
   return response.json();
 }
 
-window.addEventListener("message", async (event) => {
+/**
+ * What the page says. A message of one member named `context`, `close` or `link` is the
+ * host's own; any other is the program's, passed on whole (specification 9.4).
+ */
+window.addEventListener("message", (event) => {
   if (event.source !== frame.contentWindow) return;
-  const message = event.data as {
-    jsonrpc?: string;
-    id?: number;
-    method?: string;
-    params?: Record<string, unknown>;
-  };
-  if (message?.jsonrpc !== "2.0" || !message.method) return;
-  const answer = (result: unknown) => post({ jsonrpc: "2.0", id: message.id, result });
-  const fail = (code: number, text: string) =>
-    post({ jsonrpc: "2.0", id: message.id, error: { code, message: text } });
-  switch (message.method) {
-    case "ui/initialize": {
-      const listed = (await fetch("/__harness/tools").then((r) => r.json())) as {
-        tools: { name: string }[];
-      };
-      tool = listed.tools.find((t) => t.name === "show_editor");
-      answer({
-        protocolVersion: "2026-01-26",
-        hostInfo: { name: "textpen-harness", version: "0.0.0" },
-        hostCapabilities: {
-          experimental: { "pencere/pane": {} },
-          openLinks: {},
-          serverTools: {},
-          serverResources: {},
-          logging: {},
-          sandbox: {},
-        },
-        hostContext: {
-          toolInfo: { tool },
-          ...context(),
-          displayMode: "inline",
-          availableDisplayModes: ["inline"],
-          locale: navigator.language,
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          userAgent: "textpen-harness/0.0.0",
-          platform: "desktop",
-        },
-      });
-      return;
-    }
-    case "ui/notifications/initialized": {
-      post({ jsonrpc: "2.0", method: "ui/notifications/tool-input", params: { arguments: {} } });
-      const result = await callTool("show_editor", {});
-      post({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: result });
-      note("view started");
-      return;
-    }
-    case "tools/call": {
-      const params = message.params as { name: string; arguments?: unknown };
-      const started = performance.now();
-      try {
-        const result = await callTool(params.name, params.arguments);
-        answer(result);
-        note(`${params.name} ${Math.round(performance.now() - started)}ms`);
-      } catch (error) {
-        fail(-32603, String(error));
-      }
-      return;
-    }
-    case "ui/open-link": {
-      window.open(String(message.params?.url ?? ""), "_blank");
-      answer({});
-      return;
-    }
-    case "ui/request-display-mode":
-      answer({ mode: "inline" });
-      return;
-    case "ui/message":
-    case "ui/update-model-context":
-      fail(-32000, "A terminal has no conversation");
-      return;
-    case "ping":
-      answer({});
-      return;
-    default:
-      if (message.id !== undefined) fail(-32601, `${message.method} is not a method of this host`);
+  const message = event.data as Record<string, unknown> | null;
+  if (typeof message !== "object" || message === null || Array.isArray(message)) return;
+  const members = Object.keys(message);
+  const name = members.length === 1 ? members[0] : undefined;
+  if (name === "context") {
+    post({ context: context() });
+  } else if (name === "close") {
+    // The program would be told `closed` and end; the stand-in leaves the pane empty.
+    note("the page asked to be closed");
+    frame.src = "about:blank";
+  } else if (name === "link") {
+    const url = String((message.link as { url?: unknown } | null)?.url ?? "");
+    if (/^https?:\/\/[\x21-\x7e]+$/.test(url)) window.open(url, "_blank", "noopener");
+    else note(`link refused: ${url.slice(0, 60)}`);
+  } else {
+    socket?.send("textpen:message", message);
   }
 });
 
 function changed(): void {
   place();
-  post({ jsonrpc: "2.0", method: "ui/notifications/host-context-changed", params: context() });
+  post({ context: context() });
   const url = new URL(location.href);
   url.searchParams.set("theme", themeSelect.value);
   url.searchParams.set("size", sizeSelect.value);
@@ -345,17 +271,27 @@ themeSelect.addEventListener("change", changed);
 sizeSelect.addEventListener("change", changed);
 // `?built` shows the view as `npm run build` wrote it, the files a terminal is sent.
 const page = params.has("built") ? "/dist/view/index.html" : "/index.html";
-document.getElementById("reload")!.addEventListener("click", () => {
-  frame.src = `${page}?${Date.now()}`;
-});
 
-frame.addEventListener("load", () => frame.focus());
+/** Starts the view: what the last one had asked of the program is over with it. */
+function start(): void {
+  socket?.send("textpen:reset", {});
+  frame.src = `${page}?${Date.now()}`;
+  note("view started");
+}
+document.getElementById("reload")!.addEventListener("click", start);
+
+// A page that has loaded is told the context, as a terminal does.
+frame.addEventListener("load", () => {
+  frame.focus();
+  if (frame.src.endsWith("about:blank")) return;
+  post({ context: context() });
+});
 place();
 // `?ui=<json>` starts the view in that state, as the program would keep it: for screenshots.
 const ui = params.get("ui");
 void (
   ui
-    ? callTool("textpen_poll", {
+    ? callProgram("ui", {
         ui: {
           tabs: [],
           active: null,
@@ -367,6 +303,4 @@ void (
         },
       })
     : Promise.resolve()
-).then(() => {
-  frame.src = page;
-});
+).then(start);

@@ -7,6 +7,23 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Changed
+
+- Speaks pencere's one protocol (a call, a subscription, a response, a push) in place of MCP
+  Apps. The editor is the same one, in the terminal's colours and font, in a terminal that
+  hosts the new views; it no longer opens in one that only speaks MCP Apps.
+- The program tells the editor when files change on disk or in git, as it happens, in place of
+  the editor asking every two seconds.
+- Until the SDK of the new protocol is released, textpen depends on it by a path beside this
+  checkout (`file:../pencere-protocol/sdk/typescript`); the dependency goes back to a version
+  from the registry when the SDK is released, and a release cannot be made before then.
+
+### Removed
+
+- The MCP server: `show_editor`, `list_files` and `read_file`, the view for other MCP Apps
+  hosts, and `npx -y textpen` as a stdio server for an MCP client. Started with no terminal at
+  all, textpen says it needs one.
+
 ## [0.1.0] - 2026-10-22
 
 ### Added

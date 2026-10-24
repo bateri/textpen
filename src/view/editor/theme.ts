@@ -1,6 +1,6 @@
 /**
  * The editor in the terminal's colours. A terminal gives its view a handful of colours
- * (MCP Apps § Theming): its background and foreground, a dimmed foreground, an accent,
+ * (the roles of its `context`): its background and foreground, a dimmed foreground, an accent,
  * and the colours it says success, danger, warning and information with. Code needs
  * about seven kinds told apart, so each kind takes one of them as it is — they were
  * chosen by the theme's author to read on that background — and the few in between

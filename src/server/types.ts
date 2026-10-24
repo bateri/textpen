@@ -57,9 +57,9 @@ export interface BufferInfo {
 export interface OpenedBuffer extends BufferInfo {
   text: string;
   /**
-   * The text is too long for one message to the view (a terminal carries 16 MiB at most,
-   * and every character outside ASCII travels as six bytes): `text` is empty, and the
-   * view reads it with `textpen_slice`, in pieces of this version.
+   * The text is too long for one message to the view (a message is 1 MiB at most, and
+   * every character outside ASCII travels as six bytes): `text` is empty, and the
+   * view reads it with the `slice` call, in pieces of this version.
    */
   partial?: { length: number };
 }
@@ -151,8 +151,6 @@ export interface Boot {
   buffers: BufferInfo[];
   /** Whether the pane can be handed to a shell: the program has a terminal of its own. */
   handoff: boolean;
-  /** Whether the program can end itself from the view (it was started in a terminal). */
-  quit: boolean;
   /**
    * The command line named the files to edit (as `$EDITOR` is run): closing the last of
    * the tabs ends textpen, so that what waits for it goes on.
@@ -165,13 +163,16 @@ export interface Boot {
   problems: string[];
 }
 
-export interface PollResult {
-  at: number;
-  git: GitInfo | null;
+/** What the program tells the view as the files change: the values of its `changes` topic. */
+export interface Changes {
+  /** What git says now; left out when it says what it did the last time. */
+  git?: GitInfo | null;
   /** Buffers whose file changed on disk, or went, since the view last heard of them. */
   buffers: BufferInfo[];
   /** Directories that changed since they were listed. */
   dirs: string[];
+  /** A hand-off the terminal could not make. */
+  handoffFailed?: string;
 }
 
 export interface SearchMatch {
@@ -201,4 +202,9 @@ export interface SearchResult {
 export interface FileIndex {
   files: string[];
   truncated: boolean;
+}
+
+/** A message's worth of the file index: `next` is where the following page begins, if there is one. */
+export interface FilesPage extends FileIndex {
+  next: number | null;
 }

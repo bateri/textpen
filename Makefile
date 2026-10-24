@@ -5,8 +5,8 @@ setup:
 	npm ci
 
 # check is the gate: types, formatting, the build, and the tests against what it built: the
-# program, the view's edits, the server as an MCP client starts it, and textpen in a pane
-# under pencere-fake-host when a pencere checkout beside this one has built it.
+# program, the view's edits and its end of the protocol, and textpen in a pane under
+# pencere-fake-host when a pencere checkout beside this one has built it.
 check:
 	npm run typecheck
 	npx prettier --check .

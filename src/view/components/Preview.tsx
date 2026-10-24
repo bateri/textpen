@@ -8,7 +8,7 @@ import { Marked } from "marked";
 import { useDeferredValue, useEffect, useMemo, useRef } from "react";
 
 import { editor } from "../editor/controller";
-import { openLink } from "../lib/bridge";
+import { openLink } from "../lib/page";
 import { useStore } from "../state/store";
 
 const escape = (text: string) =>

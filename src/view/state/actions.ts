@@ -10,17 +10,19 @@ import { EditorView } from "@codemirror/view";
 import type {
   Boot,
   BufferInfo,
+  Changes,
   Entry,
   FileIndex,
+  FilesPage,
   Listing,
   OpenedBuffer,
-  PollResult,
   SearchResult,
   Settings,
   Unopenable,
 } from "../../server/types";
 import { editor } from "../editor/controller";
-import { ToolError, call, copy } from "../lib/bridge";
+import { copy } from "../lib/clipboard";
+import { CallError, call, close, subscribe } from "../lib/page";
 import { callText } from "../lib/text";
 import { ancestors, basename, dirname, join, within } from "../lib/files";
 import {
@@ -37,7 +39,7 @@ import {
 } from "./store";
 
 function messageOf(error: unknown): string {
-  return error instanceof ToolError || error instanceof Error ? error.message : String(error);
+  return error instanceof CallError || error instanceof Error ? error.message : String(error);
 }
 
 function infoOf(opened: OpenedBuffer): BufferInfo {
@@ -90,14 +92,14 @@ export async function start(boot: Boot): Promise<void> {
       error ? "bad" : "info",
     );
   }
-  startPolling();
+  startSync();
 }
 
 // ---- the tree --------------------------------------------------------------------------------
 
 export async function listDir(dir: string): Promise<void> {
   try {
-    const listing = await call<Listing>("textpen_list", { dir });
+    const listing = await call<Listing>("list", { dir });
     set((s) => {
       const { [dir]: _gone, ...errors } = s.listingErrors;
       return { listings: { ...s.listings, [dir]: listing }, listingErrors: errors };
@@ -162,7 +164,7 @@ export async function openFile(path: string, options: OpenOptions = {}): Promise
   if (!editor.has(path)) {
     let opened: OpenedBuffer | Unopenable;
     try {
-      opened = await busy(callText<OpenedBuffer | Unopenable>("textpen_open", { path }));
+      opened = await busy(callText<OpenedBuffer | Unopenable>("open", { path }));
     } catch (error) {
       updateTab(path, { status: "error", error: messageOf(error) });
       return;
@@ -262,7 +264,7 @@ export async function closeTab(path: string): Promise<boolean> {
   }
   if (tab.status === "ready" || tab.info !== undefined) {
     try {
-      await call("textpen_buffer", { path, action: "close", discard });
+      await call("buffer", { path, action: "close", discard });
     } catch (error) {
       toast(messageOf(error), "bad");
       return false;
@@ -284,7 +286,7 @@ export async function closeTab(path: string): Promise<boolean> {
   if (active !== null && active !== state.active) void openFile(active, { focus: true });
   else if (active === null) editor.clear();
   // Opened on files, as `$EDITOR` is: the last one closed is the end of the edit.
-  if (tabs.length === 0 && get().boot?.closeQuits) await handOff("quit", false);
+  if (tabs.length === 0 && get().boot?.closeQuits) await endView(false);
   return true;
 }
 
@@ -305,7 +307,7 @@ export async function save(path = get().active, force = false): Promise<boolean>
   try {
     await editor.flush(path);
     const result = await busy(
-      call<{ saved: boolean; info: BufferInfo }>("textpen_save", {
+      call<{ saved: boolean; info: BufferInfo }>("save", {
         path,
         version: editor.version(path),
         force,
@@ -363,7 +365,7 @@ export async function revert(path = get().active, confirm = true): Promise<void>
   }
   try {
     const opened = await busy(
-      callText<OpenedBuffer | Unopenable>("textpen_buffer", { path, action: "revert" }),
+      callText<OpenedBuffer | Unopenable>("buffer", { path, action: "revert" }),
     );
     if ("reason" in opened) {
       toast(opened.message, "bad");
@@ -379,7 +381,7 @@ export async function revert(path = get().active, confirm = true): Promise<void>
 /** Keeps the buffer's changes over a file that changed on disk. */
 export async function keepMine(path: string): Promise<void> {
   try {
-    updateInfo(await call<BufferInfo>("textpen_buffer", { path, action: "keep" }));
+    updateInfo(await call<BufferInfo>("buffer", { path, action: "keep" }));
   } catch (error) {
     toast(messageOf(error), "bad");
   }
@@ -389,7 +391,7 @@ export async function keepMine(path: string): Promise<void> {
 export async function draft(path: string, take: boolean): Promise<void> {
   try {
     await editor.flush(path);
-    const opened = await callText<OpenedBuffer>("textpen_buffer", {
+    const opened = await callText<OpenedBuffer>("buffer", {
       path,
       action: take ? "restore" : "drop",
     });
@@ -404,7 +406,7 @@ export async function draft(path: string, take: boolean): Promise<void> {
 export async function setEol(path: string, eol: "lf" | "crlf"): Promise<void> {
   try {
     await editor.flush(path);
-    updateInfo(await call<BufferInfo>("textpen_buffer", { path, action: eol }));
+    updateInfo(await call<BufferInfo>("buffer", { path, action: eol }));
   } catch (error) {
     toast(messageOf(error), "bad");
   }
@@ -451,7 +453,7 @@ export async function create(kind: "file" | "dir", dir = targetDir()): Promise<v
   const path = answer?.action === "create" ? answer.value.trim().replace(/\/+$/, "") : "";
   if (path === "" || path === dir) return;
   try {
-    const created = await busy(call<{ path: string }>("textpen_create", { path, kind }));
+    const created = await busy(call<{ path: string }>("create", { path, kind }));
     await listDir(dirname(created.path));
     reveal(created.path);
     if (kind === "file") await openFile(created.path, { focus: true });
@@ -482,7 +484,7 @@ export async function rename(path: string): Promise<void> {
   try {
     for (const tab of get().tabs) if (within(tab.path, path)) await editor.flush(tab.path);
     const result = await busy(
-      call<{ path: string; buffers: BufferInfo[] }>("textpen_rename", { from: path, to }),
+      call<{ path: string; buffers: BufferInfo[] }>("rename", { from: path, to }),
     );
     const moved = (p: string) => (within(p, path) ? result.path + p.slice(path.length) : p);
     for (const tab of get().tabs)
@@ -520,12 +522,10 @@ export async function remove(path: string, isDir: boolean): Promise<void> {
   });
   if (answer?.action !== "delete") return;
   try {
-    await busy(call("textpen_delete", { path }));
+    await busy(call("delete", { path }));
     for (const tab of get().tabs) {
       if (!within(tab.path, path)) continue;
-      await call("textpen_buffer", { path: tab.path, action: "close", discard: true }).catch(
-        () => {},
-      );
+      await call("buffer", { path: tab.path, action: "close", discard: true }).catch(() => {});
       editor.forget(tab.path);
       set((s) => ({ tabs: s.tabs.filter((t) => t.path !== tab.path) }));
     }
@@ -560,9 +560,23 @@ export async function copyPath(path: string, absolute: boolean): Promise<void> {
 
 let indexing: Promise<FileIndex | null> | null = null;
 
+/** The project's files, a message's worth at a time. */
+async function allFiles(): Promise<FileIndex> {
+  const files: string[] = [];
+  let from: number | null = 0;
+  let truncated = false;
+  while (from !== null) {
+    const page: FilesPage = await call<FilesPage>("files", { from });
+    files.push(...page.files);
+    truncated = page.truncated;
+    from = page.next !== null && page.next > from ? page.next : null;
+  }
+  return { files, truncated };
+}
+
 export function fileIndex(fresh = false): Promise<FileIndex | null> {
   if (indexing && !fresh) return indexing;
-  indexing = call<FileIndex>("textpen_files")
+  indexing = allFiles()
     .then((index) => {
       set({ fileIndex: index });
       return index;
@@ -586,7 +600,7 @@ export async function runSearch(): Promise<void> {
   const run = ++searchRun;
   set({ search: { ...search, running: true, error: null } });
   try {
-    const result = await call<SearchResult>("textpen_search", {
+    const result = await call<SearchResult>("search", {
       query,
       regex: search.regex,
       caseSensitive: search.caseSensitive,
@@ -629,44 +643,57 @@ export function openMatch(step = 0, focus = true): void {
 
 // ---- staying in step with the program ----------------------------------------------------------
 
-let polling: ReturnType<typeof setTimeout> | undefined;
+let uiTimer: ReturnType<typeof setTimeout> | undefined;
+let endChanges: (() => void) | undefined;
 let lastUi = "";
 
-export function startPolling(): void {
-  clearTimeout(polling);
+/**
+ * The program tells the view what happens to the files (`changes`: git, files changed on
+ * disk, folders that changed) as it happens, and the view tells the program where it is
+ * (tabs, folders, cursors) when that differs from what the program has.
+ */
+export function startSync(): void {
+  stopSync();
+  endChanges = subscribe<Changes>("changes", {}, (changes) => {
+    void apply(changes).catch(() => {});
+  });
   const tick = async () => {
-    if (get().handingOff === null) await poll().catch(() => {});
-    polling = setTimeout(tick, document.hidden ? 6000 : 2000);
+    if (get().handingOff === null) await keepUi().catch(() => {});
+    uiTimer = setTimeout(tick, document.hidden ? 6000 : 2000);
   };
-  polling = setTimeout(tick, 1500);
+  uiTimer = setTimeout(tick, 1500);
 }
 
-export function stopPolling(): void {
-  clearTimeout(polling);
+export function stopSync(): void {
+  clearTimeout(uiTimer);
+  endChanges?.();
+  endChanges = undefined;
 }
 
-async function poll(): Promise<void> {
+/** Tells the program where the view is, if that is not what it was last told. */
+async function keepUi(): Promise<void> {
   const place = editor.place();
   const active = get().active;
   if (place && active) set((s) => ({ places: { ...s.places, [active]: place } }));
   const ui = uiState();
   const text = JSON.stringify(ui);
-  const result = await call<PollResult & { handoffFailed?: string }>(
-    "textpen_poll",
-    text === lastUi ? {} : { ui },
-  );
+  if (text === lastUi) return;
+  await call("ui", { ui });
   lastUi = text;
-  set({ git: result.git });
-  if (result.handoffFailed) {
+}
+
+async function apply(changes: Changes): Promise<void> {
+  if (changes.git !== undefined) set({ git: changes.git });
+  if (changes.handoffFailed) {
     set({ handingOff: null });
-    toast(result.handoffFailed, "bad");
+    toast(changes.handoffFailed, "bad");
   }
-  for (const info of result.buffers) {
+  for (const info of changes.buffers) {
     const tab = tabOf(info.path);
     if (!tab || tab.status !== "ready") continue;
     const ours = editor.version(info.path);
     if (!info.dirty && !info.conflict && info.version !== ours && !editor.unsent(info.path)) {
-      const opened = await callText<OpenedBuffer>("textpen_buffer", {
+      const opened = await callText<OpenedBuffer>("buffer", {
         path: info.path,
         action: "text",
       });
@@ -676,7 +703,7 @@ async function poll(): Promise<void> {
     updateInfo(info);
   }
   const listings = get().listings;
-  for (const dir of result.dirs) if (listings[dir]) void listDir(dir);
+  for (const dir of changes.dirs) if (listings[dir]) void listDir(dir);
 }
 
 // ---- the pane --------------------------------------------------------------------------------
@@ -690,16 +717,11 @@ export async function shell(): Promise<void> {
   }
   await editor.flushAll();
   if (get().settings.autoSave) await saveAll();
-  await handOff("shell", false);
+  await handOffToShell();
 }
 
 /** Ends textpen, asking first about files that are not saved. */
 export async function quit(): Promise<void> {
-  const boot = get().boot;
-  if (!boot?.quit) {
-    toast("textpen ends with its MCP client here.", "warn");
-    return;
-  }
   await editor.flushAll();
   const dirty = get().tabs.filter((t) => t.info?.dirty);
   let discard = false;
@@ -724,18 +746,40 @@ export async function quit(): Promise<void> {
     if (answer.action === "save" && !(await saveAll())) return;
     discard = answer.action === "discard";
   }
-  await handOff("quit", discard);
+  await endView(discard);
 }
 
-async function handOff(kind: "shell" | "quit", discard: boolean): Promise<void> {
-  // The state goes with the request, so that the next view (after the shell) opens here.
+/**
+ * Asks the host to close the view. The program is told and ends with it, keeping what is
+ * not saved as drafts, or dropping it first when the person asked to quit without saving.
+ */
+async function endView(discard: boolean): Promise<void> {
+  try {
+    await keepState();
+    if (discard) await call("discard");
+  } catch (error) {
+    toast(messageOf(error), "bad");
+    return;
+  }
+  set({ handingOff: "quit", overlay: null });
+  close();
+}
+
+/** The state goes ahead of the pane, so that the next view (after the shell) opens here. */
+async function keepState(): Promise<void> {
   const place = editor.place();
   const active = get().active;
   if (place && active) set((s) => ({ places: { ...s.places, [active]: place } }));
+  const ui = uiState();
+  await call("ui", { ui });
+  lastUi = JSON.stringify(ui);
+}
+
+async function handOffToShell(): Promise<void> {
   try {
-    await call("textpen_poll", { ui: uiState() });
-    const result = await call<{ state: string }>("textpen_handoff", { kind, discard });
-    if (result.state === "scheduled") set({ handingOff: kind, overlay: null });
+    await keepState();
+    const result = await call<{ state: string }>("handoff", { kind: "shell" });
+    if (result.state === "scheduled") set({ handingOff: "shell", overlay: null });
     else
       toast(
         result.state === "busy" ? "The pane is already being handed over." : "Not possible here.",
@@ -757,7 +801,7 @@ export function changeSettings(change: Partial<Settings>): void {
   editor.configure(settings, before);
   clearTimeout(settingsTimer);
   settingsTimer = setTimeout(() => {
-    void call("textpen_settings", { settings: get().settings }).catch((error) =>
+    void call("settings", { settings: get().settings }).catch((error) =>
       toast(`The settings were not kept: ${messageOf(error)}`, "warn"),
     );
   }, 400);

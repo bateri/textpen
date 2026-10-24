@@ -39,8 +39,13 @@ If a check fails, nothing has left the machine: fix it, amend or add a commit, a
 again. A tag that was made but not pushed can be deleted with `git tag -d <tag>`. A pushed tag is
 never moved; a broken release is followed by a new version.
 
-When `@pencere/sdk` has a new minor version, `^0.1.1` does not admit it: textpen moves its range
-in a commit of its own, and the next release says so in its changelog.
+When `@pencere/sdk` has a new minor version, the range textpen depends on may not admit it:
+textpen moves its range in a commit of its own, and the next release says so in its changelog.
+
+Until the SDK that speaks the one protocol is released, textpen depends on it by a path
+(`file:../pencere-protocol/sdk/typescript`), which nobody who installs the package can resolve:
+the release checks refuse a version with a dependency that is not from the registry, so the
+first release after the SDK's moves it to a version, in a commit of its own.
 
 ### What the release checks refuse
 
@@ -50,6 +55,7 @@ in a commit of its own, and the next release says so in its changelog.
 - a branch other than `main`, a working tree that is not clean, a `main` that has diverged from
   `origin/main`;
 - a tag that already exists, here or on `origin`;
+- a dependency that is a path and not a version from the registry;
 - a package without its `LICENSE`, `README.md`, `CHANGELOG.md`, server or view, or one that
   carries its sources, tests or harness. The package is checked from `npm pack`, which builds it
   first.

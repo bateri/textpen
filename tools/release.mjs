@@ -29,7 +29,6 @@ const REQUIRED = [
   "CHANGELOG.md",
   "dist/server/main.js",
   "dist/view/index.html",
-  "dist/single/index.html",
 ];
 
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/;
@@ -166,6 +165,13 @@ function check() {
     refuse(`CHANGELOG.md: the newest section is not ${version}`);
   }
   releasedSection(version);
+
+  // A dependency that is a path on this machine does not resolve for anyone who installs the package.
+  const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  for (const [name, range] of Object.entries(manifest.dependencies ?? {})) {
+    if (/^(file|link|portal):/.test(range))
+      refuse(`${name} is "${range}": a release needs a version from the registry`);
+  }
 
   if (run("git", ["branch", "--show-current"]) !== "main") refuse("not on main");
   if (run("git", ["status", "--porcelain"]) !== "") refuse("the working tree is not clean");
