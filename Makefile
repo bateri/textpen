@@ -35,3 +35,14 @@ publish-local:
 # Publishing: run on the maintainer's word.
 approve:
 	node tools/release.mjs approve
+
+# lua builds textpen's program in Lua, on pencere's Lua runner, as one file: the runner, the
+# program (lua/) and the view (dist/view) in dist/textpen-lua. `pencere` is the command of a pencere
+# checkout with the Lua runner (cargo build --release -p pencere-cli there; PENCERE=… says where).
+PENCERE ?= pencere
+.PHONY: lua
+lua:
+	npm run build:view
+	rm -rf lua/web
+	cp -R dist/view lua/web
+	$(PENCERE) build lua -o dist/textpen-lua

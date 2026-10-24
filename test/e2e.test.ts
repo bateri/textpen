@@ -1,20 +1,38 @@
 // textpen in a terminal pane, with pencere's stand-in host (`pencere-fake-host`) playing
 // the terminal: the view's calls travel to the program through the tty, as they do in
-// bateri. Skipped where the stand-in is not built or is one of an older protocol: set
+// bateri. The program is the built Node one (`npm run build`, dist/server/main.js) or, with
+// TEXTPEN_BIN, any executable that is textpen (`make lua` makes one: dist/textpen-lua).
+//
+// The tests are skipped where the stand-in is not built or is one of an older protocol: set
 // PENCERE_FAKE_HOST, or build it in a pencere checkout beside this one
-// (`cargo build -p pencere-fake-host`). Run against the built program (`npm run build`).
+// (`cargo build -p pencere-fake-host`). A skip is silent, so it is not allowed where the run is
+// meant to prove something: with TEXTPEN_BIN or TEXTPEN_REQUIRE_E2E=1, a stand-in or a program that
+// is not there fails the run.
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, beforeEach, test } from "node:test";
 
-const HOST =
-  process.env.PENCERE_FAKE_HOST ??
-  new URL("../../pencere/target/debug/pencere-fake-host", import.meta.url).pathname;
+const HOST = process.env.PENCERE_FAKE_HOST
+  ? resolve(process.env.PENCERE_FAKE_HOST)
+  : new URL("../../pencere/target/debug/pencere-fake-host", import.meta.url).pathname;
+const BIN = process.env.TEXTPEN_BIN ? resolve(process.env.TEXTPEN_BIN) : undefined;
 const MAIN = new URL("../dist/server/main.js", import.meta.url).pathname;
+/** The program the pane runs. */
+const PROGRAM: string[] = BIN ? [BIN] : [process.execPath, MAIN];
+const REQUIRED = BIN !== undefined || process.env.TEXTPEN_REQUIRE_E2E === "1";
 
 /** The stand-in of the protocol with one kind of message: its page makes `--call`s and hears `--subscribe`s. */
 function speaksOneProtocol(): boolean {
@@ -23,20 +41,28 @@ function speaksOneProtocol(): boolean {
 }
 
 const skip = !existsSync(HOST)
-  ? "pencere-fake-host is not built"
-  : !existsSync(MAIN)
-    ? "run npm run build first"
+  ? `pencere-fake-host is not built (${HOST})`
+  : !existsSync(BIN ?? MAIN)
+    ? `the program is not built (${BIN ?? MAIN}): run npm run build, or make lua`
     : !speaksOneProtocol()
       ? "pencere-fake-host speaks an older protocol"
       : false;
+
+if (skip && REQUIRED) {
+  throw new Error(
+    `the end-to-end tests cannot run, and a run that needs them may not skip: ${skip}`,
+  );
+}
 
 let dir: string;
 let env: NodeJS.ProcessEnv;
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "textpen-e2e-"));
+  // Nothing the program keeps is written under the real home.
   env = {
     ...process.env,
+    HOME: dir,
     XDG_STATE_HOME: join(dir, "state"),
     XDG_CONFIG_HOME: join(dir, "config"),
     SHELL: "/usr/bin/true",
@@ -50,7 +76,7 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 function pane(calls: [string, unknown][], then: string[] = ["--then", "interrupt"]) {
   const args = ["--size", "100x30", "--limit", "25"];
   for (const [method, params] of calls) args.push("--call", `${method}=${JSON.stringify(params)}`);
-  const run = spawnSync(HOST, [...args, ...then, "--", process.execPath, MAIN, "a.txt"], {
+  const run = spawnSync(HOST, [...args, ...then, "--", ...PROGRAM, "a.txt"], {
     cwd: dir,
     env,
     encoding: "utf8",
@@ -165,7 +191,7 @@ test("a terminal without pencere runs the person's own editor", { skip }, () => 
   env.EDITOR = "cat -n";
   const run = spawnSync(
     HOST,
-    ["--no-host", "--passthrough", "--limit", "15", "--", process.execPath, MAIN, "a.txt"],
+    ["--no-host", "--passthrough", "--limit", "15", "--", ...PROGRAM, "a.txt"],
     {
       cwd: dir,
       env,

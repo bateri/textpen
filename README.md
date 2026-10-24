@@ -135,6 +135,8 @@ stream once (about 2 MB); after that the terminal keeps them.
 - `src/server/main.ts` is the one place that knows about the terminal: `serve` from
   `@pencere/sdk` opens the view in the pane; a `ViewControl` closes it for the shell and the
   next view opens where the last one was.
+- `lua/` is the same program written in Lua, for the `pencere` command's runner: `make lua` makes
+  it one native file with the editor inside, in place of Node. See `lua/README.md`.
 - `src/view` is the editor: React, CodeMirror and [Tabler icons](https://tabler.io/icons).
   `src/view/lib/page.ts` is all it knows of the protocol: it calls and subscribes, is told the
   terminal's colours, font and size, and asks to be closed or to open a link. It tells the

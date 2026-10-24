@@ -7,6 +7,11 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Added
+
+- `make lua` builds textpen as one native file, `dist/textpen-lua`, with its program in Lua on the
+  `pencere` command's runner and the same editor (see `lua/README.md`). The Node program stays.
+
 ### Changed
 
 - Speaks pencere's one protocol (a call, a subscription, a response, a push) in place of MCP
