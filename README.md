@@ -134,9 +134,12 @@ files cross the stream once (about 2 MB); after that the terminal keeps them.
 - Search in the project reads the files one after another, on one thread, so a search of a very
   large project may take longer than if they were read several at a time. Typing and the
   other calls go on while it runs.
-- A pattern in the project search is a Rust regular expression (lookaround and back-references
-  work), not a JavaScript one: `\d`, `\w` and `\b` mean Unicode digits, letters and word edges.
-  Find and replace in a file is the editor's, and is JavaScript's.
+- A pattern in the project search is a Rust regular expression, not a JavaScript one: `\d`, `\w`
+  and `\b` mean Unicode digits, letters and word edges, and back-references (`\1`), look-ahead
+  and look-behind are refused with a message. In return a search always ends in time linear in
+  the text, whatever the pattern. A whole-word search takes the match the pattern prefers at a
+  place, so `foo\s*` in `foo  bar` is not a whole word. Find and replace in a file is the
+  editor's, and is JavaScript's.
 - A file whose name is not valid UTF-8 is not shown in the tree and is not searched.
 - Names are ordered with numbers as numbers (`file9` before `file10`) and capitals with small
   letters, in the tree and in a search alike; letters with accents are not folded (`é` comes

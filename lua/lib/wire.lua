@@ -12,8 +12,8 @@ local M = {}
 -- members of the result) takes a few hundred bytes, and this leaves them 124 KiB.
 M.WIRE_BUDGET = 900 * 1024
 
--- How many bytes a text takes in a message to the view: JSON's escapes, and pencere's `\uXXXX`
--- for every UTF-16 unit outside ASCII, which a frame may not carry raw.
+-- How many bytes a text takes in a message to the view, as pencere counts it against its limit:
+-- the UTF-8 of each character, before the wire's escapes.
 M.wire_size = text.wire_size
 
 -- How many of the first `items` go in a message together, each taking `size(item)` bytes. At least
