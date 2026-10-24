@@ -78,5 +78,7 @@ Node program does: the order of a listing, an exclusive create, `bad-params`, a 
 - **The `changes` topic** looks every two seconds while it is subscribed, as the Node program does.
 - **`TEXTPEN_TRACE`** (the trace of the turns with the terminal) is not in the Lua build.
 - **A file name that is not UTF-8** is left out of a listing; the Node program shows it with U+FFFD in it.
-- **Keys of the view's `places` named `__proto__`** are kept as the keys they are; the Node program
-  (zod) leaves that one out. Neither reaches the base of an object.
+- **Renaming by case alone** (`Ö.txt` to `ö.txt`) is allowed only for ASCII letters: Luau's
+  `string.lower` is ASCII-only, so on a disk that ignores case the other is refused as taken.
+- **The tests need the stand-in host of the pencere checkout with the Lua runner**: the parity tests
+  read whole results (`PENCERE_FAKE_GIST`) and say so, in a run that needs them, when the host cannot.

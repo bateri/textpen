@@ -180,7 +180,8 @@ function M.tuple(schemas)
 end
 
 -- An object whose every member is one schema, under any key. Its keys are text; a list is not it.
--- The result is a plain table: a key such as `__index` or `constructor` is a key and nothing more.
+-- The result is a plain table: a key such as `__index` or `constructor` is a key and nothing more
+-- (`__proto__`, which in the view's language is not just a key, is left out).
 function M.record(schema)
 	return function(value, path)
 		if kind(value) ~= "object" then
@@ -191,13 +192,17 @@ function M.record(schema)
 			if type(key) ~= "string" then
 				return wrong(path, "expected keys that are text")
 			end
-			path[#path + 1] = key
-			local clean, why = schema(item, path)
-			path[#path] = nil
-			if why then
-				return nil, why
+			-- Left out, as the Node program's schema does: the view is JavaScript, and a record it is
+			-- given back with this key would reach for the base of its objects.
+			if key ~= "__proto__" then
+				path[#path + 1] = key
+				local clean, why = schema(item, path)
+				path[#path] = nil
+				if why then
+					return nil, why
+				end
+				out[key] = clean
 			end
-			out[key] = clean
 		end
 		return out
 	end

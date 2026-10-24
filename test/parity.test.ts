@@ -34,11 +34,19 @@ const PROGRAM: string[] = BIN ? [BIN] : [process.execPath, MAIN];
 const REQUIRED = BIN !== undefined || process.env.TEXTPEN_REQUIRE_E2E === "1";
 const LUA = BIN !== undefined;
 
+/** The stand-in that can show a whole result (PENCERE_FAKE_GIST), which these tests read. */
+function showsWholeResults(): boolean {
+  const help = spawnSync(HOST, ["--help"], { encoding: "utf8", timeout: 10_000 });
+  return /PENCERE_FAKE_GIST/.test(`${help.stdout}${help.stderr}`);
+}
+
 const skip = !existsSync(HOST)
   ? `pencere-fake-host is not built (${HOST})`
   : !existsSync(BIN ?? MAIN)
     ? `the program is not built (${BIN ?? MAIN})`
-    : false;
+    : !showsWholeResults()
+      ? "pencere-fake-host cuts a result at 100 characters (it needs PENCERE_FAKE_GIST: build the one of the pencere checkout with the Lua runner)"
+      : false;
 if (skip && REQUIRED) {
   throw new Error(`the parity tests cannot run, and a run that needs them may not skip: ${skip}`);
 }
@@ -287,7 +295,7 @@ test(
 );
 
 test(
-  "keys of the view's places that look like a trap are only keys, and the rest are given back as they came",
+  "keys of the view's places that look like a trap are only keys, and a record is given back without the one that is not",
   { skip },
   () => {
     const place = { anchor: 1, head: 2, top: 3 };
@@ -309,14 +317,12 @@ test(
       ["boot", {}],
     ]);
     assert.deepEqual(kept!.result, {});
-    // (The Node program leaves `__proto__` out, which zod does for a record; the Lua one keeps it as
-    // the key it is. Neither lets it reach the base of every object.)
-    assert.deepEqual(
-      Object.keys(boot!.result.ui.places)
-        .filter((key) => key !== "__proto__")
-        .sort(),
-      ["constructor", "src/a.ts", "toString"],
-    );
+    // (`__proto__` is left out of a record, by the Node program's schema and by the Lua one.)
+    assert.deepEqual(Object.keys(boot!.result.ui.places).sort(), [
+      "constructor",
+      "src/a.ts",
+      "toString",
+    ]);
     assert.deepEqual(boot!.result.ui.places["src/a.ts"], place);
     assert.equal(bootAgain!.result.ui.active, null);
     assert.deepEqual(bootAgain!.result.ui.places, {});
