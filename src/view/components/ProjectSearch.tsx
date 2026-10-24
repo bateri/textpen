@@ -13,7 +13,7 @@ import { matches } from "../lib/keys";
 import { openMatch, runSearch } from "../state/actions";
 import { focusEditor } from "../state/commands";
 import { get, set, useStore } from "../state/store";
-import type { SearchMatch } from "../../server/types";
+import type { SearchMatch } from "../lib/types";
 import type { SearchState } from "../state/store";
 import { moveBy, useWindow } from "./ui";
 

@@ -4,32 +4,30 @@
 //   prepare <version>   set the version, move Unreleased into a dated section of CHANGELOG.md
 //   check               everything a release needs, without changing anything
 //   tag                 check, then create the annotated tag v<version>
-//   push                push main and the tag together (what starts the release workflow)
-//   local               publish from this machine, then push (the first release)
-//   approve             make public the version the workflow staged on npm
-//   verify-tag <tag>    in the workflow: the tag names the manifest's version, on main
-//   registry <version>  in the workflow: is the package, and this version, on npm
+//   publish             push main and the tag, then make the GitHub release with the four files
 //   notes [<version>]   the CHANGELOG section of a version
 //
-// It uses nothing but Node, git and npm.
+// It uses nothing but Node, git and gh.
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const NAME = "textpen";
 
-/** The files the package must carry: what it runs, and what a person reads before running it. */
-const REQUIRED = [
-  "package.json",
-  "LICENSE",
-  "README.md",
-  "CHANGELOG.md",
-  "dist/server/main.js",
-  "dist/view/index.html",
+/** The systems textpen is built for: the targets of pencere's runner (the Makefile's TARGETS). */
+const TARGETS = [
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "aarch64-unknown-linux-musl",
+  "x86_64-unknown-linux-musl",
 ];
+
+/** Where `make dist` puts the files of a release. */
+const RELEASE_DIR = join(root, "dist", "release");
 
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/;
 const RELEASED = /^## \[(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\] - (\d{4}-\d{2}-\d{2})$/;
@@ -79,6 +77,18 @@ function setVersion(version) {
   if (lock.packages?.[""] === undefined) refuse("package-lock.json has no root package");
   lock.packages[""].version = version;
   writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+  // The program is one file with no manifest beside it: it carries its version in its own source.
+  writeFileSync(
+    LUA_VERSION,
+    `-- The version, as package.json has it. The program is one file with no manifest beside it,\n-- so a release changes it here too (tools/release.mjs keeps the two the same).\nreturn "${version}"\n`,
+  );
+}
+
+/** The version the program says of itself. */
+const LUA_VERSION = join(root, "lua", "lib", "version.lua");
+
+function programVersion() {
+  return /return "([^"]+)"/.exec(readFileSync(LUA_VERSION, "utf8"))?.[1];
 }
 
 // ---- the changelog ---------------------------------------------------------
@@ -157,6 +167,11 @@ function check() {
   if (!SEMVER.test(version ?? "") || version === "0.0.0") {
     refuse(`package.json is at "${version}": run make release-prepare first`);
   }
+  if (programVersion() !== version) {
+    refuse(
+      `lua/lib/version.lua says ${programVersion()}, package.json ${version}: the program would report the wrong one`,
+    );
+  }
   if (unreleased().body !== "") {
     refuse("CHANGELOG.md: Unreleased is not empty; prepare moves it into the release");
   }
@@ -165,13 +180,6 @@ function check() {
     refuse(`CHANGELOG.md: the newest section is not ${version}`);
   }
   releasedSection(version);
-
-  // A dependency that is a path on this machine does not resolve for anyone who installs the package.
-  const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-  for (const [name, range] of Object.entries(manifest.dependencies ?? {})) {
-    if (/^(file|link|portal):/.test(range))
-      refuse(`${name} is "${range}": a release needs a version from the registry`);
-  }
 
   if (run("git", ["branch", "--show-current"]) !== "main") refuse("not on main");
   if (run("git", ["status", "--porcelain"]) !== "") refuse("the working tree is not clean");
@@ -194,25 +202,65 @@ function check() {
     refuse(`the tag ${tag} exists on origin`);
   }
 
-  const files = contents();
-  for (const file of REQUIRED) {
-    if (!files.includes(file)) refuse(`the package lacks ${file}`);
-  }
-  const stray = files.filter(
-    (file) => file.startsWith("test/") || file.startsWith("src/") || file.startsWith("harness/"),
+  const files = releaseFiles(version);
+  console.log(
+    `${NAME} ${version} is ready to tag as ${tag}: ${files.length} files in dist/release`,
   );
-  if (stray.length > 0) refuse(`the package carries what it does not run: ${stray.join(", ")}`);
-  console.log(`${NAME} ${version} is ready to tag as ${tag}`);
-  return { version, tag, section };
+  return { version, tag, section, files };
 }
 
-/** The files npm would publish, as paths inside the package. */
-function contents() {
-  // The build `prepack` runs before a publish, run here on its own: run by `npm pack`, its output
-  // would land in the middle of the report.
-  run("npm", ["run", "build"]);
-  const report = JSON.parse(run("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"]));
-  return report[0].files.map((file) => file.path);
+/** The executable of a release for a target. */
+const fileOf = (version, target) => `${NAME}-${version}-${target}`;
+
+/** The target of the machine this runs on, for the one executable it can run. */
+function ownTarget() {
+  const arch = { arm64: "aarch64", x64: "x86_64" }[process.arch];
+  if (arch === undefined) return undefined;
+  if (process.platform === "darwin") return `${arch}-apple-darwin`;
+  if (process.platform === "linux") return `${arch}-unknown-linux-musl`;
+  return undefined;
+}
+
+/**
+ * The files `make dist` made for this version: the four executables and the SHA256SUMS that names
+ * exactly them, each with the sum it lists. The names carry the version, so a dist/release made
+ * before the version moved is refused; the one executable this machine can run says its version.
+ */
+function releaseFiles(version) {
+  if (!existsSync(RELEASE_DIR)) refuse(`no dist/release: make dist, after the release commit`);
+  const expected = TARGETS.map((target) => fileOf(version, target));
+  const found = readdirSync(RELEASE_DIR).sort();
+  const wanted = [...expected, "SHA256SUMS"].sort();
+  if (found.join("\n") !== wanted.join("\n")) {
+    refuse(
+      `dist/release holds ${found.join(", ") || "nothing"} and a release of ${version} is ${wanted.join(", ")}: make dist again, after the release commit`,
+    );
+  }
+  const listed = new Map(
+    readFileSync(join(RELEASE_DIR, "SHA256SUMS"), "utf8")
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => {
+        const [sum, name] = line.split(/\s+/);
+        return [name.replace(/^\*/, ""), sum];
+      }),
+  );
+  if ([...listed.keys()].sort().join("\n") !== [...expected].sort().join("\n")) {
+    refuse("dist/release/SHA256SUMS does not name exactly the four executables");
+  }
+  for (const name of expected) {
+    const sum = createHash("sha256")
+      .update(readFileSync(join(RELEASE_DIR, name)))
+      .digest("hex");
+    if (listed.get(name) !== sum)
+      refuse(`${name} is not the file SHA256SUMS lists: make dist again`);
+  }
+  const own = ownTarget();
+  if (own !== undefined) {
+    const said = run(join(RELEASE_DIR, fileOf(version, own)), ["--version"]);
+    if (said !== version) refuse(`${fileOf(version, own)} says it is ${said}: make dist again`);
+  }
+  return [...expected, "SHA256SUMS"];
 }
 
 function tag() {
@@ -220,9 +268,7 @@ function tag() {
   // Verbatim: the default cleanup would take the section's "### Added" lines for comments.
   const message = `${NAME} ${version}\n\n${section.body}\n`;
   run("git", ["tag", "--annotate", "--cleanup=verbatim", tagName, "--message", message]);
-  // The workflow cannot stage a package the registry does not know yet.
-  const next = succeeds("npm", ["view", NAME, "name"]) ? "publish" : "publish-local";
-  console.log(`tagged ${tagName}; nothing is pushed. Next: make ${next}`);
+  console.log(`tagged ${tagName}; nothing is pushed. Next: make publish`);
 }
 
 function currentTag() {
@@ -237,92 +283,39 @@ function currentTag() {
   return { version, tagName };
 }
 
-function push() {
-  const { tagName } = currentTag();
-  run("git", ["push", "--atomic", "origin", "main", tagName], { stdio: "inherit" });
-  console.log(`pushed main and ${tagName}; the release workflow takes it from here`);
-}
-
-/** How long `local` waits for npm to list what it published, and how often it asks. */
-const LISTING = { minutes: 15, every: 15_000 };
-
-function local() {
+function publish() {
   const { version, tagName } = currentTag();
-  run("npm", ["publish"], { stdio: "inherit" });
-  // npm processes a new package for minutes before it lists it, and the workflow the push
-  // starts asks npm whether the version is there: one that asks too early fails.
-  console.log(`waiting for npm to list ${NAME} ${version} before pushing`);
-  const deadline = Date.now() + LISTING.minutes * 60_000;
-  while (!succeeds("npm", ["view", `${NAME}@${version}`, "version"])) {
-    if (Date.now() > deadline) {
-      refuse(
-        `npm has not listed ${NAME} ${version} in ${LISTING.minutes} minutes; once it does: git push --atomic origin main ${tagName}`,
-      );
-    }
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, LISTING.every);
+  const files = releaseFiles(version).map((name) => join(RELEASE_DIR, name));
+  const notes = releasedSection(version).body;
+  if (succeeds("gh", ["release", "view", tagName])) {
+    refuse(`the release ${tagName} exists on GitHub`);
   }
   run("git", ["push", "--atomic", "origin", "main", tagName], { stdio: "inherit" });
-  console.log(`published ${NAME} ${version} and pushed ${tagName}`);
-}
-
-/** `npm stage` needs npm 11.15 or later and Node 22 ships npm 10; the release workflow installs the same one. */
-const STAGE_NPM = ["--yes", "npm@11.21.1", "stage"];
-
-function approve() {
-  const version = versionOf();
-  const staged = JSON.parse(run("npx", [...STAGE_NPM, "list", NAME, "--json"])).filter(
-    (item) => item.version === version,
+  // `--verify-tag`: the release is made on the tag just pushed, never on a tag gh would make.
+  // The notes go in on the standard input, the changelog's section as it is.
+  execFileSync(
+    "gh",
+    [
+      "release",
+      "create",
+      tagName,
+      "--verify-tag",
+      "--title",
+      tagName,
+      "--notes-file",
+      "-",
+      ...files,
+    ],
+    { cwd: root, input: notes, stdio: ["pipe", "inherit", "inherit"] },
   );
-  if (staged.length === 0) {
-    refuse(`npm holds no staged ${NAME} ${version}: has the release workflow staged it?`);
-  }
-  if (staged.length > 1) {
-    const ids = staged.map((item) => `${item.id} (${item.status})`).join(", ");
-    refuse(`npm holds more than one staged ${NAME} ${version}: ${ids}`);
-  }
-  // What is approved is shown first: who staged it and the shasum of what becomes public.
-  run("npx", [...STAGE_NPM, "view", staged[0].id], { stdio: "inherit" });
-  run("npx", [...STAGE_NPM, "approve", staged[0].id], { stdio: "inherit" });
-}
-
-function verifyTag(tagName) {
-  const match = /^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(tagName ?? "");
-  if (match === null) refuse(`"${tagName}" is not a release tag (v<version>)`);
-  const version = match[1];
-  if (versionOf() !== version)
-    refuse(`${tagName} names ${version} but package.json is at ${versionOf()}`);
-  releasedSection(version);
-  run("git", ["fetch", "--quiet", "origin", "main"]);
-  if (!succeeds("git", ["merge-base", "--is-ancestor", tagName, "origin/main"])) {
-    refuse(`${tagName} is not on main`);
-  }
-  // Read by the workflow from its output file.
-  console.log(`version=${version}`);
-}
-
-function registry(version) {
-  const exists = succeeds("npm", ["view", NAME, "name"]);
-  const published = exists && succeeds("npm", ["view", `${NAME}@${version}`, "version"]);
-  // Read by the workflow from its output file.
-  console.log(`exists=${exists}`);
-  console.log(`published=${published}`);
+  console.log(`published ${tagName}; check it with: gh release view ${tagName}`);
 }
 
 function notes(version) {
   console.log(releasedSection(version ?? versionOf()).body);
 }
 
-const COMMANDS = {
-  prepare,
-  check,
-  tag,
-  push,
-  local,
-  approve,
-  "verify-tag": verifyTag,
-  registry,
-  notes,
-};
+const COMMANDS = { prepare, check, tag, publish, notes };
 
 const [command, ...args] = process.argv.slice(2);
 const handler = COMMANDS[command];

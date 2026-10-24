@@ -14,7 +14,7 @@ import {
 } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 
-import type { Entry } from "../../server/types";
+import type { Entry } from "../lib/types";
 import { label } from "../lib/keys";
 import {
   create,

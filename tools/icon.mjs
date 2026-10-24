@@ -1,7 +1,8 @@
 // Draws textpen's icon, its mark (the Mark in src/view/components/Welcome.tsx: lines of text,
-// the last one being written, with the cursor at its end), as PNGs in data: URIs, and writes
-// them to src/server/icon.ts. A terminal draws a program's icon only from the bytes it is given,
-// so the server carries them; run this again after changing the shapes here and there.
+// the last one being written, with the cursor at its end), as PNGs, and writes them to
+// lua/assets/icon-<side>-<theme>.png. A terminal draws a program's icon only from the bytes it is
+// given, so the program carries them (lua/app.lua names the files); run this again after changing
+// the shapes here and there.
 //
 //   node tools/icon.mjs
 //
@@ -88,31 +89,14 @@ function png(side, pixels) {
   ]);
 }
 
-const icons = [];
+let written = 0;
 for (const [theme, colour] of Object.entries(COLOURS)) {
   for (const side of SIDES) {
-    const src = `data:image/png;base64,${draw(side, colour).toString("base64")}`;
-    icons.push(
-      `  {\n    src: "${src}",\n    mimeType: "image/png",\n    sizes: ["${side}x${side}"],\n    theme: "${theme}",\n  },`,
+    writeFileSync(
+      new URL(`../lua/assets/icon-${side}-${theme}.png`, import.meta.url),
+      draw(side, colour),
     );
+    written++;
   }
 }
-
-const path = new URL("../src/server/icon.ts", import.meta.url);
-writeFileSync(
-  path,
-  `// Written by tools/icon.mjs; change the shapes there and run it again.
-
-import type { Icon } from "@pencere/sdk";
-
-/**
- * textpen's icon, the mark its view shows, for a dark ground and a light one (an icon's \`theme\`),
- * 32 and 64 pixels a side, as PNGs in \`data:\` URIs: a terminal draws an icon only from the
- * bytes it is given, and never fetches one.
- */
-export const ICONS: Icon[] = [
-${icons.join("\n")}
-];
-`,
-);
-console.log(`wrote ${icons.length} icons to src/server/icon.ts`);
+console.log(`wrote ${written} icons to lua/assets`);

@@ -192,8 +192,8 @@ function M.record(schema)
 			if type(key) ~= "string" then
 				return wrong(path, "expected keys that are text")
 			end
-			-- Left out, as the Node program's schema does: the view is JavaScript, and a record it is
-			-- given back with this key would reach for the base of its objects.
+			-- Left out: the view is JavaScript, and a record it is given back with this key would reach
+			-- for the base of its objects.
 			if key ~= "__proto__" then
 				path[#path + 1] = key
 				local clean, why = schema(item, path)

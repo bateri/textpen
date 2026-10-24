@@ -92,15 +92,22 @@ kept as a draft. On Linux and Windows, `⌘` is `Ctrl`.
 
 ## Run it
 
-It needs Node 22 where it runs.
+textpen is one file, with the editor inside it and nothing else to install. Take the file for
+your system from the [latest release](https://github.com/bateri/textpen/releases/latest) — macOS
+or Linux, Apple silicon or Intel, `arm64` or `x86_64` — check it against `SHA256SUMS`, and put
+it on your `PATH` as `textpen`:
+
+```sh
+chmod +x textpen-0.2.0-aarch64-apple-darwin
+mv textpen-0.2.0-aarch64-apple-darwin ~/.local/bin/textpen
+```
 
 To see the editor you need a terminal that hosts pencere views. bateri is the first, and no
 release of it has them yet: until one does, build bateri from its `main` branch. In any other
 terminal textpen opens your own `$EDITOR`.
 
 ```sh
-npm install -g textpen
-textpen                             # or, without installing it: npx textpen
+textpen                             # the folder you are in
 textpen src/server.ts:42            # a file, at a line (`+42 file` works too)
 textpen ~/projects/lantern          # a folder as the project
 ```
@@ -115,56 +122,90 @@ pane: save it and close the tab (or `:wq`), and git goes on. Opened on files nam
 command line, textpen ends when the last of them is closed. In a terminal without pencere it
 passes the file to `$VISUAL` or `$EDITOR` — skipping itself — or to `vi`.
 
-**Over ssh.** Install it on the server and run it there, in a pane of a terminal that hosts
-pencere: nothing listens on a port, the editor travels in the terminal's own stream, and it
-runs on your machine in a sandbox that reaches nothing but its program. Its files cross the
-stream once (about 2 MB); after that the terminal keeps them.
+**Over ssh.** Copy the file for the server's system to it and run it there, in a pane of a
+terminal that hosts pencere: nothing listens on a port, the editor travels in the terminal's
+own stream, and it runs on your machine in a sandbox that reaches nothing but its program. Its
+files cross the stream once (about 2 MB); after that the terminal keeps them.
+
+**What it does not do.**
+
+- `--dev` is not supported: it showed the view again when its built files changed, and a built
+  file carries the view inside it. "Work on it" says how the editor is worked on now.
+- Search in the project reads the files one after another, on one thread, so a search of a very
+  large project may take longer than if they were read several at a time. Typing and the
+  other calls go on while it runs.
+- A pattern in the project search is a Rust regular expression (lookaround and back-references
+  work), not a JavaScript one: `\d`, `\w` and `\b` mean Unicode digits, letters and word edges.
+  Find and replace in a file is the editor's, and is JavaScript's.
+- A file whose name is not valid UTF-8 is not shown in the tree and is not searched.
+- Names are ordered with numbers as numbers (`file9` before `file10`) and capitals with small
+  letters, in the tree and in a search alike; letters with accents are not folded (`é` comes
+  after `z`).
+- On a disk that ignores case, renaming a file by case alone (`Ö.txt` to `ö.txt`) works only
+  for ASCII letters; for the others the new name is refused as taken.
 
 ## How it works
 
-- `src/server` is textpen's program, and **holds the text of every open file**. The editor
-  asks it with a handful of calls (open, edit, save, list, search…) and hears from it on one
-  topic, what changed on disk and in git. What the editor sends travels through the terminal's
-  input queue, in frames of 511 bytes and messages of at most 1 MiB, so it never sends a file:
-  it sends what changed, a few hundred milliseconds of typing at a time, as replacements made
-  on a version of the text the program checks; saving is a word to the program. A message the
-  other way is at most 1 MiB too, and every character outside ASCII crosses as six bytes, so a
-  long text, a long folder and the files of a big project come to the editor in pieces. Holding
-  the text is also what lets it outlive the view — a shell, a restart of the terminal — and
-  become a draft when the program ends.
-- `src/server/main.ts` is the one place that knows about the terminal: `serve` from
-  `@pencere/sdk` opens the view in the pane; a `ViewControl` closes it for the shell and the
-  next view opens where the last one was.
-- `lua/` is the same program written in Lua, for the `pencere` command's runner: `make lua` makes
-  it one native file with the editor inside, in place of Node. See `lua/README.md`.
+- `lua/` is textpen's program, written in Lua for the runner of the `pencere` command, and
+  **holds the text of every open file**. The editor asks it with a handful of calls (open, edit,
+  save, list, search…) and hears from it on one topic, what changed on disk and in git. What the
+  editor sends travels through the terminal's input queue, in frames of 511 bytes and messages
+  of at most 1 MiB, so it never sends a file: it sends what changed, a few hundred milliseconds
+  of typing at a time, as replacements made on a version of the text the program checks; saving
+  is a word to the program. A message the other way is at most 1 MiB too, and every character
+  outside ASCII crosses as six bytes, so a long text, a long folder and the files of a big
+  project come to the editor in pieces. Holding the text is also what lets it outlive the view
+  — a shell, a restart of the terminal — and become a draft when the program ends.
+- `lua/app.lua` is the one place that knows about the terminal: it opens the view in the pane,
+  hands the pane to a shell and takes it back, and runs your own editor in a terminal that
+  shows no views. `lua/README.md` has the modules.
 - `src/view` is the editor: React, CodeMirror and [Tabler icons](https://tabler.io/icons).
   `src/view/lib/page.ts` is all it knows of the protocol: it calls and subscribes, is told the
-  terminal's colours, font and size, and asks to be closed or to open a link. It tells the
-  program where it is (tabs, folders, cursors) every two seconds when that changed.
+  terminal's colours, font and size, and asks to be closed or to open a link; the shapes of
+  what it sends and is sent are in `src/view/lib/types.ts`. It tells the program where it is
+  (tabs, folders, cursors) every two seconds when that changed.
+- `make build` builds the editor with vite and has `pencere build` pack it, with the program,
+  into the runner: `dist/textpen`, about 6 MB.
 
 ## Work on it
 
+You need Node 22, and a checkout of [pencere](https://github.com/bateri/pencere) with the Lua
+runner beside this one, built there:
+
+```sh
+cargo build --release -p pencere-cli     # the `pencere` command, the runner of the program
+cargo build -p pencere-fake-host         # the stand-in terminal the tests play textpen in
+```
+
 ```sh
 git clone https://github.com/bateri/textpen && cd textpen
-npm install
-make check          # types, build, formatting, and the tests: the program, the view's edits,
-                    # and the editor in a pane under pencere-fake-host when a pencere
-                    # checkout is beside this one
-npm run harness     # http://localhost:5198 — the editor in a stand-in host, on demo/
-npx vite build --watch & npm run dev   # in a pencere terminal: the editor is shown again
-                                       # each time its build changes
+make setup          # npm ci
+make build          # the editor and the program: dist/textpen
+make check          # types, formatting, the editor's tests, the build, and dist/textpen
+                    # in a pane under pencere-fake-host: its calls, drafts, shell and command line
+make check-page     # the part of the gate that needs no pencere checkout (what CI runs)
 ```
+
+`make` looks for the runner at `../pencere/target/release/pencere` and the stand-in at
+`../pencere/target/debug/pencere-fake-host`. Until the checkout beside this one has the Lua
+runner, they are in `../pencere-lua`:
+
+```sh
+make check PENCERE=../pencere-lua/target/release/pencere \
+           FAKE_HOST=../pencere-lua/target/debug/pencere-fake-host
+```
+
+No test is skipped: a runner, a stand-in or a program that is not there stops the run and
+says which. CI cannot fetch a runner until pencere has a release, so it runs `make check-page`
+and says in its annotations that the end-to-end tests of the program did not run.
+
+To work on the editor in a pane of a terminal that hosts pencere views: `make web`, then
+`pencere dev lua` runs the program from its files and shows the view again when one under `lua/`
+changes; `make web` again after changing the editor. `demo/` is a small shop to open it on
+(`textpen demo`).
 
 How a version is released is in [RELEASING.md](RELEASING.md), and what each one changed in
 [CHANGELOG.md](CHANGELOG.md).
-
-The harness plays the terminal in a browser: it frames the editor with hot reload, tells it
-the colours of a terminal theme (bateri's, Tokyo Night, Gruvbox, Dracula, Solarized and
-more) and the size of a pane (80×24 up), and passes its calls and subscriptions to the real
-program, which edits `demo/` — a small shop to look at — or the folder `TEXTPEN_ROOT` names. It keeps its
-settings and drafts in `.scratch/`. In its address, `theme=` and `size=` choose the
-terminal, `bare` shows the pane alone (for screenshots), `built` shows the view `npm run
-build` wrote, and `ui=` (JSON) opens with those tabs and folders.
 
 ## License
 

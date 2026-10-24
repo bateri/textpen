@@ -63,7 +63,7 @@ import {
 } from "@codemirror/view";
 import type { KeyBinding, ViewUpdate } from "@codemirror/view";
 
-import type { BufferInfo, OpenedBuffer, Place, Settings } from "../../server/types";
+import type { BufferInfo, OpenedBuffer, Place, Settings } from "../lib/types";
 import { CallError, call } from "../lib/page";
 import { callText } from "../lib/text";
 import { isMac } from "../lib/keys";

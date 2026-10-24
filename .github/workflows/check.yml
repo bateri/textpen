@@ -1,5 +1,8 @@
-# The gate on every push to main and every pull request: `make check`, on Linux and macOS,
-# the two systems textpen runs on.
+# The gate on every push to main and every pull request, as far as CI can run it: the editor's
+# types, formatting, build and tests. The program is one file made by pencere's Lua runner, and
+# until pencere has a release CI has no runner to make it with, so the end-to-end tests of the
+# program do not run here. The job says so in its annotations and its summary, and `make check`
+# on a machine with a pencere checkout is the whole gate (README.md, Work on it).
 name: check
 
 on:
@@ -11,12 +14,8 @@ permissions:
   contents: read
 
 jobs:
-  check:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+  page:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -24,4 +23,17 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: make check
+      - run: make check-page
+      - run: make view
+      # Not a pass: the step that would build dist/textpen and run test/e2e.test.ts and
+      # test/calls.test.ts is not here, and this says so where a person reads a run. It becomes
+      # `make check` when `pencere build --target` can fetch a runner from a pencere release.
+      - name: Binary end-to-end tests (not run)
+        run: |
+          message="The program (dist/textpen) was not built and its end-to-end tests did not run: pencere has no release yet, so CI cannot fetch the runner. Run make check with a pencere checkout beside this one."
+          echo "::warning title=Binary end-to-end tests did not run::$message"
+          {
+            echo "### Binary end-to-end tests: not run"
+            echo
+            echo "$message"
+          } >> "$GITHUB_STEP_SUMMARY"

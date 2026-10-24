@@ -7,27 +7,34 @@ change what the previous one did.
 
 ## [Unreleased]
 
-### Added
-
-- `make lua` builds textpen as one native file, `dist/textpen-lua`, with its program in Lua on the
-  `pencere` command's runner and the same editor (see `lua/README.md`). The Node program stays.
-
 ### Changed
 
+- textpen is one native file, built from Lua by pencere's runner, with the editor inside it
+  (about 6 MB): macOS and Linux, Apple silicon and Intel, `arm64` and `x86_64`, as files of the
+  GitHub release. Node is no longer needed where it runs, and textpen is no longer published on
+  npm: `npm install -g textpen` and `npx textpen` stop at the last release there, which is
+  deprecated with a pointer to the files.
 - Speaks pencere's one protocol (a call, a subscription, a response, a push) in place of MCP
   Apps. The editor is the same one, in the terminal's colours and font, in a terminal that
   hosts the new views; it no longer opens in one that only speaks MCP Apps.
 - The program tells the editor when files change on disk or in git, as it happens, in place of
   the editor asking every two seconds.
-- Until the SDK of the new protocol is released, textpen depends on it by a path beside this
-  checkout (`file:../pencere-protocol/sdk/typescript`); the dependency goes back to a version
-  from the registry when the SDK is released, and a release cannot be made before then.
+- A pattern in the project search is a Rust regular expression (lookaround and back-references
+  work), not a JavaScript one: `\d`, `\w` and `\b` mean Unicode digits, letters and word edges.
+- Names are ordered with numbers as numbers and capitals with small letters, in the tree and in
+  a search alike; a search used to put `file10` before `file9`. Letters with accents are not
+  folded: `é` comes after `z`.
+- A file whose name is not valid UTF-8 is not shown in the tree and is not searched.
+- Search in the project reads the files one at a time, on one thread, in place of sixteen at a
+  time.
 
 ### Removed
 
 - The MCP server: `show_editor`, `list_files` and `read_file`, the view for other MCP Apps
   hosts, and `npx -y textpen` as a stdio server for an MCP client. Started with no terminal at
   all, textpen says it needs one.
+- `--dev`, which showed the view again when its built files changed (`pencere dev lua` does that
+  for the program's files), and `TEXTPEN_TRACE`, the trace of the turns with the terminal.
 
 ## [0.1.0] - 2026-10-22
 

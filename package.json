@@ -1,6 +1,7 @@
 {
   "name": "textpen",
   "version": "0.1.0",
+  "private": true,
   "description": "A code editor in the terminal pane: a file tree, tabs, search and the terminal's own colours, over plain ssh",
   "license": "GPL-3.0-or-later",
   "keywords": [
@@ -11,32 +12,13 @@
     "ssh"
   ],
   "type": "module",
-  "bin": {
-    "textpen": "./dist/server/main.js"
-  },
-  "files": [
-    "dist",
-    "CHANGELOG.md",
-    "README.md",
-    "LICENSE"
-  ],
   "scripts": {
-    "build": "npm run build:view && npm run build:server",
-    "build:view": "vite build",
-    "build:server": "tsc -p tsconfig.server.json",
-    "harness": "npm run build:server && vite --mode harness",
-    "start": "node dist/server/main.js",
-    "dev": "node dist/server/main.js --dev",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
-    "test": "npm run build && node --test 'test/*.test.ts'",
-    "prepack": "npm run build"
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/page.test.ts test/batches.test.ts test/fuzzy.test.ts"
   },
   "engines": {
     "node": ">=22.12"
-  },
-  "dependencies": {
-    "@pencere/sdk": "file:../pencere-protocol/sdk/typescript",
-    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@codemirror/autocomplete": "^6.20.4",

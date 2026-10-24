@@ -1,6 +1,7 @@
 /**
- * What the program and its view say to each other. The view imports these types; nothing
- * here runs.
+ * What the program and its view say to each other, as the view has it: the shapes of the
+ * params and results of the calls and of the values of the topic. The program (lua/) is
+ * written to them and test/calls.test.ts holds it to them; nothing here but the defaults runs.
  */
 
 export type GitState = "modified" | "added" | "untracked" | "deleted" | "renamed" | "conflict";

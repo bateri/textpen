@@ -14,7 +14,7 @@ import { changeSettings } from "../state/actions";
 import { COMMANDS } from "../state/commands";
 import { dismissToast, get, set, useStore } from "../state/store";
 import type { Dialog as DialogSpec } from "../state/store";
-import type { Settings } from "../../server/types";
+import type { Settings } from "../lib/types";
 import { Keys, moveBy } from "./ui";
 
 function backToEditor(): void {

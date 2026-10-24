@@ -8,7 +8,7 @@
 import { IconTerminal2 } from "@tabler/icons-react";
 import { useEffect, useLayoutEffect, useState } from "react";
 
-import type { Boot } from "../server/types";
+import type { Boot } from "./lib/types";
 import { EditorArea } from "./components/EditorArea";
 import { MenuLayer } from "./components/Menu";
 import { DialogLayer, HelpLayer, SettingsLayer, Toasts } from "./components/Overlays";

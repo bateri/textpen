@@ -7,7 +7,7 @@
 import { IconChevronRight, IconFolder, IconFolderOpen } from "@tabler/icons-react";
 import { memo, useEffect, useMemo, useRef } from "react";
 
-import type { Entry, GitState } from "../../server/types";
+import type { Entry, GitState } from "../lib/types";
 import { FileIcon, ancestors, dirname } from "../lib/files";
 import { matches } from "../lib/keys";
 import { create, copyPath, listDir, openFile, remove, rename, setExpanded } from "../state/actions";

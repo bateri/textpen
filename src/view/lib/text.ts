@@ -4,7 +4,7 @@
  * (the program cuts them: 1 MiB at most, and none of it is ASCII in the worst case).
  */
 
-import type { OpenedBuffer, Unopenable } from "../../server/types";
+import type { OpenedBuffer, Unopenable } from "./types";
 import { call } from "./page";
 
 export async function whole<T extends OpenedBuffer | Unopenable>(opened: T): Promise<T> {

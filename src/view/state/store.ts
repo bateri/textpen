@@ -17,8 +17,8 @@ import type {
   Settings,
   UiState,
   Unopenable,
-} from "../../server/types";
-import { DEFAULT_SETTINGS } from "../../server/types";
+} from "../lib/types";
+import { DEFAULT_SETTINGS } from "../lib/types";
 
 export type Layout = "wide" | "medium" | "narrow";
 

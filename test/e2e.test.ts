@@ -1,13 +1,11 @@
-// textpen in a terminal pane, with pencere's stand-in host (`pencere-fake-host`) playing
-// the terminal: the view's calls travel to the program through the tty, as they do in
-// bateri. The program is the built Node one (`npm run build`, dist/server/main.js) or, with
-// TEXTPEN_BIN, any executable that is textpen (`make lua` makes one: dist/textpen-lua).
+// textpen in a terminal pane, with pencere's stand-in host (`pencere-fake-host`) playing the
+// terminal: the view's calls travel to the program through the tty, as they do in bateri. The
+// program is the built file, `dist/textpen` (`make build`); TEXTPEN_BIN names another. The host is
+// the one built in a pencere checkout beside this one (`cargo build -p pencere-fake-host`);
+// PENCERE_FAKE_HOST names another.
 //
-// The tests are skipped where the stand-in is not built or is one of an older protocol: set
-// PENCERE_FAKE_HOST, or build it in a pencere checkout beside this one
-// (`cargo build -p pencere-fake-host`). A skip is silent, so it is not allowed where the run is
-// meant to prove something: with TEXTPEN_BIN or TEXTPEN_REQUIRE_E2E=1, a stand-in or a program that
-// is not there fails the run.
+// Nothing here is skipped. A host or a program that is not there, or a host of an older protocol,
+// fails the run and says which: a gate that passes because it did not look proves nothing.
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -28,11 +26,11 @@ import { afterEach, beforeEach, test } from "node:test";
 const HOST = process.env.PENCERE_FAKE_HOST
   ? resolve(process.env.PENCERE_FAKE_HOST)
   : new URL("../../pencere/target/debug/pencere-fake-host", import.meta.url).pathname;
-const BIN = process.env.TEXTPEN_BIN ? resolve(process.env.TEXTPEN_BIN) : undefined;
-const MAIN = new URL("../dist/server/main.js", import.meta.url).pathname;
+const BIN = process.env.TEXTPEN_BIN
+  ? resolve(process.env.TEXTPEN_BIN)
+  : new URL("../dist/textpen", import.meta.url).pathname;
 /** The program the pane runs. */
-const PROGRAM: string[] = BIN ? [BIN] : [process.execPath, MAIN];
-const REQUIRED = BIN !== undefined || process.env.TEXTPEN_REQUIRE_E2E === "1";
+const PROGRAM: string[] = [BIN];
 
 /** The stand-in of the protocol with one kind of message: its page makes `--call`s and hears `--subscribe`s. */
 function speaksOneProtocol(): boolean {
@@ -40,18 +38,16 @@ function speaksOneProtocol(): boolean {
   return /--subscribe/.test(`${help.stdout}${help.stderr}`);
 }
 
-const skip = !existsSync(HOST)
-  ? `pencere-fake-host is not built (${HOST})`
-  : !existsSync(BIN ?? MAIN)
-    ? `the program is not built (${BIN ?? MAIN}): run npm run build, or make lua`
+const missing = !existsSync(HOST)
+  ? `pencere-fake-host is not built (${HOST}): cargo build -p pencere-fake-host in a pencere checkout, then PENCERE_FAKE_HOST=<it>`
+  : !existsSync(BIN)
+    ? `the program is not built (${BIN}): run make build`
     : !speaksOneProtocol()
-      ? "pencere-fake-host speaks an older protocol"
-      : false;
+      ? `pencere-fake-host speaks an older protocol (${HOST})`
+      : undefined;
 
-if (skip && REQUIRED) {
-  throw new Error(
-    `the end-to-end tests cannot run, and a run that needs them may not skip: ${skip}`,
-  );
+if (missing !== undefined) {
+  throw new Error(`the end-to-end tests cannot run: ${missing}`);
 }
 
 let dir: string;
@@ -93,7 +89,7 @@ function answers(log: string): { all: number; failed: number } {
   };
 }
 
-test("the page is shown the view and hears the program", { skip }, () => {
+test("the page is shown the view and hears the program", () => {
   const log = pane([["boot", {}]]);
   assert.match(log, /program: open id=\d+ view=web version=1\.0 title="Editor"/);
   assert.match(log, /view: title="Editor" program="textpen"/);
@@ -101,7 +97,7 @@ test("the page is shown the view and hears the program", { skip }, () => {
   assert.deepEqual(answers(log), { all: 1, failed: 0 });
 });
 
-test("an edit sent through the tty is saved to the file", { skip }, () => {
+test("an edit sent through the tty is saved to the file", () => {
   const log = pane([
     ["open", { path: "a.txt" }],
     ["edit", { path: "a.txt", base: 1, edits: [[0, 0, "hello "]] }],
@@ -113,7 +109,7 @@ test("an edit sent through the tty is saved to the file", { skip }, () => {
   assert.equal(readFileSync(join(dir, "a.txt"), "utf8"), "hello world\n");
 });
 
-test("an edit on a version the program no longer holds is refused", { skip }, () => {
+test("an edit on a version the program no longer holds is refused", () => {
   const log = pane([
     ["open", { path: "a.txt" }],
     ["edit", { path: "a.txt", base: 7, edits: [[0, 0, "x"]] }],
@@ -122,7 +118,7 @@ test("an edit on a version the program no longer holds is refused", { skip }, ()
   assert.equal(readFileSync(join(dir, "a.txt"), "utf8"), "world\n");
 });
 
-test("the program tells the page what changed, and the page hears it", { skip }, () => {
+test("the program tells the page what changed, and the page hears it", () => {
   const log = pane(
     [["open", { path: "a.txt" }]],
     ["--subscribe", "changes", "--then", "interrupt"],
@@ -131,7 +127,7 @@ test("the program tells the page what changed, and the page hears it", { skip },
   assert.match(log, /view: <- push id=\d+ value=\{"buffers":\[\],"dirs":\[\]/);
 });
 
-test("⌃C keeps what is not saved as a draft, and the next run offers it", { skip }, () => {
+test("⌃C keeps what is not saved as a draft, and the next run offers it", () => {
   pane([
     ["open", { path: "a.txt" }],
     ["edit", { path: "a.txt", base: 1, edits: [[5, 5, "!"]] }],
@@ -147,7 +143,7 @@ test("⌃C keeps what is not saved as a draft, and the next run offers it", { sk
   assert.equal(readFileSync(join(dir, "a.txt"), "utf8"), "world!\n");
 });
 
-test("the pane goes to a shell and comes back to the editor", { skip }, () => {
+test("the pane goes to a shell and comes back to the editor", () => {
   const log = pane([["handoff", { kind: "shell" }]], ["--on-view", "2", "--then", "interrupt"]);
   assert.match(log, /program: dismiss/);
   assert.match(log, /closed id=\d+ re=\d+ reason=program/);
@@ -156,12 +152,12 @@ test("the pane goes to a shell and comes back to the editor", { skip }, () => {
   assert.equal((log.match(/view: started from the bundle/g) ?? []).length, 2);
 });
 
-test("closing the view from the page ends textpen with success", { skip }, () => {
+test("closing the view from the page ends textpen with success", () => {
   const log = pane([], ["--then", "page-close"]);
   assert.match(log, /program: exited with status 0/);
 });
 
-test("closing the view keeps what is not saved as a draft", { skip }, () => {
+test("closing the view keeps what is not saved as a draft", () => {
   pane(
     [
       ["open", { path: "a.txt" }],
@@ -173,7 +169,7 @@ test("closing the view keeps what is not saved as a draft", { skip }, () => {
   assert.equal(readdirSync(join(dir, "state", "textpen", "drafts")).length, 1);
 });
 
-test("quitting without saving leaves no draft", { skip }, () => {
+test("quitting without saving leaves no draft", () => {
   pane(
     [
       ["open", { path: "a.txt" }],
@@ -186,7 +182,7 @@ test("quitting without saving leaves no draft", { skip }, () => {
   assert.equal(existsSync(join(dir, "state", "textpen", "drafts")), false);
 });
 
-test("a terminal without pencere runs the person's own editor", { skip }, () => {
+test("a terminal without pencere runs the person's own editor", () => {
   env.VISUAL = "textpen";
   env.EDITOR = "cat -n";
   const run = spawnSync(
@@ -203,7 +199,7 @@ test("a terminal without pencere runs the person's own editor", { skip }, () => 
   assert.match(run.stderr, /exited with status 0/);
 });
 
-test("a text too long for one message is read in pieces", { skip }, () => {
+test("a text too long for one message is read in pieces", () => {
   // Every character outside ASCII crosses the stream as six bytes: 3 million of them are 18 MB,
   // and a message is 1 MiB at most.
   writeFileSync(join(dir, "a.txt"), ("ş".repeat(99) + "\n").repeat(30_000));
@@ -215,7 +211,7 @@ test("a text too long for one message is read in pieces", { skip }, () => {
   assert.deepEqual(answers(log), { all: 3, failed: 0 });
 });
 
-test("the shell starts with the rc file's own shell integration off", { skip }, () => {
+test("the shell starts with the rc file's own shell integration off", () => {
   // An integration a rc file loads anyway writes prompt marks the terminal would take for a
   // prompt of its own; the shell inside textpen's command starts with them off.
   const shell = join(dir, "shell");

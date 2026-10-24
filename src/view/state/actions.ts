@@ -19,7 +19,7 @@ import type {
   SearchResult,
   Settings,
   Unopenable,
-} from "../../server/types";
+} from "../lib/types";
 import { editor } from "../editor/controller";
 import { copy } from "../lib/clipboard";
 import { CallError, call, close, subscribe } from "../lib/page";
