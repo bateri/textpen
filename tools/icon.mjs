@@ -1,8 +1,8 @@
 // Draws textpen's icon, its mark (the Mark in src/view/components/Welcome.tsx: lines of text,
 // the last one being written, with the cursor at its end), as PNGs, and writes them to
-// lua/assets/icon-<side>-<theme>.png. A terminal draws a program's icon only from the bytes it is
-// given, so the program carries them (lua/app.lua names the files); run this again after changing
-// the shapes here and there.
+// src/assets/icon-<side>-<theme>.png. A terminal draws a program's icon only from the bytes it is
+// given, so the program carries them (src/program/app.lua names the files); run this again after
+// changing the shapes here and there.
 //
 //   node tools/icon.mjs
 //
@@ -93,10 +93,10 @@ let written = 0;
 for (const [theme, colour] of Object.entries(COLOURS)) {
   for (const side of SIDES) {
     writeFileSync(
-      new URL(`../lua/assets/icon-${side}-${theme}.png`, import.meta.url),
+      new URL(`../src/assets/icon-${side}-${theme}.png`, import.meta.url),
       draw(side, colour),
     );
     written++;
   }
 }
-console.log(`wrote ${written} icons to lua/assets`);
+console.log(`wrote ${written} icons to src/assets`);

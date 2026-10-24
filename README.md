@@ -149,8 +149,8 @@ files cross the stream once (about 2 MB); after that the terminal keeps them.
 
 ## How it works
 
-- `lua/` is textpen's program, written in Lua for the runner of the `pencere` command, and
-  **holds the text of every open file**. The editor asks it with a handful of calls (open, edit,
+- `src/program/` is textpen's program, written in Lua for the runner of the `pencere` command,
+  and **holds the text of every open file**. The editor asks it with a handful of calls (open, edit,
   save, list, search…) and hears from it on one topic, what changed on disk and in git. What the
   editor sends travels through the terminal's input queue, in frames of 511 bytes and messages
   of at most 1 MiB, so it never sends a file: it sends what changed, a few hundred milliseconds
@@ -159,9 +159,9 @@ files cross the stream once (about 2 MB); after that the terminal keeps them.
   outside ASCII crosses as six bytes, so a long text, a long folder and the files of a big
   project come to the editor in pieces. Holding the text is also what lets it outlive the view
   — a shell, a restart of the terminal — and become a draft when the program ends.
-- `lua/app.lua` is the one place that knows about the terminal: it opens the view in the pane,
-  hands the pane to a shell and takes it back, and runs your own editor in a terminal that
-  shows no views. `lua/README.md` has the modules.
+- `src/program/terminal/` is the part that knows about the terminal: the command line, the pane
+  handed to a shell and taken back, and your own editor in a terminal that shows no views;
+  `src/program/app.lua` opens the view in the pane. `src/program/README.md` has the modules.
 - `src/view` is the editor: React, CodeMirror and [Tabler icons](https://tabler.io/icons).
   `src/view/lib/page.ts` is all it knows of the protocol: it calls and subscribes, is told the
   terminal's colours, font and size, and asks to be closed or to open a link; the shapes of
@@ -202,10 +202,10 @@ No test is skipped: a runner, a stand-in or a program that is not there stops th
 says which. CI cannot fetch a runner until pencere has a release, so it runs `make check-page`
 and says in its annotations that the end-to-end tests of the program did not run.
 
-To work on the editor in a pane of a terminal that hosts pencere views: `make web`, then
-`pencere dev lua` runs the program from its files and shows the view again when one under `lua/`
-changes; `make web` again after changing the editor. `demo/` is a small shop to open it on
-(`textpen demo`).
+To work on the editor in a pane of a terminal that hosts pencere views: `make view`, then
+`pencere dev --web dist/view` runs the program from its files and shows the view again when one
+under `src/program/`, `src/assets/` or `dist/view` changes; `make view` again after changing the
+editor. `demo/` is a small shop to open it on (`textpen demo`).
 
 How a version is released is in [RELEASING.md](RELEASING.md), and what each one changed in
 [CHANGELOG.md](CHANGELOG.md).

@@ -2,12 +2,14 @@
 -- (`~/.config/textpen/settings.json`) and, for each project, the files that were open and where
 -- (`~/.local/state/textpen/projects/`). The view's own storage does not last: a terminal gives
 -- every view a new origin.
+--
+-- Plain values in and out: this file knows nothing of the page.
 
 local pencere = require("pencere")
 local fs, json, time, env, hash = pencere.fs, pencere.json, pencere.time, pencere.env, pencere.hash
 
-local paths = require("lib.paths")
-local types = require("lib.types")
+local paths = require("project.paths")
+local defaults = require("state.defaults")
 
 local M = {}
 
@@ -83,7 +85,7 @@ local function strings(value)
 end
 
 local function sanitize(settings)
-	local defaults = types.DEFAULT_SETTINGS
+	local defaults = defaults.DEFAULT_SETTINGS
 	local numbering = settings.lineNumbers
 	if numbering ~= "on" and numbering ~= "relative" and numbering ~= "off" then
 		numbering = defaults.lineNumbers
@@ -116,7 +118,7 @@ end
 
 function Store:settings()
 	local merged = {}
-	for key, value in pairs(types.DEFAULT_SETTINGS) do
+	for key, value in pairs(defaults.DEFAULT_SETTINGS) do
 		merged[key] = value
 	end
 	local read = read_json(paths.join(self.config, "settings.json"))
@@ -143,7 +145,7 @@ end
 function Store:ui(root)
 	local read = read_json(self:ui_file(root))
 	if type(read) ~= "table" or read.root ~= root then
-		return types.empty_ui()
+		return defaults.empty_ui()
 	end
 	local places = read.places
 	if type(places) ~= "table" or (getmetatable(places) ~= "json.object" and #places > 0) then

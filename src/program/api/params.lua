@@ -2,6 +2,8 @@
 -- fit it is answered `bad-params`, never run. A schema is a function from a value to the value
 -- as the program takes it (extra keys of an object are dropped), or to nil and the words for what
 -- is wrong, led by where (`tabs.0`). Lua has no `undefined`: a value that is nil is absent or null.
+--
+-- This is api/'s: the files of api/ know the page, and project/, state/ and terminal/ do not.
 
 local pencere = require("pencere")
 local json = pencere.json
@@ -242,5 +244,9 @@ function M.parse(schema, params)
 	end
 	return schema(params, {})
 end
+
+-- The params of the calls that ask for nothing, and for one path.
+M.nothing = M.object({})
+M.one_path = M.object({ path = M.string(1) })
 
 return M

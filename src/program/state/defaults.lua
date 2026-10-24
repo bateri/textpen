@@ -1,5 +1,5 @@
--- The shapes the view and the program share, as the view knows them (src/view/lib/types.ts):
--- what is a default, and what is empty. A list is a table with no mark, an object with no
+-- What is a default, and what is empty, in the state the program keeps for the view, in the shapes
+-- the view knows (src/view/lib/types.ts). A list is a table with no mark, an object with no
 -- members is made with `json.object()`, a null is `json.null`.
 
 local pencere = require("pencere")

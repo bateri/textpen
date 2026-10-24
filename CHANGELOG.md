@@ -9,6 +9,7 @@ change what the previous one did.
 
 ### Changed
 
+- The source has one layout: the program in `src/program/` (Lua, by what each file does), the editor in `src/view/` and the icons in `src/assets/`; what is built goes to `dist/`.
 - textpen is one native file, built from Lua by pencere's runner, with the editor inside it
   (about 6 MB): macOS on Apple silicon and Linux on `arm64` and `x86_64`, as files of the
   GitHub release. Node is no longer needed where it runs, and textpen is no longer published on
@@ -19,8 +20,9 @@ change what the previous one did.
   hosts the new views; it no longer opens in one that only speaks MCP Apps.
 - The program tells the editor when files change on disk or in git, as it happens, in place of
   the editor asking every two seconds.
-- A pattern in the project search is a Rust regular expression (lookaround and back-references
-  work), not a JavaScript one: `\d`, `\w` and `\b` mean Unicode digits, letters and word edges.
+- A pattern in the project search is a Rust regular expression, not a JavaScript one: `\d`, `\w`
+  and `\b` mean Unicode digits, letters and word edges, and back-references and lookaround are
+  refused with a message, so a search ends in time linear in the text.
 - Names are ordered with numbers as numbers and capitals with small letters, in the tree and in
   a search alike; a search used to put `file10` before `file9`. Letters with accents are not
   folded: `é` comes after `z`.
@@ -33,7 +35,7 @@ change what the previous one did.
 - The MCP server: `show_editor`, `list_files` and `read_file`, the view for other MCP Apps
   hosts, and `npx -y textpen` as a stdio server for an MCP client. Started with no terminal at
   all, textpen says it needs one.
-- `--dev`, which showed the view again when its built files changed (`pencere dev lua` does that
+- `--dev`, which showed the view again when its built files changed (`pencere dev` does that
   for the program's files), and `TEXTPEN_TRACE`, the trace of the turns with the terminal.
 
 ## [0.1.0] - 2026-10-22

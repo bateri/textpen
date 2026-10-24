@@ -80,7 +80,7 @@ function setVersion(version) {
 }
 
 /** The version the program says of itself. */
-const LUA_VERSION = join(root, "lua", "lib", "version.lua");
+const LUA_VERSION = join(root, "src", "program", "version.lua");
 
 function programVersion() {
   return /return "([^"]+)"/.exec(readFileSync(LUA_VERSION, "utf8"))?.[1];
@@ -164,7 +164,7 @@ function check() {
   }
   if (programVersion() !== version) {
     refuse(
-      `lua/lib/version.lua says ${programVersion()}, package.json ${version}: the program would report the wrong one`,
+      `src/program/version.lua says ${programVersion()}, package.json ${version}: the program would report the wrong one`,
     );
   }
   if (unreleased().body !== "") {

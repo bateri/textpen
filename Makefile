@@ -1,7 +1,7 @@
-# textpen is one native file: pencere's Lua runner with the program (lua/) and the editor
-# (dist/view, built by vite) inside it. The gate and the steps of a release are here;
-# RELEASING.md says in what order and why.
-.PHONY: setup view web build check check-page test-binary dist release-prepare release publish
+# textpen is one native file: pencere's Lua runner with the program (src/program/, Lua), the
+# pictures it ships (src/assets/) and the editor (src/view/, built by vite into dist/view) inside
+# it. The gate and the steps of a release are here; RELEASING.md says in what order and why.
+.PHONY: setup view build check check-page test-binary dist release-prepare release publish
 
 # `pencere` is the command of a pencere checkout, built there (cargo build --release -p
 # pencere-cli); the stand-in terminal the end-to-end tests play textpen in is built there too
@@ -20,16 +20,11 @@ setup:
 view:
 	npm run build
 
-# web puts the view where the program carries it from: `pencere build` packs lua/ and nothing
-# beside it.
-web: view
-	rm -rf lua/web
-	cp -R dist/view lua/web
-
-# build makes dist/textpen, the program for this machine, as one file.
-build: web
+# build makes dist/textpen, the program for this machine, as one file: src/program/ and
+# src/assets/, with the view as vite built it (--web) in place of src/view/, which is its source.
+build: view
 	@test -x "$(PENCERE)" || { echo "build: the pencere command is not at $(PENCERE): build it in a pencere checkout (cargo build --release -p pencere-cli), then make build PENCERE=<it>"; exit 1; }
-	"$(PENCERE)" build lua -o dist/textpen
+	"$(PENCERE)" build --web dist/view --name textpen -o dist/textpen
 
 # check-page is the part of the gate that needs no pencere checkout: types, formatting and the
 # tests of the page's side (its end of the protocol, its edits, its quick open). CI runs this and
@@ -61,14 +56,14 @@ RUNNERS ?= ../pencere/dist
 PACKAGE_VERSION = $(shell node -p "require('./package.json').version")
 RUNNER_VERSION = $(shell "$(PENCERE)" --version | sed 's/^pencere //')
 
-dist: web
+dist: view
 	@test -x "$(PENCERE)" || { echo "dist: the pencere command is not at $(PENCERE): see PENCERE at the top of the Makefile"; exit 1; }
 	rm -rf dist/release
 	mkdir -p dist/release
 	@for target in $(TARGETS); do \
 		runner="$(RUNNERS)/pencere-$(RUNNER_VERSION)-$$target"; \
 		test -f "$$runner" || { echo "dist: no runner for $$target at $$runner: make dist in a pencere checkout, then make dist RUNNERS=<its dist/>"; exit 1; }; \
-		"$(PENCERE)" build lua --target $$target --runner "$$runner" -o dist/release/textpen-$(PACKAGE_VERSION)-$$target || exit 1; \
+		"$(PENCERE)" build --web dist/view --name textpen --target $$target --runner "$$runner" -o dist/release/textpen-$(PACKAGE_VERSION)-$$target || exit 1; \
 	done
 	cd dist/release && shasum -a 256 textpen-* > SHA256SUMS
 	@cat dist/release/SHA256SUMS

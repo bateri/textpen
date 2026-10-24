@@ -38,7 +38,7 @@ From a clean `main`, with `PENCERE` and `FAKE_HOST` pointing at the pencere chec
 command and `pencere-fake-host` if they are not where the Makefile looks:
 
 1. `make release-prepare VERSION=0.2.0` sets the version in `package.json`, the lockfile and
-   `lua/lib/version.lua` (the program is one file with no manifest beside it, so it carries its
+   `src/program/version.lua` (the program is one file with no manifest beside it, so it carries its
    version in its source), and turns `## [Unreleased]` into `## [0.2.0] - <today>` with a new,
    empty `## [Unreleased]` above it. Read the diff, then commit it as `Release textpen 0.2.0`.
 2. `make dist RUNNERS=<the pencere checkout's dist/>`, from that commit, on a clean tree. The
@@ -60,7 +60,7 @@ tag is on `origin` and the release is not: make it by hand with `gh release crea
 ### What the release checks refuse
 
 - a version that is not after the last, a `package.json` that disagrees with the newest changelog
-  section, or a `lua/lib/version.lua` that disagrees with `package.json`;
+  section, or a `src/program/version.lua` that disagrees with `package.json`;
 - an `## [Unreleased]` section that still holds changes, or an empty release section;
 - a branch other than `main`, a working tree that is not clean, a `main` that has diverged from
   `origin/main`;

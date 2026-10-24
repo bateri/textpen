@@ -2,6 +2,8 @@
 -- over 1 MiB, in either direction, so nothing the program answers is allowed to grow with the
 -- project: a long text, a directory of thousands of entries, the files of a big repository and a
 -- long search all come in pieces that fit.
+--
+-- This is api/'s: the files of api/ know the page, and project/, state/ and terminal/ do not.
 
 local pencere = require("pencere")
 local text = pencere.text

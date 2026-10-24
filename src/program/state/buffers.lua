@@ -6,25 +6,26 @@
 --
 -- Places in a text are UTF-16 units, as the view's editor counts them (`edit`, `slice`, the length
 -- of a draft); the text itself is UTF-8 bytes, and `pencere.text` does the counting.
+--
+-- Plain values in and out: this file knows nothing of the page. What a call asks of a buffer that
+-- the program does not hold in that version it is told by an error that is a table with
+-- `out_of_sync`, the words for the person; the calls answer it with the code the view acts on.
 
 local pencere = require("pencere")
 local fs, json, time, text = pencere.fs, pencere.json, pencere.time, pencere.text
 
-local paths = require("lib.paths")
-local project_module = require("lib.project")
-local store = require("lib.store")
-local wire = require("lib.wire")
+local paths = require("project.paths")
+local tree = require("project.tree")
+local store = require("state.store")
 
 local M = {}
 
 local BOM = "\239\187\191"
 
--- An edit made on a version the program no longer holds, a buffer that is not open: the view
--- tells it from any other failure by the code.
+-- An edit made on a version the program no longer holds, a buffer that is not open.
 local function out_of_sync(words)
-	error({ code = "out-of-sync", message = words }, 0)
+	error({ out_of_sync = words }, 0)
 end
-M.out_of_sync = out_of_sync
 
 local function now_ms()
 	return math.floor(time.now() * 1000)
@@ -35,7 +36,7 @@ local function message_of(failure)
 end
 
 local function mtime_of(path)
-	return project_module.modified_ms(path)
+	return tree.modified_ms(path)
 end
 
 local function is_dirty(buffer)
@@ -89,7 +90,7 @@ local function read_file_text(absolute, name)
 	if info.kind == "dir" then
 		return unopenable(name, "directory", 0, name .. " is a directory")
 	end
-	if info.size > project_module.TEXT_LIMIT then
+	if info.size > tree.TEXT_LIMIT then
 		return unopenable(
 			name,
 			"too-large",
@@ -98,7 +99,7 @@ local function read_file_text(absolute, name)
 				"%s is %.1f MB; textpen opens files up to %d MB",
 				name,
 				info.size / 1024 / 1024,
-				project_module.TEXT_LIMIT / 1024 / 1024
+				tree.TEXT_LIMIT / 1024 / 1024
 			)
 		)
 	end
@@ -106,7 +107,7 @@ local function read_file_text(absolute, name)
 	if not read then
 		return unopenable(name, "unreadable", info.size, message_of(bytes))
 	end
-	if project_module.is_binary(bytes) then
+	if tree.is_binary(bytes) then
 		return unopenable(name, "binary", info.size, name .. " is not text")
 	end
 	if not text.valid(bytes) then
@@ -126,24 +127,6 @@ local function read_file_text(absolute, name)
 		missing = false,
 		readonly = not fs.writable(absolute),
 	}
-end
-
--- A buffer as it can go to the view in one message: whole, or announced, to be read in pieces.
-function M.sendable(opened)
-	local content = opened.text
-	if content == nil then
-		return opened
-	end
-	local units = text.units(content)
-	if units <= wire.WIRE_BUDGET / 6 then
-		return opened
-	end
-	if wire.wire_size(content) <= wire.WIRE_BUDGET then
-		return opened
-	end
-	opened.text = ""
-	opened.partial = { length = units }
-	return opened
 end
 
 local Buffers = {}
@@ -292,9 +275,9 @@ function Buffers:open(path)
 	return with_text(info_of(buffer), buffer.text)
 end
 
--- The piece of a buffer's text that begins at `from` and fits one message to the view, for a view
+-- The piece of a buffer's text that begins at `from` and is at most `limit` bytes long, for a view
 -- that reads a long one in pieces: the next piece begins at `end`.
-function Buffers:slice(path, version, from)
+function Buffers:slice(path, version, from, limit)
 	local buffer = self:get(path)
 	if version ~= buffer.version then
 		out_of_sync(string.format("%s is at version %d, not %d", path, buffer.version, version))
@@ -308,7 +291,7 @@ function Buffers:slice(path, version, from)
 		error(path .. ": a piece cannot begin inside a character", 0)
 	end
 	-- A piece always has a character in it, so that reading goes on.
-	local last, units = text.wire_fit(content, start, wire.WIRE_BUDGET)
+	local last, units = text.wire_fit(content, start, limit)
 	return { text = string.sub(content, start, last), ["end"] = from + units }
 end
 
