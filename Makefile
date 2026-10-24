@@ -46,3 +46,10 @@ lua:
 	rm -rf lua/web
 	cp -R dist/view lua/web
 	$(PENCERE) build lua -o dist/textpen-lua
+
+# check-lua runs the end-to-end and parity tests on the program of dist/textpen-lua, in a pane
+# under pencere-fake-host (built in the pencere checkout: cargo build -p pencere-fake-host).
+FAKE_HOST ?= ../pencere/target/debug/pencere-fake-host
+.PHONY: check-lua
+check-lua: lua
+	PENCERE_FAKE_HOST=$(FAKE_HOST) TEXTPEN_BIN=dist/textpen-lua node --test test/e2e.test.ts test/parity.test.ts

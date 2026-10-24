@@ -50,8 +50,7 @@ in place of skipping it.
 
 ```sh
 ( cd ../pencere-lua && cargo build -p pencere-fake-host )
-export PENCERE_FAKE_HOST=$PWD/../pencere-lua/target/debug/pencere-fake-host
-TEXTPEN_BIN=dist/textpen-lua node --test test/e2e.test.ts test/parity.test.ts
+make check-lua PENCERE=../pencere-lua/target/release/pencere FAKE_HOST=../pencere-lua/target/debug/pencere-fake-host
 ```
 
 `test/parity.test.ts` reads what the program answers off the host's record and holds it to what the
@@ -77,3 +76,7 @@ Node program does: the order of a listing, an exclusive create, `bad-params`, a 
   signal handler for Lua); the drafts are written when the shell is started, and again when the
   program ends.
 - **The `changes` topic** looks every two seconds while it is subscribed, as the Node program does.
+- **`TEXTPEN_TRACE`** (the trace of the turns with the terminal) is not in the Lua build.
+- **A file name that is not UTF-8** is left out of a listing; the Node program shows it with U+FFFD in it.
+- **Keys of the view's `places` named `__proto__`** are kept as the keys they are; the Node program
+  (zod) leaves that one out. Neither reaches the base of an object.
