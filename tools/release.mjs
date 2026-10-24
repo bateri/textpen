@@ -4,7 +4,7 @@
 //   prepare <version>   set the version, move Unreleased into a dated section of CHANGELOG.md
 //   check               everything a release needs, without changing anything
 //   tag                 check, then create the annotated tag v<version>
-//   publish             push main and the tag, then make the GitHub release with the four files
+//   publish             push main and the tag, then make the GitHub release with the three files
 //   notes [<version>]   the CHANGELOG section of a version
 //
 // It uses nothing but Node, git and gh.
@@ -19,12 +19,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const NAME = "textpen";
 
 /** The systems textpen is built for: the targets of pencere's runner (the Makefile's TARGETS). */
-const TARGETS = [
-  "aarch64-apple-darwin",
-  "x86_64-apple-darwin",
-  "aarch64-unknown-linux-musl",
-  "x86_64-unknown-linux-musl",
-];
+const TARGETS = ["aarch64-apple-darwin", "aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"];
 
 /** Where `make dist` puts the files of a release. */
 const RELEASE_DIR = join(root, "dist", "release");
@@ -222,7 +217,7 @@ function ownTarget() {
 }
 
 /**
- * The files `make dist` made for this version: the four executables and the SHA256SUMS that names
+ * The files `make dist` made for this version: the three executables and the SHA256SUMS that names
  * exactly them, each with the sum it lists. The names carry the version, so a dist/release made
  * before the version moved is refused; the one executable this machine can run says its version.
  */
@@ -246,7 +241,7 @@ function releaseFiles(version) {
       }),
   );
   if ([...listed.keys()].sort().join("\n") !== [...expected].sort().join("\n")) {
-    refuse("dist/release/SHA256SUMS does not name exactly the four executables");
+    refuse("dist/release/SHA256SUMS does not name exactly the three executables");
   }
   for (const name of expected) {
     const sum = createHash("sha256")

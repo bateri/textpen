@@ -93,8 +93,8 @@ kept as a draft. On Linux and Windows, `⌘` is `Ctrl`.
 ## Run it
 
 textpen is one file, with the editor inside it and nothing else to install. Take the file for
-your system from the [latest release](https://github.com/bateri/textpen/releases/latest) — macOS
-or Linux, Apple silicon or Intel, `arm64` or `x86_64` — check it against `SHA256SUMS`, and put
+your system from the [latest release](https://github.com/bateri/textpen/releases/latest) — macOS on
+Apple silicon, or Linux on `arm64` or `x86_64` — check it against `SHA256SUMS`, and put
 it on your `PATH` as `textpen`:
 
 ```sh

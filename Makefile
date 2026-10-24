@@ -50,11 +50,13 @@ test-binary:
 # view expects of it.
 check: check-page build test-binary
 
-# dist makes the program for the four targets of pencere's runner into dist/release, with the
+# dist makes the program for the three targets textpen ships (Apple silicon Macs and both Linux
+# architectures; bateri, the terminal that shows the editor, runs on Apple silicon only) into
+# dist/release, with the
 # SHA256SUMS that names them. The runners come from a pencere checkout's `make dist`
 # (RUNNERS=<its dist/>), one for each target, of the version of the `pencere` command. When
 # pencere has a release, `pencere build --target T` fetches them itself and --runner goes away.
-TARGETS = aarch64-apple-darwin x86_64-apple-darwin aarch64-unknown-linux-musl x86_64-unknown-linux-musl
+TARGETS = aarch64-apple-darwin aarch64-unknown-linux-musl x86_64-unknown-linux-musl
 RUNNERS ?= ../pencere/dist
 PACKAGE_VERSION = $(shell node -p "require('./package.json').version")
 RUNNER_VERSION = $(shell "$(PENCERE)" --version | sed 's/^pencere //')
@@ -76,12 +78,12 @@ release-prepare:
 	@test -n "$(VERSION)" || { echo "usage: make release-prepare VERSION=<x.y.z>"; exit 2; }
 	node tools/release.mjs prepare $(VERSION)
 
-# release runs the gate and the release checks (dist/release holds the four files of this
+# release runs the gate and the release checks (dist/release holds the three files of this
 # version, made after the release commit), then tags. Nothing is pushed.
 release: check
 	node tools/release.mjs tag
 
-# publish pushes main and the tag, then makes the GitHub release with the four files and
+# publish pushes main and the tag, then makes the GitHub release with the three files and
 # SHA256SUMS. Publishing: run on the maintainer's word.
 publish:
 	node tools/release.mjs publish

@@ -10,7 +10,7 @@ change what the previous one did.
 ### Changed
 
 - textpen is one native file, built from Lua by pencere's runner, with the editor inside it
-  (about 6 MB): macOS and Linux, Apple silicon and Intel, `arm64` and `x86_64`, as files of the
+  (about 6 MB): macOS on Apple silicon and Linux on `arm64` and `x86_64`, as files of the
   GitHub release. Node is no longer needed where it runs, and textpen is no longer published on
   npm: `npm install -g textpen` and `npx textpen` stop at the last release there, which is
   deprecated with a pointer to the files.

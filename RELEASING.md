@@ -1,8 +1,9 @@
 # Releasing
 
-textpen is released as four files on a GitHub release tagged `v<x.y.z>` here: the program for
-macOS and Linux, each on Apple silicon or Intel (`arm64`, `x86_64`), named
-`textpen-<version>-<target>`, with a `SHA256SUMS` that names the four. It is not published on npm.
+textpen is released as three files on a GitHub release tagged `v<x.y.z>` here: the program for
+macOS on Apple silicon (`arm64`) and for Linux on `arm64` and `x86_64`, named
+`textpen-<version>-<target>`, with a `SHA256SUMS` that names the three. There is no Intel Mac file:
+bateri, the terminal that shows the editor, runs on Apple silicon only. It is not published on npm.
 Every step a machine can check is in `tools/release.mjs`, behind the `make` targets below. This
 file is the order of the steps and the reasons for them.
 
@@ -17,10 +18,10 @@ release only moves that section under a version and a date; it does not write it
 
 ## What a release needs
 
-Each of the four files is the runner of pencere's Lua runner for one target, with textpen's
+Each of the three files is the runner of pencere's Lua runner for one target, with textpen's
 program and the editor packed into it. So a release needs:
 
-- the `pencere` command and the runners of the four targets, of one version: `make dist` in a
+- the `pencere` command and the runners of the three targets, of one version: `make dist` in a
   pencere checkout makes them in its `dist/` (`pencere-<version>-<target>`). When pencere has a
   release, `pencere build --target` fetches the runner of a target itself and `make dist` stops
   asking for `RUNNERS`.
@@ -47,7 +48,7 @@ command and `pencere-fake-host` if they are not where the Makefile looks:
 3. `make release` runs the gate (`make check`), then the release checks, then makes the
    annotated tag `v0.2.0` with the changelog section as its message. Nothing is pushed.
 4. `make publish` pushes `main` and the tag in one atomic push, then makes the GitHub release
-   with the changelog section as its notes, the four files and `SHA256SUMS`.
+   with the changelog section as its notes, the three files and `SHA256SUMS`.
 5. Check it: `gh release view v0.2.0`.
 
 If a check fails, nothing has left the machine: fix it, amend or add a commit, and run the step
@@ -64,7 +65,7 @@ tag is on `origin` and the release is not: make it by hand with `gh release crea
 - a branch other than `main`, a working tree that is not clean, a `main` that has diverged from
   `origin/main`;
 - a tag that already exists, here or on `origin`, or a release that already exists on GitHub;
-- a `dist/release` that is not exactly the four files of this version and `SHA256SUMS`, with the
+- a `dist/release` that is not exactly the three files of this version and `SHA256SUMS`, with the
   sum of each as listed, or whose executable for this machine does not say this version.
 
 ## The npm package
