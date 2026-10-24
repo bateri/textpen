@@ -36,6 +36,10 @@ local function out(words)
 	io.write(words .. "\n")
 end
 
+local function complain(words)
+	io.ewrite(words .. "\n")
+end
+
 local function exists(path)
 	return fs.exists(path)
 end
@@ -75,7 +79,7 @@ local function parse(argv)
 		elseif not rest and string.match(arg, "^%+%d+$") then
 			line = tonumber(string.sub(arg, 2))
 		elseif not rest and string.sub(arg, 1, 1) == "-" and arg ~= "-" then
-			out("textpen: unknown option " .. arg .. "\n\n" .. USAGE)
+			complain("textpen: unknown option " .. arg .. "\n\n" .. USAGE)
 			pencere.exit(2)
 		else
 			local place = split_place(arg)
@@ -120,7 +124,7 @@ end
 
 local options = parse(pencere.args)
 if options.dev then
-	out("textpen: --dev is for `pencere dev lua`, which runs the program from its files and shows the view again when they change")
+	complain("textpen: --dev is for `pencere dev lua`, which runs the program from its files and shows the view again when they change")
 	pencere.exit(2)
 end
 
@@ -244,7 +248,7 @@ local function fallback(why)
 	end
 	if why.reason == "no-tty" then
 		-- No terminal at all (a script, a pipe): there is no pane for any editor.
-		io.write("textpen: needs a terminal to edit in\n")
+		complain("textpen: needs a terminal to edit in")
 		exit_code = 1
 		return
 	end
