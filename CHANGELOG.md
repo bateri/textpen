@@ -38,6 +38,11 @@ change what the previous one did.
 - Search in the project reads the files one at a time, on one thread, in place of sixteen at a
   time.
 
+### Fixed
+
+- What is not saved becomes a draft whenever the connection drops: the terminal's hangup used to
+  end textpen before it wrote the draft, about one time in two (pencere 0.2.2's runner).
+
 ### Removed
 
 - The MCP server: `show_editor`, `list_files` and `read_file`, the view for other MCP Apps
