@@ -7,6 +7,14 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Added
+
+- `install.sh` puts the newest release (or the one `TEXTPEN_VERSION` names) in `~/.local/bin`
+  after checking it against the release's `SHA256SUMS`:
+  `curl -fsSL https://raw.githubusercontent.com/bateri/textpen/main/install.sh | sh`.
+- The files of a release are built by the release workflow, with an attestation of it for each
+  (`gh attestation verify <file> --repo bateri/textpen`).
+
 ### Changed
 
 - The source has one layout: the program in `src/program/` (Lua, by what each file does), the editor in `src/view/` and the icons in `src/assets/`; what is built goes to `dist/`.

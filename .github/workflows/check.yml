@@ -1,8 +1,10 @@
-# The gate on every push to main and every pull request, as far as CI can run it: the editor's
-# types, formatting, build and tests. The program is one file made by pencere's Lua runner, and
-# until pencere has a release CI has no runner to make it with, so the end-to-end tests of the
-# program do not run here. The job says so in its annotations and its summary, and `make check`
-# on a machine with a pencere checkout is the whole gate (README.md, Work on it).
+# The gate on every push to main and every pull request: `make check` (the editor's types,
+# formatting and tests, the installer's tests, the program built into one file, and the built
+# program played in a pane by pencere's stand-in terminal), on Linux and macOS.
+#
+# The program is built by the released `pencere` command of tools/pencere-version, as a release
+# is. The stand-in terminal has no release, so it comes from a checkout of pencere at PENCERE_REF:
+# moving that commit is a change of this file.
 name: check
 
 on:
@@ -13,27 +15,45 @@ on:
 permissions:
   contents: read
 
+env:
+  # The commit of pencere the stand-in terminal is built from.
+  PENCERE_REF: 16dfac57c793ec7f7bbfe46781706166d51ecb85
+
 jobs:
-  page:
-    runs-on: ubuntu-latest
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: bateri/pencere
+          ref: ${{ env.PENCERE_REF }}
+          path: pencere
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: make check-page
-      - run: make view
-      # Not a pass: the step that would build dist/textpen and run test/e2e.test.ts and
-      # test/calls.test.ts is not here, and this says so where a person reads a run. It becomes
-      # `make check` when `pencere build --target` can fetch a runner from a pencere release.
-      - name: Binary end-to-end tests (not run)
+      - name: Install the pencere command
         run: |
-          message="The program (dist/textpen) was not built and its end-to-end tests did not run: pencere has no release yet, so CI cannot fetch the runner. Run make check with a pencere checkout beside this one."
-          echo "::warning title=Binary end-to-end tests did not run::$message"
+          PENCERE_VERSION="$(cat tools/pencere-version)" PENCERE_INSTALL="$RUNNER_TEMP/pencere" \
+            sh -c "$(curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/bateri/pencere/main/cli/install.sh)"
+      - name: Build the stand-in terminal from pencere
+        working-directory: pencere
+        run: cargo build -p pencere-fake-host
+      - name: make check
+        run: |
+          make check \
+            PENCERE="$RUNNER_TEMP/pencere/pencere" \
+            FAKE_HOST=pencere/target/debug/pencere-fake-host
+      - name: Say what the runner was built from
+        run: |
           {
-            echo "### Binary end-to-end tests: not run"
+            echo "### What this run was held to"
             echo
-            echo "$message"
+            echo "The \`pencere\` command $(cat tools/pencere-version), as released; pencere at \`$PENCERE_REF\` for its \`pencere-fake-host\`."
           } >> "$GITHUB_STEP_SUMMARY"

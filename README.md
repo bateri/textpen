@@ -92,15 +92,18 @@ kept as a draft. On Linux and Windows, `⌘` is `Ctrl`.
 
 ## Run it
 
-textpen is one file, with the editor inside it and nothing else to install. Take the file for
-your system from the [latest release](https://github.com/bateri/textpen/releases/latest) — macOS on
-Apple silicon, or Linux on `arm64` or `x86_64` — check it against `SHA256SUMS`, and put
-it on your `PATH` as `textpen`:
+textpen is one file, with the editor inside it and nothing else to install. One line puts the
+newest release in `~/.local/bin`, after checking it against the release's `SHA256SUMS`:
 
 ```sh
-chmod +x textpen-0.2.0-aarch64-apple-darwin
-mv textpen-0.2.0-aarch64-apple-darwin ~/.local/bin/textpen
+curl -fsSL https://raw.githubusercontent.com/bateri/textpen/main/install.sh | sh
 ```
+
+It is made for macOS on Apple silicon and for Linux on `arm64` and `x86_64`
+(`TEXTPEN_VERSION=0.2.0` takes a version, `TEXTPEN_INSTALL=<dir>` another directory). The files
+are on the [releases](https://github.com/bateri/textpen/releases) too, each with an attestation
+of the workflow that built it (`gh attestation verify <file> --repo bateri/textpen`); a file a
+browser downloads is quarantined by macOS, which `xattr -d com.apple.quarantine <file>` lifts.
 
 To see the editor you need a terminal that hosts pencere views. bateri is the first, and no
 release of it has them yet: until one does, build bateri from its `main` branch. In any other
@@ -172,35 +175,30 @@ files cross the stream once (about 2 MB); after that the terminal keeps them.
 
 ## Work on it
 
-You need Node 22, and a checkout of [pencere](https://github.com/bateri/pencere) with the Lua
-runner beside this one, built there:
+You need Node 22 and npm (they build the editor and run the tests; nothing of them is in
+textpen), the `pencere` command, and the stand-in terminal the tests play textpen in, built in a
+checkout of [pencere](https://github.com/bateri/pencere) beside this one:
 
 ```sh
-cargo build --release -p pencere-cli     # the `pencere` command, the runner of the program
-cargo build -p pencere-fake-host         # the stand-in terminal the tests play textpen in
+PENCERE_VERSION="$(cat tools/pencere-version)" \
+  sh -c "$(curl -fsSL https://raw.githubusercontent.com/bateri/pencere/main/cli/install.sh)"
+git clone https://github.com/bateri/pencere ../pencere
+(cd ../pencere && cargo build -p pencere-fake-host)
 ```
 
 ```sh
-git clone https://github.com/bateri/textpen && cd textpen
 make setup          # npm ci
 make build          # the editor and the program: dist/textpen
-make check          # types, formatting, the editor's tests, the build, and dist/textpen
-                    # in a pane under pencere-fake-host: its calls, drafts, shell and command line
-make check-page     # the part of the gate that needs no pencere checkout (what CI runs)
+make check          # types, formatting, the editor's and the installer's tests, the build, and
+                    # dist/textpen in a pane under pencere-fake-host: its calls, drafts, shell and
+                    # command line
+make check-page     # the part of the gate that needs no pencere
 ```
 
-`make` looks for the runner at `../pencere/target/release/pencere` and the stand-in at
-`../pencere/target/debug/pencere-fake-host`. Until the checkout beside this one has the Lua
-runner, they are in `../pencere-lua`:
-
-```sh
-make check PENCERE=../pencere-lua/target/release/pencere \
-           FAKE_HOST=../pencere-lua/target/debug/pencere-fake-host
-```
-
-No test is skipped: a runner, a stand-in or a program that is not there stops the run and
-says which. CI cannot fetch a runner until pencere has a release, so it runs `make check-page`
-and says in its annotations that the end-to-end tests of the program did not run.
+`make` takes the `pencere` on your `PATH` (or `../pencere/target/release/pencere`) and the
+stand-in at `../pencere/target/debug/pencere-fake-host`; `PENCERE=` and `FAKE_HOST=` say
+otherwise. No test is skipped: a runner, a stand-in or a program that is not there stops the run
+and says which. CI runs `make check` on Linux and macOS.
 
 To work on the editor in a pane of a terminal that hosts pencere views: `make view`, then
 `pencere dev --web dist/view` runs the program from its files and shows the view again when one

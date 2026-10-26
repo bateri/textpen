@@ -32,7 +32,7 @@ subscription, a push, a `code`. What the page is told is made in `api/` from wha
 | `state/defaults.lua`        | the defaults the view knows                                                                                 |
 | `terminal/command_line.lua` | what textpen was asked to open                                                                              |
 | `terminal/handoff.lua`      | the pane given to a shell and taken back, and to the person's own editor                                    |
-| `version.lua`               | the version (a built program has no `package.json` beside it; `tools/release.mjs` keeps the two the same)   |
+| `version.lua`               | the version: the one place it is said, which `make release-prepare` sets                                    |
 
 ## Size (macOS arm64, 2026-10-24)
 

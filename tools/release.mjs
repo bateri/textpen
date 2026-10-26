@@ -1,17 +1,31 @@
-// Releases textpen: one script for every step a machine can check, so a release is
-// the same sequence every time. RELEASING.md is the procedure, this file the checks.
+// Releases textpen: one script for every step a machine can check, so a release is the same
+// sequence every time. RELEASING.md is the procedure, this file the checks.
 //
-//   prepare <version>   set the version, move Unreleased into a dated section of CHANGELOG.md
-//   check               everything a release needs, without changing anything
-//   tag                 check, then create the annotated tag v<version>
-//   publish             push main and the tag, then make the GitHub release with the three files
+// On a maintainer's machine:
+//
+//   prepare <version>   set the version, move Unreleased into a dated section of CHANGELOG.md; the
+//                       commit of it, pushed to main, is what starts a release
+//   rehearse            everything a release of the prepared version checks, on any branch
 //   notes [<version>]   the CHANGELOG section of a version
+//   version             the version textpen says it is (src/program/version.lua)
 //
-// It uses nothing but Node, git and gh.
+// In the release workflow (.github/workflows/release.yml), after the gate is green on main:
+//
+//   plan                whether this commit's version has no tag yet (or, started by hand, has one
+//                       on this commit and a draft to finish): what the workflow reads
+//   dist [dir]          the files of a release in dir (dist/release): the three executables of
+//                       this version and the SHA256SUMS that names them
+//   tag                 the annotated tag v<version> on this commit, pushed
+//   draft [dir]         the GitHub release of the tag as a draft, with the notes and the files
+//   publish             once a maintainer has approved: the draft's files checked against their
+//                       sums and attestations, and the draft made public as the Latest
+//
+// It uses nothing but Node, git and gh (and npm, to say whether the old package is deprecated).
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,6 +37,10 @@ const TARGETS = ["aarch64-apple-darwin", "aarch64-unknown-linux-musl", "x86_64-u
 
 /** Where `make dist` puts the files of a release. */
 const RELEASE_DIR = join(root, "dist", "release");
+
+/** The npm package textpen was, which a release of the native file says to deprecate. */
+const RETIRED =
+  "textpen is now a single native file, without Node: take it from https://github.com/bateri/textpen/releases";
 
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/;
 const RELEASED = /^## \[(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\] - (\d{4}-\d{2}-\d{2})$/;
@@ -54,36 +72,19 @@ function succeeds(command, args, options = {}) {
 
 const tagOf = (version) => `v${version}`;
 
-// ---- the manifest's version ------------------------------------------------
+// ---- the version ---------------------------------------------------------------
+
+/** The version of textpen: the program is one file with no manifest beside it, so it is said here. */
+const LUA_VERSION = join(root, "src", "program", "version.lua");
 
 function versionOf() {
-  return JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
+  const version = /return "([^"]+)"/.exec(readFileSync(LUA_VERSION, "utf8"))?.[1];
+  if (version === undefined) refuse("src/program/version.lua does not say a version");
+  return version;
 }
 
 function setVersion(version) {
-  const path = join(root, "package.json");
-  const manifest = JSON.parse(readFileSync(path, "utf8"));
-  manifest.version = version;
-  writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
-  // The lockfile records the package's own version twice: at its top and as its root package.
-  const lockPath = join(root, "package-lock.json");
-  const lock = JSON.parse(readFileSync(lockPath, "utf8"));
-  lock.version = version;
-  if (lock.packages?.[""] === undefined) refuse("package-lock.json has no root package");
-  lock.packages[""].version = version;
-  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
-  // The program is one file with no manifest beside it: it carries its version in its own source.
-  writeFileSync(
-    LUA_VERSION,
-    `-- The version, as package.json has it. The program is one file with no manifest beside it,\n-- so a release changes it here too (tools/release.mjs keeps the two the same).\nreturn "${version}"\n`,
-  );
-}
-
-/** The version the program says of itself. */
-const LUA_VERSION = join(root, "src", "program", "version.lua");
-
-function programVersion() {
-  return /return "([^"]+)"/.exec(readFileSync(LUA_VERSION, "utf8"))?.[1];
+  writeFileSync(LUA_VERSION, `return "${version}"\n`);
 }
 
 // ---- the changelog ---------------------------------------------------------
@@ -152,20 +153,19 @@ function prepare(version) {
   writeFileSync(changelogPath, lines.join("\n"));
   setVersion(version);
   console.log(`${NAME} ${current} -> ${version}`);
-  console.log(`next: review, commit ("Release ${NAME} ${version}"), then make release`);
+  console.log(
+    `next: review, commit ("Release ${NAME} ${version}") and push to main: the release workflow takes it from there`,
+  );
 }
 
-function check() {
+/**
+ * What the version must be to be released: prepared (a dated section, nothing left under
+ * Unreleased) and after the last release's tag. Asks nothing but the files and the tags.
+ */
+function versionChecks() {
   const version = versionOf();
-  const tag = tagOf(version);
-
   if (!SEMVER.test(version ?? "") || version === "0.0.0") {
-    refuse(`package.json is at "${version}": run make release-prepare first`);
-  }
-  if (programVersion() !== version) {
-    refuse(
-      `src/program/version.lua says ${programVersion()}, package.json ${version}: the program would report the wrong one`,
-    );
+    refuse(`src/program/version.lua is at "${version}": run make release-prepare first`);
   }
   if (unreleased().body !== "") {
     refuse("CHANGELOG.md: Unreleased is not empty; prepare moves it into the release");
@@ -175,33 +175,111 @@ function check() {
     refuse(`CHANGELOG.md: the newest section is not ${version}`);
   }
   releasedSection(version);
-
-  if (run("git", ["branch", "--show-current"]) !== "main") refuse("not on main");
-  if (run("git", ["status", "--porcelain"]) !== "") refuse("the working tree is not clean");
-  run("git", ["fetch", "--quiet", "origin", "main", "--tags"]);
-  if (!succeeds("git", ["merge-base", "--is-ancestor", "origin/main", "HEAD"])) {
-    refuse("main has diverged from origin/main");
-  }
-  if (succeeds("git", ["rev-parse", "--verify", "--quiet", `refs/tags/${tag}`])) {
-    refuse(`the tag ${tag} exists`);
-  }
-  const released = run("git", ["tag", "--list", "v*"])
+  const last = run("git", ["tag", "--list", "v*"])
     .split("\n")
     .map((name) => name.slice(1))
-    .filter((v) => SEMVER.test(v));
-  const last = released.sort(compare).at(-1);
+    .filter((v) => SEMVER.test(v) && v !== version)
+    .sort(compare)
+    .at(-1);
   if (last !== undefined && compare(version, last) <= 0) {
     refuse(`${version} is not after ${last}, the last release`);
   }
-  if (run("git", ["ls-remote", "--tags", "origin", `refs/tags/${tag}`]) !== "") {
-    refuse(`the tag ${tag} exists on origin`);
-  }
+  return { version, tag: tagOf(version), section };
+}
 
-  const files = releaseFiles(version);
-  console.log(
-    `${NAME} ${version} is ready to tag as ${tag}: ${files.length} files in dist/release`,
+const tagExists = (tag) =>
+  succeeds("git", ["rev-parse", "--verify", "--quiet", `refs/tags/${tag}`]);
+const tagIsHead = (tag) =>
+  run("git", ["rev-list", "-n", "1", tag]) === run("git", ["rev-parse", "HEAD"]);
+
+/** `isDraft` of the GitHub release of a tag, or "none". */
+function releaseState(tag) {
+  try {
+    return JSON.parse(run("gh", ["release", "view", tag, "--json", "isDraft"])).isDraft
+      ? "draft"
+      : "public";
+  } catch (error) {
+    if (String(error.stderr ?? "").includes("release not found")) return "none";
+    refuse(
+      `cannot ask GitHub about the release ${tag}: ${String(error.stderr ?? error.message).trim()}`,
+    );
+  }
+}
+
+/** Everything a release of the prepared version checks, on any branch: what `make rehearse` runs. */
+function rehearse() {
+  const { version, tag } = versionChecks();
+  if (tagExists(tag)) refuse(`the tag ${tag} exists`);
+  console.log(`${NAME} ${version} is ready to be released as ${tag}`);
+}
+
+/** The run of the gate (check.yml) for the commit, on main, must have finished, and well. */
+function requireGreenCheck(sha) {
+  const runs = JSON.parse(
+    run("gh", [
+      "run",
+      "list",
+      "--workflow",
+      "check.yml",
+      "--event",
+      "push",
+      "--branch",
+      "main",
+      "--commit",
+      sha,
+      "--limit",
+      "10",
+      "--json",
+      "databaseId,status,conclusion",
+    ]),
   );
-  return { version, tag, section, files };
+  const [latest] = runs;
+  if (latest === undefined) refuse(`no run of the gate for ${sha.slice(0, 7)} on main`);
+  if (latest.status !== "completed") {
+    refuse(
+      `the gate's run ${latest.databaseId} for ${sha.slice(0, 7)} is ${latest.status}: wait for it`,
+    );
+  }
+  if (latest.conclusion !== "success") {
+    refuse(
+      `the gate's run ${latest.databaseId} for ${sha.slice(0, 7)} ended in ${latest.conclusion}`,
+    );
+  }
+}
+
+/**
+ * Whether to release this commit, for the workflow to read from its output file: its version has
+ * no tag yet, or (started by hand, `RELEASE_RESUME`) has one on this commit whose release is a
+ * draft still, to be finished. A commit whose version is tagged and not asked to resume is not a
+ * release, whatever its changelog has gone on to.
+ */
+function plan() {
+  const resume = process.env.RELEASE_RESUME === "true";
+  if (process.env.RELEASE_REQUIRE_CHECK === "true")
+    requireGreenCheck(run("git", ["rev-parse", "HEAD"]));
+  const version = versionOf();
+  let release = true;
+  if (tagExists(tagOf(version)) && !resume) {
+    console.error(`${tagOf(version)} exists: nothing to release`);
+    release = false;
+  } else {
+    const { tag } = versionChecks();
+    if (tagExists(tag)) {
+      if (!tagIsHead(tag)) refuse(`${tag} is on another commit: a tag is never moved`);
+      if (releaseState(tag) === "public") refuse(`the GitHub release ${tag} is public already`);
+    }
+    console.error(`${NAME} ${version} is to be released as ${tag}`);
+  }
+  // Read by the workflow from its output file.
+  console.log(`release=${release}`);
+  console.log(`version=${version}`);
+  console.log(`tag=${tagOf(version)}`);
+}
+
+/** The files of a release in `dir`, checked: what the workflow attests and the draft carries. */
+function dist(dir) {
+  const files = releaseFiles(versionOf(), dir ? resolve(dir) : RELEASE_DIR, { execute: true });
+  console.log(`${files.length} files of ${NAME} ${versionOf()}: ${files.join(", ")}`);
 }
 
 /** The executable of a release for a target. */
@@ -219,20 +297,21 @@ function ownTarget() {
 /**
  * The files `make dist` made for this version: the three executables and the SHA256SUMS that names
  * exactly them, each with the sum it lists. The names carry the version, so a dist/release made
- * before the version moved is refused; the one executable this machine can run says its version.
+ * before the version moved is refused; with `execute`, the one executable this machine can run says
+ * its version.
  */
-function releaseFiles(version) {
-  if (!existsSync(RELEASE_DIR)) refuse(`no dist/release: make dist, after the release commit`);
+function releaseFiles(version, dir = RELEASE_DIR, { execute = false } = {}) {
+  if (!existsSync(dir)) refuse(`no ${dir}: make dist, after the release commit`);
   const expected = TARGETS.map((target) => fileOf(version, target));
-  const found = readdirSync(RELEASE_DIR).sort();
+  const found = readdirSync(dir).sort();
   const wanted = [...expected, "SHA256SUMS"].sort();
   if (found.join("\n") !== wanted.join("\n")) {
     refuse(
-      `dist/release holds ${found.join(", ") || "nothing"} and a release of ${version} is ${wanted.join(", ")}: make dist again, after the release commit`,
+      `the release's directory holds ${found.join(", ") || "nothing"} and a release of ${version} is ${wanted.join(", ")}: make dist again, after the release commit`,
     );
   }
   const listed = new Map(
-    readFileSync(join(RELEASE_DIR, "SHA256SUMS"), "utf8")
+    readFileSync(join(dir, "SHA256SUMS"), "utf8")
       .split("\n")
       .filter((line) => line.trim() !== "")
       .map((line) => {
@@ -241,53 +320,55 @@ function releaseFiles(version) {
       }),
   );
   if ([...listed.keys()].sort().join("\n") !== [...expected].sort().join("\n")) {
-    refuse("dist/release/SHA256SUMS does not name exactly the three executables");
+    refuse("SHA256SUMS does not name exactly the three executables");
   }
   for (const name of expected) {
     const sum = createHash("sha256")
-      .update(readFileSync(join(RELEASE_DIR, name)))
+      .update(readFileSync(join(dir, name)))
       .digest("hex");
     if (listed.get(name) !== sum)
       refuse(`${name} is not the file SHA256SUMS lists: make dist again`);
   }
-  const own = ownTarget();
+  // Where the files were made (a download or an artifact keeps no mode, so only there).
+  const own = execute ? ownTarget() : undefined;
   if (own !== undefined) {
-    const said = run(join(RELEASE_DIR, fileOf(version, own)), ["--version"]);
-    if (said !== version) refuse(`${fileOf(version, own)} says it is ${said}: make dist again`);
+    const said = run(join(dir, fileOf(version, own)), ["--version"]);
+    // The runner says its app's name before the version (`textpen 0.3.0`).
+    if (said !== `${NAME} ${version}` && said !== version)
+      refuse(`${fileOf(version, own)} says it is ${said}: make dist again`);
   }
   return [...expected, "SHA256SUMS"];
 }
 
+/** The annotated tag of the version on this commit, pushed; left as it is if it is there. */
 function tag() {
-  const { tag: tagName, section, version } = check();
+  const { version, tag: tagName, section } = versionChecks();
+  if (tagExists(tagName)) {
+    if (!tagIsHead(tagName)) refuse(`${tagName} is on another commit: a tag is never moved`);
+    console.log(`${tagName} is on this commit already`);
+    return;
+  }
   // Verbatim: the default cleanup would take the section's "### Added" lines for comments.
   const message = `${NAME} ${version}\n\n${section.body}\n`;
   run("git", ["tag", "--annotate", "--cleanup=verbatim", tagName, "--message", message]);
-  console.log(`tagged ${tagName}; nothing is pushed. Next: make publish`);
+  run("git", ["push", "--quiet", "origin", `refs/tags/${tagName}`], {
+    stdio: "inherit",
+  });
+  console.log(`tagged ${tagName} and pushed it`);
 }
 
-function currentTag() {
+/** The GitHub release of the tag as a draft: the changelog section, the files. Made again if a draft is there. */
+function draft(dir) {
   const version = versionOf();
   const tagName = tagOf(version);
-  if (!succeeds("git", ["rev-parse", "--verify", "--quiet", `refs/tags/${tagName}`])) {
-    refuse(`no tag ${tagName}: run make release first`);
-  }
-  if (run("git", ["rev-list", "-n", "1", tagName]) !== run("git", ["rev-parse", "HEAD"])) {
-    refuse(`${tagName} is not on HEAD`);
-  }
-  return { version, tagName };
-}
-
-function publish() {
-  const { version, tagName } = currentTag();
-  const files = releaseFiles(version).map((name) => join(RELEASE_DIR, name));
-  const notes = releasedSection(version).body;
-  if (succeeds("gh", ["release", "view", tagName])) {
-    refuse(`the release ${tagName} exists on GitHub`);
-  }
-  run("git", ["push", "--atomic", "origin", "main", tagName], { stdio: "inherit" });
-  // `--verify-tag`: the release is made on the tag just pushed, never on a tag gh would make.
-  // The notes go in on the standard input, the changelog's section as it is.
+  const files = releaseFiles(version, dir ? resolve(dir) : RELEASE_DIR).map((name) =>
+    join(dir ? resolve(dir) : RELEASE_DIR, name),
+  );
+  const state = releaseState(tagName);
+  if (state === "public")
+    refuse(`the GitHub release ${tagName} is public already: it is never touched`);
+  if (state === "draft") run("gh", ["release", "delete", tagName, "--yes"]);
+  // `--verify-tag`: the release is made on the tag that was pushed, never on a tag gh would make.
   execFileSync(
     "gh",
     [
@@ -295,22 +376,128 @@ function publish() {
       "create",
       tagName,
       "--verify-tag",
+      "--draft",
       "--title",
       tagName,
       "--notes-file",
       "-",
       ...files,
     ],
-    { cwd: root, input: notes, stdio: ["pipe", "inherit", "inherit"] },
+    {
+      cwd: root,
+      input: releasedSection(version).body,
+      stdio: ["pipe", "inherit", "inherit"],
+    },
   );
-  console.log(`published ${tagName}; check it with: gh release view ${tagName}`);
+  console.log(`made the draft of ${tagName} with ${files.length} files`);
+}
+
+/**
+ * Makes the draft public, as the repository's Latest, once its files are the ones built: the
+ * sums, and the attestation that this repository's release workflow built each. What the workflow
+ * does once a maintainer has approved it.
+ */
+/**
+ * The environment the workflow publishes in (`RELEASE_ENVIRONMENT`, "release") must have someone
+ * who approves: GitHub makes an environment a job names and that is not there, with no rule, and
+ * runs the job at once, so a release would be public with nobody's word (as 0.3.0 was). A run
+ * outside the workflow (no `RELEASE_ENVIRONMENT`) is not asked.
+ */
+function requireReviewers() {
+  const environment = process.env.RELEASE_ENVIRONMENT;
+  if (environment === undefined || environment === "") return;
+  const repo =
+    process.env.GITHUB_REPOSITORY ||
+    run("gh", ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]);
+  let rules;
+  try {
+    rules = JSON.parse(
+      run("gh", ["api", `repos/${repo}/environments/${environment}`]),
+    ).protection_rules;
+  } catch (error) {
+    refuse(
+      `cannot ask GitHub about the environment ${environment}: ${String(error.stderr ?? error.message).trim()}`,
+    );
+  }
+  const reviewers = (rules ?? [])
+    .filter((rule) => rule.type === "required_reviewers")
+    .flatMap((rule) => rule.reviewers ?? []);
+  if (reviewers.length === 0) {
+    refuse(
+      `the environment ${environment} has no required reviewers, so nobody approved this: add them in the repository's Settings, Environments, ${environment}, then run the workflow again (RELEASING.md)`,
+    );
+  }
+}
+
+function publish() {
+  requireReviewers();
+  const version = versionOf();
+  const tagName = tagOf(version);
+  if (!tagExists(tagName)) refuse(`no tag ${tagName}: the workflow tags before it publishes`);
+  if (!tagIsHead(tagName)) refuse(`${tagName} is not on this commit`);
+  const state = releaseState(tagName);
+  if (state === "none") refuse(`${tagName} has no GitHub release: the workflow writes the draft`);
+  if (state === "public") refuse(`the GitHub release ${tagName} is public already`);
+  const dir = mkdtempSync(join(tmpdir(), "textpen-publish-"));
+  try {
+    run("gh", ["release", "download", tagName, "--dir", dir, "--pattern", "*"], {
+      stdio: "inherit",
+    });
+    const files = releaseFiles(version, dir);
+    const repo = run("gh", ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]);
+    for (const file of files) {
+      run(
+        "gh",
+        [
+          "attestation",
+          "verify",
+          join(dir, file),
+          "--repo",
+          repo,
+          "--signer-workflow",
+          `${repo}/.github/workflows/release.yml`,
+        ],
+        { stdio: "inherit" },
+      );
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  run("gh", ["release", "edit", tagName, "--draft=false", "--latest"], {
+    stdio: "inherit",
+  });
+  console.log(`${NAME} ${version} is public: ${tagName}`);
+  let deprecated = true;
+  try {
+    deprecated = run("npm", ["view", NAME, "deprecated"]) !== "";
+  } catch {
+    // npm cannot be asked: say nothing of it.
+  }
+  if (!deprecated) {
+    console.log(`\nThe npm package is not deprecated yet. With 2FA, run:\n`);
+    console.log(`npm deprecate ${NAME} ${JSON.stringify(RETIRED)}`);
+  }
 }
 
 function notes(version) {
   console.log(releasedSection(version ?? versionOf()).body);
 }
 
-const COMMANDS = { prepare, check, tag, publish, notes };
+function version() {
+  console.log(versionOf());
+}
+
+const COMMANDS = {
+  prepare,
+  rehearse,
+  plan,
+  dist,
+  tag,
+  draft,
+  publish,
+  notes,
+  version,
+};
 
 const [command, ...args] = process.argv.slice(2);
 const handler = COMMANDS[command];

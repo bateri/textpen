@@ -1,18 +1,22 @@
 # textpen is one native file: pencere's Lua runner with the program (src/program/, Lua), the
 # pictures it ships (src/assets/) and the editor (src/view/, built by vite into dist/view) inside
 # it. The gate and the steps of a release are here; RELEASING.md says in what order and why.
-.PHONY: setup view build check check-page test-binary dist release-prepare release publish
+.PHONY: setup view build check check-page test-binary test-tools dist release-prepare rehearse
 
-# `pencere` is the command of a pencere checkout, built there (cargo build --release -p
-# pencere-cli); the stand-in terminal the end-to-end tests play textpen in is built there too
-# (cargo build -p pencere-fake-host). Until the checkout beside this one has the Lua runner, both
-# are in ../pencere-lua:
+# `pencere` is the command that builds textpen: a release of it, which pencere's installer puts in
+# ~/.local/bin (curl -fsSL https://raw.githubusercontent.com/bateri/pencere/main/cli/install.sh | sh;
+# PENCERE_VERSION=<it> for the version in tools/pencere-version, the one releases are built with),
+# or one built in a pencere checkout (cargo build --release -p pencere-cli). The stand-in terminal
+# the end-to-end tests play textpen in has no release: it is built in a pencere checkout (cargo
+# build -p pencere-fake-host). Where they are not where the Makefile looks, say so:
 #
-#   make check PENCERE=../pencere-lua/target/release/pencere \
-#              FAKE_HOST=../pencere-lua/target/debug/pencere-fake-host
-PENCERE ?= ../pencere/target/release/pencere
+#   make check PENCERE=../pencere/target/release/pencere \
+#              FAKE_HOST=../pencere/target/debug/pencere-fake-host
+PENCERE ?= $(shell command -v pencere 2>/dev/null || echo ../pencere/target/release/pencere)
 FAKE_HOST ?= ../pencere/target/debug/pencere-fake-host
 
+# setup installs what builds the editor and runs the tests: npm is a tool of the build here,
+# nothing of it is in what textpen ships.
 setup:
 	npm ci
 
@@ -23,12 +27,11 @@ view:
 # build makes dist/textpen, the program for this machine, as one file: src/program/ and
 # src/assets/, with the view as vite built it (--web) in place of src/view/, which is its source.
 build: view
-	@test -x "$(PENCERE)" || { echo "build: the pencere command is not at $(PENCERE): build it in a pencere checkout (cargo build --release -p pencere-cli), then make build PENCERE=<it>"; exit 1; }
+	@test -x "$(PENCERE)" || { echo "build: the pencere command is not at $(PENCERE): install it (see PENCERE at the top of the Makefile), then make build PENCERE=<it>"; exit 1; }
 	"$(PENCERE)" build --web dist/view --name textpen -o dist/textpen
 
-# check-page is the part of the gate that needs no pencere checkout: types, formatting and the
-# tests of the page's side (its end of the protocol, its edits, its quick open). CI runs this and
-# `make view`, and says that it does not run the rest.
+# check-page is the part of the gate that needs no pencere: types, formatting and the tests of
+# the page's side (its end of the protocol, its edits, its quick open).
 check-page:
 	npm run typecheck
 	npx prettier --check .
@@ -41,44 +44,40 @@ test-binary:
 	@test -x "$(FAKE_HOST)" || { echo "test-binary: pencere-fake-host is not at $(FAKE_HOST): build it in a pencere checkout (cargo build -p pencere-fake-host), then make check FAKE_HOST=<it>"; exit 1; }
 	PENCERE_FAKE_HOST="$(FAKE_HOST)" TEXTPEN_BIN=dist/textpen node --test test/e2e.test.ts test/calls.test.ts
 
-# check is the gate: everything check-page does, then the program built and held to what the
-# view expects of it.
-check: check-page build test-binary
+# test-tools runs the tests of the installer (install.sh) against a stand-in for GitHub.
+test-tools:
+	node --test test/install.test.mjs
+
+# check is the gate: everything check-page does, the installer's tests, then the program built
+# and held to what the view expects of it.
+check: check-page test-tools build test-binary
 
 # dist makes the program for the three targets textpen ships (Apple silicon Macs and both Linux
 # architectures; bateri, the terminal that shows the editor, runs on Apple silicon only) into
-# dist/release, with the
-# SHA256SUMS that names them. The runners come from a pencere checkout's `make dist`
-# (RUNNERS=<its dist/>), one for each target, of the version of the `pencere` command. When
-# pencere has a release, `pencere build --target T` fetches them itself and --runner goes away.
+# dist/release, with the SHA256SUMS that names them. `pencere build --target` fetches the runner of
+# each target from the release of the `pencere` command's own version and checks it against that
+# release's sums, so no target's toolchain is needed here. The release workflow runs it.
 TARGETS = aarch64-apple-darwin aarch64-unknown-linux-musl x86_64-unknown-linux-musl
-RUNNERS ?= ../pencere/dist
-PACKAGE_VERSION = $(shell node -p "require('./package.json').version")
-RUNNER_VERSION = $(shell "$(PENCERE)" --version | sed 's/^pencere //')
+PACKAGE_VERSION = $(shell node tools/release.mjs version)
 
 dist: view
 	@test -x "$(PENCERE)" || { echo "dist: the pencere command is not at $(PENCERE): see PENCERE at the top of the Makefile"; exit 1; }
 	rm -rf dist/release
 	mkdir -p dist/release
 	@for target in $(TARGETS); do \
-		runner="$(RUNNERS)/pencere-$(RUNNER_VERSION)-$$target"; \
-		test -f "$$runner" || { echo "dist: no runner for $$target at $$runner: make dist in a pencere checkout, then make dist RUNNERS=<its dist/>"; exit 1; }; \
-		"$(PENCERE)" build --web dist/view --name textpen --target $$target --runner "$$runner" -o dist/release/textpen-$(PACKAGE_VERSION)-$$target || exit 1; \
+		"$(PENCERE)" build --web dist/view --name textpen --target $$target -o dist/release/textpen-$(PACKAGE_VERSION)-$$target || exit 1; \
 	done
-	cd dist/release && shasum -a 256 textpen-* > SHA256SUMS
+	cd dist/release && { sha256sum textpen-* 2>/dev/null || shasum -a 256 textpen-*; } > SHA256SUMS
 	@cat dist/release/SHA256SUMS
+	node tools/release.mjs dist dist/release
 
 # release-prepare sets the version and dates the changelog's Unreleased section.
 release-prepare:
 	@test -n "$(VERSION)" || { echo "usage: make release-prepare VERSION=<x.y.z>"; exit 2; }
 	node tools/release.mjs prepare $(VERSION)
 
-# release runs the gate and the release checks (dist/release holds the three files of this
-# version, made after the release commit), then tags. Nothing is pushed.
-release: check
-	node tools/release.mjs tag
-
-# publish pushes main and the tag, then makes the GitHub release with the three files and
-# SHA256SUMS. Publishing: run on the maintainer's word.
-publish:
-	node tools/release.mjs publish
+# rehearse runs the checks of a release of the prepared version, on any branch. It changes nothing:
+# a release is the commit of release-prepare pushed to main, which the release workflow tags,
+# builds and drafts once the gate is green, and publishes when a maintainer approves (RELEASING.md).
+rehearse:
+	node tools/release.mjs rehearse
