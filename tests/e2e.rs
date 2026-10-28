@@ -358,7 +358,8 @@ fn a_text_too_long_for_one_message_is_read_in_pieces_of_whole_characters() {
         let text = piece["text"].as_str().expect("a text");
         let end = piece["end"].as_u64().expect("an end");
         assert_eq!(end - from, text.chars().count() as u64);
-        assert!(text.len() <= 900 * 1024 && text.len() > 800 * 1024);
+        // A piece is a quarter of a message at most (docs/calls.md), and nearly that.
+        assert!(text.len() <= 256 * 1024 && text.len() > 250 * 1024);
         // Character 150,000 begins line 1,500.
         assert!(text.starts_with('ş'));
     }

@@ -15,6 +15,10 @@ use std::time::{Duration, Instant, SystemTime};
 use common::{Answer, Pane, Script, program, pushes, run};
 use serde_json::{Value, json};
 
+/// What the program puts in one message at most, bytes (docs/calls.md): a quarter of the 1 MiB a
+/// message may have, what a page reads in the time it has for a call.
+const PIECE: usize = 256 * 1024;
+
 fn ask(pane: &Pane, calls: &[(&str, Value)]) -> Vec<Answer> {
     let mut script = Script::new();
     for (method, params) in calls {
@@ -630,7 +634,7 @@ fn a_file_another_program_wrote_since_it_was_read_is_not_written_over_unless_the
 }
 
 #[test]
-fn a_folder_of_thousands_is_cut_at_five_thousand_and_the_files_of_a_big_project_come_a_messages_worth_at_a_time()
+fn a_folder_of_thousands_is_cut_to_what_a_message_carries_and_the_files_of_a_big_project_come_a_messages_worth_at_a_time()
  {
     let pane = Pane::new();
     for i in 0..5100 {
@@ -649,21 +653,35 @@ fn a_folder_of_thousands_is_cut_at_five_thousand_and_the_files_of_a_big_project_
         &[("list", json!({ "dir": "many" })), ("files", json!({}))],
     );
     let listing = heard[0].result();
-    assert_eq!(listing["entries"].as_array().unwrap().len(), 5000);
+    let entries = listing["entries"].as_array().unwrap().len();
+    assert!(entries > 1000 && entries < 5100, "{entries} entries");
     assert_eq!(listing["truncated"], json!(true));
     assert_eq!(listing["entries"][0]["name"], json!("f0000"));
-    let page = heard[1].result();
-    let next = page["next"].as_u64().expect("the first page is a part");
-    assert!(next > 0 && next < 3600 + 5100);
     assert!(
-        page.to_string().len() <= 1024 * 1024,
-        "a page fits a message"
+        listing.to_string().len() <= PIECE + 1024,
+        "a listing fits a piece"
     );
-    assert_eq!(page["truncated"], json!(false));
-    let rest = ask(&pane, &[("files", json!({ "from": next }))]);
-    assert_eq!(rest[0].result()["next"], Value::Null);
-    let mut all = strings(&page["files"]);
-    all.extend(strings(&rest[0].result()["files"]));
+    // The index, page after page, each a piece, until there is no next.
+    let mut all = Vec::new();
+    let mut page = heard[1].result().clone();
+    let mut pages = 1;
+    loop {
+        assert!(
+            page.to_string().len() <= PIECE + 1024,
+            "a page fits a piece"
+        );
+        assert_eq!(page["truncated"], json!(false));
+        all.extend(strings(&page["files"]));
+        let Some(next) = page["next"].as_u64() else {
+            break;
+        };
+        assert!(next > 0 && next < 3600 + 5100);
+        page = ask(&pane, &[("files", json!({ "from": next }))])[0]
+            .result()
+            .clone();
+        pages += 1;
+    }
+    assert!(pages > 1, "the files of a big project come in pages");
     let unique: std::collections::HashSet<&String> = all.iter().collect();
     assert_eq!(unique.len(), 3600 + 5100, "every file, once");
     assert_eq!(all.len(), 3600 + 5100);
@@ -931,10 +949,10 @@ fn quitting_by_hangup_keeps_what_is_not_saved_as_a_draft_with_its_length_in_code
 
 #[test]
 fn a_long_text_of_four_byte_characters_is_read_in_pieces_that_count_code_points() {
-    // 300,000 emoji are 1.2 MB: more than a message holds, and each piece ends between two of them.
+    // 300,000 emoji are 1.2 MB: more than a piece holds, and each piece ends between two of them.
     let pane = Pane::new();
     pane.write("e.txt", "😀".repeat(300_000));
-    let budget = 900 * 1024;
+    let budget = PIECE;
     let heard = ask(
         &pane,
         &[
@@ -957,11 +975,8 @@ fn a_long_text_of_four_byte_characters_is_read_in_pieces_that_count_code_points(
     assert_eq!(first["end"], json!(budget / 4));
     assert_eq!(first["text"].as_str().unwrap().chars().count(), budget / 4);
     let second = heard[2].result();
-    assert_eq!(second["end"], json!(300_000));
-    assert_eq!(
-        second["text"].as_str().unwrap(),
-        "😀".repeat(300_000 - budget / 4)
-    );
+    assert_eq!(second["end"], json!(budget / 2));
+    assert_eq!(second["text"].as_str().unwrap(), "😀".repeat(budget / 4));
     assert_eq!(heard[3].result(), &json!({ "text": "", "end": 300_000 }));
     assert!(heard[4].failed("out-of-sync"));
 }

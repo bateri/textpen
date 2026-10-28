@@ -6,11 +6,18 @@
 //! pencere counts a message as the UTF-8 of its JSON before the wire's escapes: a text takes as
 //! many bytes as its UTF-8 has.
 //!
+//! A message also has to be read in the time the page has for it. The page reads the program's
+//! messages in its own interpreter, in the call that is told of the message, and a page's call is
+//! held to 250 ms; what the kit reads JSON with in it takes about a third of a second for a MiB
+//! (a text full of non-ASCII and new lines, whose escapes cost most). So the program says less
+//! than a message may hold, a quarter of it at a time: what the page reads in under 100 ms.
+//!
 //! This is api/'s: the files of api/ know the page, and project/, state/ and terminal/ do not.
 
-/// The room a payload has in a message of 1 MiB: what is around it (the envelope, the other members
-/// of the result) takes a few hundred bytes, and this leaves them 124 KiB.
-pub const WIRE_BUDGET: usize = 900 * 1024;
+/// The room a payload has in a message: a quarter of the 1 MiB one may have, for the time the page
+/// takes to read it; what is around it (the envelope, the other members of the result) has the
+/// rest.
+pub const WIRE_BUDGET: usize = 256 * 1024;
 
 /// How many of the first `items` go in a message together, each taking `size(item)` bytes. At
 /// least one, when there is one.

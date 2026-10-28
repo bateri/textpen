@@ -25,8 +25,10 @@ tests hold it to it, and the page's tests hold the page to it.
   - `internal` — the program failed; `message` is for the person.
 - **One message is at most 1 MiB** each way (pencere counts the UTF-8 of the JSON before its
   escapes). Nothing the program answers grows with the project: a long text, a big directory, the
-  file index and a long search come in pieces or are cut and say so. The page keeps each call it
-  sends under the same limit: an `edit` carries at most 192 Ki code points of inserted text.
+  file index and a long search come in pieces or are cut and say so. The program fills a message
+  to a quarter of that at most (256 KiB), which the page reads within the time it has for one call
+  (250 ms). The page keeps each call it sends under the same limit: an `edit` carries at most
+  192 Ki code points of inserted text.
 - **Buffer calls are answered in the order they were sent.** `open`, `edit`, `slice`, `save`,
   `buffer`, `discard` and `quit` run one at a time, in the page's order (the program's lane for buffers),
   so the page may send an `edit` and then a `save` of the version it will make without waiting.
