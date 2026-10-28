@@ -684,8 +684,8 @@ function act.end_view(discard)
 	end)
 end
 
--- Ends textpen, asking first about files that are not saved.
-function act.quit()
+-- Ends textpen, asking first about files that are not saved (`tried`: saving them was tried).
+function act.quit(tried)
 	docs.flush_all(function()
 		local dirty = {}
 		for _, tab in S.tabs do
@@ -695,6 +695,14 @@ function act.quit()
 		end
 		if #dirty == 0 then
 			act.end_view(false)
+			return
+		end
+		-- Saving when a file is left saves it when textpen is left, too; what could not be saved is
+		-- asked about.
+		if S.settings.autoSave and not tried then
+			act.save_all(function()
+				act.quit(true)
+			end)
 			return
 		end
 		local names = {}
