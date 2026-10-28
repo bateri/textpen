@@ -47,6 +47,9 @@ pub struct GitInfo {
 /// NUL and given exactly.
 fn run(args: &[&str], cwd: &str, max_output: usize) -> Result<Vec<u8>, String> {
     let mut child = Command::new("git")
+        // A repository's own config names a command for `core.fsmonitor`, which `status` runs: a
+        // project that was only unpacked here would run it as soon as it is opened.
+        .args(["-c", "core.fsmonitor=false"])
         .args(args)
         .current_dir(cwd)
         // git status refreshes the index when it can, which takes its lock: a person running git
@@ -376,5 +379,32 @@ mod tests {
     fn a_branch_with_no_name_is_its_commit() {
         let info = parse_status(b"# branch.oid 0123456789abcdef\0", "");
         assert_eq!(info.branch, "0123456");
+    }
+
+    /// A repository that was unpacked here, not cloned, brings its own config: what it names to run
+    /// is not run by asking git about it.
+    #[test]
+    fn a_command_a_repository_names_for_git_to_run_is_not_run() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let git = |args: &[&str]| {
+            let made = Command::new("git")
+                .args(args)
+                .current_dir(&root)
+                .output()
+                .unwrap();
+            assert!(made.status.success(), "{args:?}: {made:?}");
+        };
+        git(&["init", "-q"]);
+        let marker = root.join("ran");
+        let hook = root.join("hook.sh");
+        std::fs::write(&hook, format!("#!/bin/sh\ntouch '{}'\n", marker.display())).unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        git(&["config", "core.fsmonitor", hook.to_str().unwrap()]);
+        std::fs::write(root.join("a.txt"), "a").unwrap();
+        let info = read(root.to_str().unwrap()).unwrap();
+        assert!(info.changes.contains_key("a.txt"));
+        assert!(!marker.exists(), "the repository's own command was run");
     }
 }

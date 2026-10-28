@@ -98,8 +98,14 @@ pub struct Desk {
 /// The shell in the project's directory, with a first line that says where it is and how to come
 /// back, which it writes once the view is gone and the terminal is its own.
 fn shell_command(root: &str, shell: &str) -> Command {
+    // The name of a directory may hold what a terminal acts on (a title, the clipboard): it is shown
+    // with each such character as a `?`.
+    let root_shown: String = root
+        .chars()
+        .map(|ch| if ch.is_control() { '?' } else { ch })
+        .collect();
     let banner = format!(
-        "{BAR}shell in \x1b[1m{root}\x1b[0m\x1b[0m  \x1b[2mexit or ⌃D goes back to the editor\x1b[0m"
+        "{BAR}shell in \x1b[1m{root_shown}\x1b[0m\x1b[0m  \x1b[2mexit or ⌃D goes back to the editor\x1b[0m"
     );
     let mut command = Command::new("/bin/sh");
     command
@@ -189,6 +195,8 @@ fn own_editor_command(root: &str, files: &[String]) -> Command {
             .iter()
             .map(|file| match paths::relative(root, file) {
                 relative if relative.is_empty() => file.clone(),
+                // A file named `--cmd=…` or `+…` is a file, not an option of the editor.
+                relative if relative.starts_with(['-', '+']) => format!("./{relative}"),
                 relative => relative,
             })
             .collect()
@@ -465,5 +473,31 @@ mod tests {
             .collect();
         assert!(env.contains(&("TEXTPEN_SHELL".to_owned(), "1".to_owned())));
         assert!(env.contains(&("WEZTERM_SHELL_SKIP_ALL".to_owned(), "1".to_owned())));
+    }
+
+    #[test]
+    fn the_names_of_files_are_not_options_of_the_editor_and_of_directories_not_escapes() {
+        let command = own_editor_command(
+            "/p",
+            &[
+                "/p/--cmd=x".to_owned(),
+                "/p/+9".to_owned(),
+                "/p/a.txt".to_owned(),
+            ],
+        );
+        let args: Vec<String> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(&args[3..], ["./--cmd=x", "./+9", "a.txt"]);
+        let command = shell_command("/work/\x1b]52;c;eA==\x07/p", "/bin/zsh");
+        let banner = command
+            .get_args()
+            .nth(3)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        assert!(banner.contains("/work/?]52;c;eA==?/p"), "{banner:?}");
+        assert!(!banner.contains('\x07'));
     }
 }
