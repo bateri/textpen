@@ -4,7 +4,7 @@ A code editor in the terminal pane: the project's files as a tree, tabs, search 
 them, and the text in the colours and the font of your terminal — with the keyboard or
 the mouse, on your machine or on a server over plain `ssh`.
 
-![textpen: a TypeScript file in bateri's theme, with the project's files and what git says of them](docs/editor.png)
+![textpen: a TypeScript file in a dark terminal's theme, with the project's files and what git says of them](docs/editor.png)
 
 textpen is a [pencere](https://github.com/bateri/pencere) program. Run it in a terminal
 that hosts pencere views ([bateri](https://github.com/bateri/bateri)) and the pane becomes
@@ -18,11 +18,14 @@ conflict — and of the folders that hold them; which files are open and which h
 that are not saved. Make, rename, move and delete files and folders from it. It follows the
 file you are in.
 
-**An editor** that reads well over a hundred
-languages, each loaded when a file in it is first opened; Markdown with the code in its
-fences read in their own languages. Multiple cursors, folding, bracket matching, find and
-replace in the file with a count of the matches, go to a line, comment lines out, move and
-copy them. Vim keys if you want them (`:w`, `:q`, `:wq`, `:qa`).
+**An editor**, the terminal's own, drawn in its font, that reads 31 languages: the C family
+(JavaScript, TypeScript, JSX, TSX, Rust, Go, C, C++, C#, Java, Kotlin, Swift, PHP), the
+scripting ones (Python, Ruby, the shell, Lua), markup (HTML, XML, Markdown), data (JSON,
+YAML, TOML, INI and `.env`), style sheets (CSS, SCSS, Less) and the files of the tools (SQL,
+the Dockerfile, the Makefile, a diff), each with its own comments, indentation and folding;
+Markdown with the code in its fences read in their own languages. Multiple cursors, folding,
+bracket matching, find and replace in the file with a count of the matches, go to a line,
+comment lines out, move and copy them.
 
 **Every colour is the terminal's.** A terminal gives its view a handful of colours — its
 background and foreground, a dimmed one, an accent, and the colours it says success, danger,
@@ -51,8 +54,8 @@ status line keeps what still fits.
 
 |                                                                 |                                                           |
 | --------------------------------------------------------------- | --------------------------------------------------------- |
-| ![Go to a file, in Tokyo Night](docs/palette.png)               | ![Search in the project, in Gruvbox](docs/search.png)     |
-| ![Markdown and its preview, in a light theme](docs/preview.png) | ![An 80×24 pane in Solarized Light](docs/light-80x24.png) |
+| ![Go to a file](docs/palette.png)                               | ![Search in the project](docs/search.png)                 |
+| ![Markdown and its preview, in a light theme](docs/preview.png) | ![An 80×24 pane in a light theme](docs/light-80x24.png)   |
 
 ## The keyboard, and the mouse
 
@@ -77,7 +80,7 @@ type `@`, `#`, `[` or `{`.
 | `⌃G`, `⇧⌘L`, `⌃⇧↑` `⌃⇧↓`   | add the next match, every match, a cursor above or below                  |
 | `⌘/`, `⌥↑` `⌥↓`, `⇧⌘K`     | comment, move the line, delete it                                         |
 | `⇧⌘V`                      | the preview of a Markdown file                                            |
-| `⌘+` `⌘−` `⌘0`             | bigger, smaller, actual text                                              |
+| `⌘,`, `⇧⌘/`                | the settings, every key                                                   |
 | `⌘J`                       | a shell in the project, in this pane                                      |
 | `⌃Q`                       | quit, asking about what is not saved                                      |
 
@@ -88,7 +91,8 @@ goes back to the editor from anywhere. The keys the status line shows are button
 click does what the key does.
 
 `⌃C` always reaches textpen and ends it, whatever has the keyboard; what is not saved is
-kept as a draft. On Linux and Windows, `⌘` is `Ctrl`.
+kept as a draft. The text is the size the terminal draws its own: its own keys make it larger
+or smaller, and textpen has no zoom of its own.
 
 ## Run it
 
@@ -186,8 +190,12 @@ it in a pane under `pencere-fake-host`, the stand-in terminal, and hold its call
 command line to `docs/calls.md`. `FAKE_HOST` is `../pencere/target/debug/pencere-fake-host` unless
 it is told otherwise: a checkout of pencere beside this one, with the stand-in built there (`cargo
 build -p pencere-fake-host`). No test is skipped: a stand-in that is not there stops the run and
-says which. The page's tests join the gate when they are written. CI runs `make check` on Linux
-and macOS.
+says which. `make check` runs the page's tests too (`make test-page`): `src/view/` run as a
+terminal runs it, on pencere's host with no screen, with the program's own handlers in the same
+process — opening, typing and saving, a long text in pieces, a conflict, a draft, the tree, the
+palette over twenty thousand files, find and replace, the project's search, the preview, the shell
+and back, an 80×24 pane. `make shots` draws the pictures of `docs/` from the page as it is, in the
+fonts of a Mac. CI runs `make check` on Linux and macOS.
 
 `make dev` builds the `pencere` command of the pencere `Cargo.lock` takes, in `.cache/pencere`,
 and runs `pencere dev`: textpen is built and run in the pane, the editor is shown again when a file

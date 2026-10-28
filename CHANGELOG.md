@@ -9,6 +9,19 @@ change what the previous one did.
 
 ### Changed
 
+- The editor is a page of pencere's kit, in Lua, and the text is in the terminal's own editor, drawn
+  in its font, in place of a web page with CodeMirror. It reads 31 languages in place of well over
+  a hundred: JavaScript, TypeScript, JSX, TSX, Rust, Go, C, C++, C#, Java, Kotlin, Swift, PHP,
+  Python, Ruby, the shell, Lua, HTML, XML, Markdown, JSON, YAML, TOML, INI and `.env`, CSS, SCSS,
+  Less, SQL, the Dockerfile, the Makefile and a diff, each with its own comments, indentation
+  (Python's after a colon, Ruby's and Lua's by their words) and folding. Each open file keeps what
+  can be undone, its cursors and its folds while another is shown. The tooltips, menus and the list
+  of commands are the terminal's own.
+- The quick open keeps up with a project of tens of thousands of files, the list filling in as it
+  is scored, and a long Markdown file's preview shows its start.
+- What is long — a text, a folder, the file index, a search — comes to the editor in pieces of a
+  quarter of a message (256 KiB), which it reads in the time it has for one: a folder shows as many
+  of its entries as fit in one, a few thousand, where it showed five thousand.
 - The source has one layout: the program in `src/program/` (Rust, by what each file does), the
   editor in `src/view/` and the icons in `src/assets/`.
 - textpen is one native file, its program written in Rust on the pencere crate, with the editor
@@ -55,8 +68,9 @@ change what the previous one did.
 - `--dev`, which showed the view again when its built files changed (`make dev`, which runs
   `pencere dev`, does that for the program's files), and `TEXTPEN_TRACE`, the trace of the turns
   with the terminal.
-- The `vim` and `fontSize` settings: there is no vim mode, and the text is the size the terminal
-  gives it, with no zoom of textpen's own. A settings file that has them is read without them.
+- The `vim` and `fontSize` settings, and `⌘+`, `⌘−` and `⌘0`: there is no vim mode, and the text
+  is the size the terminal gives it (its own keys make it larger or smaller), with no zoom of
+  textpen's own. A settings file that has them is read without them.
 
 ## [0.1.0] - 2026-10-22
 
