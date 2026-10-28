@@ -24,8 +24,12 @@ use tempfile::TempDir;
 pub fn host() -> &'static Path {
     static HOST: OnceLock<PathBuf> = OnceLock::new();
     HOST.get_or_init(|| {
+        // A path from here (the package, where Cargo runs the tests), since the stand-in is started
+        // in the directory of each test.
         let host = match std::env::var_os("FAKE_HOST") {
-            Some(path) if !path.is_empty() => PathBuf::from(path),
+            Some(path) if !path.is_empty() => {
+                std::path::absolute(&path).unwrap_or_else(|_| PathBuf::from(path))
+            }
             _ => Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("../pencere/target/debug/pencere-fake-host"),
         };
