@@ -9,12 +9,25 @@ change what the previous one did.
 
 ### Changed
 
-- The source has one layout: the program in `src/program/` (Lua, by what each file does), the editor in `src/view/` and the icons in `src/assets/`; what is built goes to `dist/`.
-- textpen is one native file, built from Lua by pencere's runner, with the editor inside it
-  (about 6 MB): macOS on Apple silicon and Linux on `arm64` and `x86_64`, as files of the
-  GitHub release. Node is no longer needed where it runs, and textpen is no longer published on
-  npm: `npm install -g textpen` and `npx textpen` stop at the last release there, which is
-  deprecated with a pointer to the files.
+- The source has one layout: the program in `src/program/` (Rust, by what each file does), the
+  editor in `src/view/` and the icons in `src/assets/`.
+- textpen is one native file, its program written in Rust on the pencere crate, with the editor
+  inside it (about 4 MB): macOS on Apple silicon and Linux on `arm64` and `x86_64`, as files of
+  the GitHub release. Node is no longer needed where it runs, nor to build it, run it or test it
+  (`cargo build`, `make check`), and textpen is no longer published on npm: `npm install -g
+  textpen` and `npx textpen` stop at the last release there, which is deprecated with a pointer to
+  the files.
+- The setting of which spaces the editor shows is one of five, as the terminal's editor names
+  them: none, at the edges of words (`boundary`), in what is selected (`selection`, the default),
+  at the ends of lines (`trailing`) and all, in place of on and off. A new setting, `indentGuides`
+  (on by default), shows the guides of indentation. A settings file of an older textpen is read:
+  `whitespace` on is all and off is none.
+- Renaming a file or folder by case alone (`Ö.txt` to `ö.txt`) works for every letter, not only
+  the ASCII ones; a rename onto another file that is there is refused.
+- Deleting the project's own folder, or a folder the project is in, is refused.
+- Files named on the command line after a folder are found from the current directory, as your
+  shell names them, and not from inside that folder: `textpen src src/main.rs` opens the project
+  `src` on `src/main.rs`.
 - Speaks pencere's one protocol (a call, a subscription, a response, a push) in place of MCP
   Apps. The editor is the same one, in the terminal's colours and font, in a terminal that
   hosts the new views; it no longer opens in one that only speaks MCP Apps.
@@ -27,16 +40,19 @@ change what the previous one did.
   a search alike; a search used to put `file10` before `file9`. Letters with accents are not
   folded: `é` comes after `z`.
 - A file whose name is not valid UTF-8 is not shown in the tree and is not searched.
-- Search in the project reads the files one at a time, on one thread, in place of sixteen at a
-  time.
+- Search in the project reads the files one at a time, on a thread of its own, in place of
+  sixteen at a time.
 
 ### Removed
 
 - The MCP server: `show_editor`, `list_files` and `read_file`, the view for other MCP Apps
   hosts, and `npx -y textpen` as a stdio server for an MCP client. Started with no terminal at
   all, textpen says it needs one.
-- `--dev`, which showed the view again when its built files changed (`pencere dev` does that
-  for the program's files), and `TEXTPEN_TRACE`, the trace of the turns with the terminal.
+- `--dev`, which showed the view again when its built files changed (`make dev`, which runs
+  `pencere dev`, does that for the program's files), and `TEXTPEN_TRACE`, the trace of the turns
+  with the terminal.
+- The `vim` and `fontSize` settings: there is no vim mode, and the text is the size the terminal
+  gives it, with no zoom of textpen's own. A settings file that has them is read without them.
 
 ## [0.1.0] - 2026-10-22
 

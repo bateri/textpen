@@ -18,7 +18,7 @@ conflict — and of the folders that hold them; which files are open and which h
 that are not saved. Make, rename, move and delete files and folders from it. It follows the
 file you are in.
 
-**An editor** ([CodeMirror](https://codemirror.net)) that reads well over a hundred
+**An editor** that reads well over a hundred
 languages, each loaded when a file in it is first opened; Markdown with the code in its
 fences read in their own languages. Multiple cursors, folding, bracket matching, find and
 replace in the file with a count of the matches, go to a line, comment lines out, move and
@@ -118,94 +118,82 @@ open files in `~/.local/state/textpen/` (or where `XDG_CONFIG_HOME` and `XDG_STA
 say).
 
 **As your `$EDITOR`.** `export EDITOR=textpen` and `git commit` opens the message in the
-pane: save it and close the tab (or `:wq`), and git goes on. Opened on files named on the
+pane: save it and close the tab, and git goes on. Opened on files named on the
 command line, textpen ends when the last of them is closed. In a terminal without pencere it
 passes the file to `$VISUAL` or `$EDITOR` — skipping itself — or to `vi`.
 
 **Over ssh.** Copy the file for the server's system to it and run it there, in a pane of a
 terminal that hosts pencere: nothing listens on a port, the editor travels in the terminal's
 own stream, and it runs on your machine in a sandbox that reaches nothing but its program. Its
-files cross the stream once (about 2 MB); after that the terminal keeps them.
+files cross the stream once; after that the terminal keeps them.
 
 **What it does not do.**
 
-- `--dev` is not supported: it showed the view again when its built files changed, and a built
-  file carries the view inside it. "Work on it" says how the editor is worked on now.
-- Search in the project reads the files one after another, on one thread, so a search of a very
-  large project may take longer than if they were read several at a time. Typing and the
+- A shell in the pane is not there yet: it waits for a pencere that can give the terminal to a
+  shell and take the editor back.
+- `--dev` is refused: `make dev` in textpen's checkout runs it from its files and shows the editor
+  again when they change ("Work on it").
+- Search in the project reads the files one after another, on a thread of its own, so a search of
+  a very large project may take longer than if they were read several at a time. Typing and the
   other calls go on while it runs.
 - A pattern in the project search is a Rust regular expression, not a JavaScript one: `\d`, `\w`
   and `\b` mean Unicode digits, letters and word edges, and back-references (`\1`), look-ahead
   and look-behind are refused with a message. In return a search always ends in time linear in
   the text, whatever the pattern. A whole-word search takes the match the pattern prefers at a
   place, so `foo\s*` in `foo  bar` is not a whole word. Find and replace in a file is the
-  editor's, and is JavaScript's.
+  editor's own.
 - A file whose name is not valid UTF-8 is not shown in the tree and is not searched.
 - Names are ordered with numbers as numbers (`file9` before `file10`) and capitals with small
   letters, in the tree and in a search alike; letters with accents are not folded (`é` comes
   after `z`).
-- On a disk that ignores case, renaming a file by case alone (`Ö.txt` to `ö.txt`) works only
-  for ASCII letters; for the others the new name is refused as taken.
 
 ## How it works
 
-- `src/program/` is textpen's program, written in Lua for the runner of the `pencere` command,
-  and **holds the text of every open file**. The editor asks it with a handful of calls (open, edit,
-  save, list, search…) and hears from it on one topic, what changed on disk and in git. What the
-  editor sends travels through the terminal's input queue, in frames of 511 bytes and messages
-  of at most 1 MiB, so it never sends a file: it sends what changed, a few hundred milliseconds
-  of typing at a time, as replacements made on a version of the text the program checks; saving
-  is a word to the program. A message the other way is at most 1 MiB too, and every character
-  outside ASCII crosses as six bytes, so a long text, a long folder and the files of a big
-  project come to the editor in pieces. Holding the text is also what lets it outlive the view
-  — a shell, a restart of the terminal — and become a draft when the program ends.
-- `src/program/terminal/` is the part that knows about the terminal: the command line, the pane
-  handed to a shell and taken back, and your own editor in a terminal that shows no views;
-  `src/program/app.lua` opens the view in the pane. `src/program/README.md` has the modules.
-- `src/view` is the editor: React, CodeMirror and [Tabler icons](https://tabler.io/icons).
-  `src/view/lib/page.ts` is all it knows of the protocol: it calls and subscribes, is told the
-  terminal's colours, font and size, and asks to be closed or to open a link; the shapes of
-  what it sends and is sent are in `src/view/lib/types.ts`. It tells the program where it is
-  (tabs, folders, cursors) every two seconds when that changed.
-- `make build` builds the editor with vite and has `pencere build` pack it, with the program,
-  into the runner: `dist/textpen`, about 6 MB.
+- `src/program/` is textpen's program, in Rust on the [pencere](https://github.com/bateri/pencere)
+  crate, and **holds the text of every open file**. The editor asks it with a handful of calls
+  (open, edit, save, list, search…) and hears from it on one topic, what changed on disk and in
+  git; `docs/calls.md` is all they say to each other. What the editor sends travels through the
+  terminal's input queue, in frames of 511 bytes and messages of at most 1 MiB, so it never sends
+  a file: it sends what changed, a few hundred milliseconds of typing at a time, as replacements
+  made on a version of the text the program checks, in places counted in characters; saving is a
+  word to the program. A message the other way is at most 1 MiB too, so a long text, a long folder
+  and the files of a big project come to the editor in pieces. Holding the text is also what lets
+  it outlive the view — a restart of the terminal — and become a draft when the program ends.
+- `src/program/terminal/` is the part that knows about the terminal: the command line, and your
+  own editor in a terminal that shows no views; `src/program/main.rs` shows the view in the pane.
+  `src/program/README.md` has the modules.
+- `src/view` is the editor: a page of pencere's kit, in Lua, which the terminal runs and draws
+  itself, with [Tabler icons](https://tabler.io/icons) in `src/assets/`.
+- `cargo build --release` builds the program with the page and the pictures in it (`build.rs`):
+  `target/release/textpen`, about 4 MB.
 
 ## Work on it
 
-You need Node 22, and a checkout of [pencere](https://github.com/bateri/pencere) with the Lua
-runner beside this one, built there:
-
-```sh
-cargo build --release -p pencere-cli     # the `pencere` command, the runner of the program
-cargo build -p pencere-fake-host         # the stand-in terminal the tests play textpen in
-```
+You need Rust 1.88 ([rustup](https://rustup.rs)) and git; nothing else is installed, and nothing
+needs Node but the release tool (`tools/release.mjs`) and the one that draws the icons
+(`tools/icon.mjs`).
 
 ```sh
 git clone https://github.com/bateri/textpen && cd textpen
-make setup          # npm ci
-make build          # the editor and the program: dist/textpen
-make check          # types, formatting, the editor's tests, the build, and dist/textpen
-                    # in a pane under pencere-fake-host: its calls, drafts, shell and command line
-make check-page     # the part of the gate that needs no pencere checkout (what CI runs)
+make fake-host      # pencere's stand-in terminal, of the pencere Cargo.lock takes, in .cache/pencere
+make check FAKE_HOST=.cache/pencere/target/debug/pencere-fake-host
+make build          # target/release/textpen
+make dev            # textpen from its files, in a pane of a terminal that hosts pencere views
 ```
 
-`make` looks for the runner at `../pencere/target/release/pencere` and the stand-in at
-`../pencere/target/debug/pencere-fake-host`. Until the checkout beside this one has the Lua
-runner, they are in `../pencere-lua`:
+`make check` is the gate: rustfmt, clippy, and the program's tests, its own and the ones that run
+it in a pane under `pencere-fake-host`, the stand-in terminal, and hold its calls, drafts and
+command line to `docs/calls.md`. `FAKE_HOST` is `../pencere/target/debug/pencere-fake-host` unless
+it is told otherwise: a checkout of pencere beside this one, with the stand-in built there (`cargo
+build -p pencere-fake-host`). No test is skipped: a stand-in that is not there stops the run and
+says which. The page's tests join the gate when they are written. CI runs `make check` on Linux
+and macOS.
 
-```sh
-make check PENCERE=../pencere-lua/target/release/pencere \
-           FAKE_HOST=../pencere-lua/target/debug/pencere-fake-host
-```
-
-No test is skipped: a runner, a stand-in or a program that is not there stops the run and
-says which. CI cannot fetch a runner until pencere has a release, so it runs `make check-page`
-and says in its annotations that the end-to-end tests of the program did not run.
-
-To work on the editor in a pane of a terminal that hosts pencere views: `make view`, then
-`pencere dev --web dist/view` runs the program from its files and shows the view again when one
-under `src/program/`, `src/assets/` or `dist/view` changes; `make view` again after changing the
-editor. `demo/` is a small shop to open it on (`textpen demo`).
+`make dev` builds the `pencere` command of the pencere `Cargo.lock` takes, in `.cache/pencere`,
+and runs `pencere dev`: textpen is built and run in the pane, the editor is shown again when a file
+of `src/view/` or `src/assets/` changes, and the program is built and run again when one of its own
+does. `make dev PENCERE_SRC=../pencere` uses a checkout you are changing instead. `demo/` is a
+small shop to open textpen on (`textpen demo`).
 
 How a version is released is in [RELEASING.md](RELEASING.md), and what each one changed in
 [CHANGELOG.md](CHANGELOG.md).
