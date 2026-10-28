@@ -66,7 +66,7 @@ function sidebar.view(width, drawer)
 	local panel = b.div():col():w(width):h_full():no_shrink():bg("raised1"):child(head(drawer))
 	if S.sidebar == "files" then
 		panel:child(project_line()):child(tree.view())
-	elseif act.search_view then
+	else
 		panel:child(act.search_view())
 	end
 	return panel
@@ -186,7 +186,7 @@ function act.focus_sidebar(panel)
 		end
 		S.field = nil
 		kit.keyboard("page")
-	elseif act.focus_search then
+	else
 		act.focus_search()
 	end
 	kit.gather(true)
@@ -229,10 +229,8 @@ function sidebar.key(key, mods)
 	end
 	if S.sidebar == "files" then
 		return tree.key(key, mods)
-	elseif act.search_key then
-		return act.search_key(key, mods)
 	end
-	return false
+	return act.search_key(key, mods)
 end
 
 -- --- The tree's listings and the files ----------------------------------------------------------------

@@ -34,7 +34,7 @@ function act.regain()
 	if S.overlay ~= nil or S.handing_off ~= nil then
 		return
 	end
-	if S.focus == "sidebar" and act.focus_sidebar then
+	if S.focus == "sidebar" then
 		act.focus_sidebar(S.sidebar)
 	else
 		act.focus_editor()
@@ -71,7 +71,7 @@ function act.open_file(path, options)
 	end
 	S.active = path
 	remember(path)
-	if act.reveal and S.focus ~= "sidebar" and string.sub(path, 1, 1) ~= "/" then
+	if S.focus ~= "sidebar" and string.sub(path, 1, 1) ~= "/" then
 		act.reveal(path)
 	end
 	if S.layout == "narrow" then
@@ -90,7 +90,7 @@ function act.open_file(path, options)
 		if not arrive and S.places[path] then
 			arrive = { place = S.places[path] }
 		end
-		local size = act.size_of and act.size_of(path) or 0
+		local size = act.size_of(path)
 		docs.open(tab, arrive, size)
 	elseif doc and arrive then
 		if doc.loaded then
@@ -630,11 +630,9 @@ function act.start(boot)
 		S.tabs[#S.tabs + 1] = tab
 	end
 	S.active = nil
-	if act.list_dir then
-		act.list_dir("")
-		for _, dir in S.expanded do
-			act.list_dir(dir)
-		end
+	act.list_dir("")
+	for _, dir in S.expanded do
+		act.list_dir(dir)
 	end
 	-- The tab in front is opened again; the others come up as they are shown.
 	local focus = boot.focus
@@ -642,7 +640,7 @@ function act.start(boot)
 	if active then
 		act.open_file(active, { line = focus and focus.line, column = focus and focus.column, focus = true })
 	else
-		S.focus = (act.sidebar_docked and act.sidebar_docked()) and "sidebar" or "editor"
+		S.focus = act.sidebar_docked() and "sidebar" or "editor"
 		act.regain()
 	end
 	for _, problem in boot.problems or {} do

@@ -134,7 +134,7 @@ function tabs.view(docked)
 	bar:child(strip)
 	local right = b.div():row():items_center():gap(2):px(5):no_shrink()
 	local active = S.active
-	if active and act.is_markdown and act.is_markdown(active) then
+	if active and act.is_markdown(active) then
 		local on = text.index_of(S.preview, active) ~= nil
 		right:child(kit.icon_button("toggle-preview", on and "eye-off" or "eye", on and "Hide preview" or "Preview",
 			{ keys = "cmd+shift+v", pressed = on }))
@@ -162,13 +162,11 @@ function tabs.menu(path)
 			act.move_tab(1)
 		end },
 		"-",
-		{ "Rename…", "f2", function() if act.rename then act.rename(path) end end },
-		{ "Copy Path", nil, function() if act.copy_path then act.copy_path(path, false) end end },
+		{ "Rename…", "f2", function() act.rename(path) end },
+		{ "Copy Path", nil, function() act.copy_path(path, false) end },
 		{ "Reveal in Files", nil, function()
-			if act.reveal then
-				act.reveal(path)
-				act.focus_sidebar("files")
-			end
+			act.reveal(path)
+			act.focus_sidebar("files")
 		end },
 	}
 	return items
@@ -193,19 +191,13 @@ function tabs.press(id, event)
 		return true
 	end
 	if id == "open-tabs" then
-		if act.open_palette then
-			act.open_palette("tabs")
-		end
+		act.open_palette("tabs")
 		return true
 	elseif id == "toggle-preview" then
-		if act.toggle_preview then
-			act.toggle_preview()
-		end
+		act.toggle_preview()
 		return true
 	elseif id == "show-sidebar" then
-		if act.show_sidebar then
-			act.show_sidebar()
-		end
+		act.show_sidebar()
 		return true
 	end
 	return false

@@ -126,14 +126,14 @@ function area.view(size)
 			column:child(strip)
 		end
 	end
-	if tab and tab.doc and tab.doc.loaded and act.find_bar then
+	if tab and tab.doc and tab.doc.loaded then
 		local bar = act.find_bar(tab.doc)
 		if bar then
 			column:child(bar)
 		end
 	end
 	local row = b.div():row():grow(1):min_h(0)
-	local markdown = tab and act.is_markdown and act.is_markdown(tab.path)
+	local markdown = tab and act.is_markdown(tab.path)
 	local previewing = markdown and tab.doc and tab.doc.loaded and text.index_of(S.preview, tab.path) ~= nil
 	local only = previewing and S.layout ~= "wide"
 	local shown = false
@@ -145,22 +145,19 @@ function area.view(size)
 			if S.focus == "editor" and S.overlay == nil and S.field == entry.doc.id then
 				editor:focused(true)
 			end
-			if act.editor_commands then
-				act.editor_commands(editor, entry.doc)
-			end
 		else
 			editor:hidden()
 		end
 		row:child(editor)
 	end
-	if previewing and act.preview_view then
+	if previewing then
 		if shown then
 			row:child(kit.rule_y())
 		end
 		row:child(act.preview_view(tab, size))
 	end
 	if not tab then
-		row:child(act.welcome_view and act.welcome_view(size) or b.spacer())
+		row:child(act.welcome_view(size))
 	elseif not (tab.doc and tab.doc.loaded) then
 		row:child(placeholder(tab))
 	end

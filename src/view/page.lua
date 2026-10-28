@@ -8,7 +8,6 @@
 -- docs/calls.md.
 
 local kit = require("./lib/kit")
-local text = require("./lib/text")
 local docs = require("./parts/docs")
 local actions = require("./parts/actions")
 local commands = require("./parts/commands")
@@ -21,6 +20,8 @@ local palette = require("./parts/palette")
 local find = require("./parts/find")
 local search = require("./parts/search")
 local preview = require("./parts/preview")
+local welcome = require("./parts/welcome")
+local sheets = require("./parts/sheets")
 
 local b, ui, S, SIZE, act = kit.b, kit.ui, kit.S, kit.SIZE, kit.act
 local layout = b.layout
@@ -40,7 +41,7 @@ end
 
 -- Whether the sidebar is beside the editor (a wide enough page, and shown).
 function act.sidebar_docked()
-	return S.layout ~= "narrow" and S.settings ~= nil and S.settings.sidebar == true and act.sidebar_view ~= nil
+	return S.layout ~= "narrow" and S.settings ~= nil and S.settings.sidebar == true
 end
 
 local function booting()
@@ -104,7 +105,7 @@ local function render(size, now)
 			root:child(dialogs.view(size))
 		elseif overlay.kind == "palette" then
 			root:child(palette.view(size))
-		elseif act.overlay_view then
+		else
 			root:child(act.overlay_view(overlay, size))
 		end
 	end
@@ -141,19 +142,14 @@ local function click(id, event)
 		if palette.press(id) then
 			return
 		end
-	elseif S.overlay and act.overlay_press and act.overlay_press(id, event) then
+	elseif S.overlay and act.overlay_press(id) then
 		return
 	end
 	if dialogs.dismiss(id) then
 		return
 	end
-	if tabs.press(id, event) or status.press(id) or area.press(id) or find.press(id) or search.press(id, event) or preview.press(id)
-		or sidebar.press(id, event) then
-		return
-	end
-	if act.press then
-		act.press(id, event)
-	end
+	local _ = tabs.press(id, event) or status.press(id) or area.press(id) or find.press(id)
+		or search.press(id, event) or preview.press(id) or welcome.press(id) or sidebar.press(id, event)
 end
 
 local press_event = nil
@@ -184,9 +180,7 @@ local function released(event)
 	local clicked = ui:release(layout, at)
 	local dropped = ui:take_drop()
 	if dropped then
-		if tabs.drop(dropped) or (act.drop and act.drop(dropped)) then
-			return true
-		end
+		tabs.drop(dropped)
 		return true
 	end
 	if clicked and press_event and (press_event.button or "left") == "left" then
@@ -226,7 +220,7 @@ local function key(event)
 	if overlay and overlay.kind == "palette" then
 		return palette.key(name, mods)
 	end
-	if overlay and act.overlay_key then
+	if overlay then
 		return act.overlay_key(name, mods)
 	end
 	if find.key(name, mods) or sidebar.key(name, mods) then
@@ -271,6 +265,7 @@ local function handle(event)
 	elseif kind == "text" then
 		local _ = dialogs.text(event.field, event.text) or palette.text(event.field, event.text)
 			or find.text(event.field, event.text) or search.text(event.field, event.text)
+			or sheets.text(event.field, event.text)
 		reply = true
 	elseif kind == "focus" then
 		local field = event.field
@@ -291,8 +286,6 @@ local function handle(event)
 			act.open_file(path, { focus = true })
 		end
 		reply = true
-	elseif kind == "scrolled" then
-		reply = act.scrolled and act.scrolled(event) or nil
 	end
 	return kit.take(reply)
 end
