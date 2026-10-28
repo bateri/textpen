@@ -131,8 +131,18 @@ struct Renamed {
 
 /// A file or directory moved, and the open buffers under it with it.
 fn rename(session: &Session, args: Rename, _: &Gone<'_>) -> Result<Renamed, Failure> {
-    let renamed = session.project.rename(&args.from, &args.to)?;
+    // The buffers stay held across the move: a buffer opened meanwhile is of the disk as it was.
     let mut buffers = session.buffers();
+    let name = |path: &str| session.project.name(&session.project.absolute(path));
+    // A buffer with changes of a file that is not on disk, under a name a moved file is to have,
+    // would be dropped with them: the move is refused before anything is done.
+    if let Some(path) = buffers.unsaved_in_the_way(&name(&args.from), &name(&args.to)) {
+        return Err(Failure::Failed(format!(
+            "{path} has changes that are not saved: save or close it, then move {}",
+            args.from
+        )));
+    }
+    let renamed = session.project.rename(&args.from, &args.to)?;
     if renamed.moved {
         buffers.moved(&renamed.from, &renamed.to);
     }

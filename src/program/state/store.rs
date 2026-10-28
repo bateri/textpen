@@ -49,14 +49,41 @@ fn read_json(path: &str) -> Option<Value> {
     serde_json::from_slice(&fs::read(path).ok()?).ok()
 }
 
+/// Writes `bytes` to a file for its owner alone, whole or not at all, with the directories it is
+/// in (for the owner alone too). A draft holds the text of a file that may be as private as the
+/// file is, and a crash or a full disk in the middle of writing must not leave half a draft in
+/// place of the one before.
+pub fn write_private(path: &str, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+
+    let directory = paths::dirname(path);
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&directory)?;
+    let temporary = format!("{path}.tmp");
+    let written = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&temporary)
+        .and_then(|mut file| file.write_all(bytes))
+        .and_then(|()| fs::rename(&temporary, path));
+    if written.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    written
+}
+
 /// Writes JSON to a file, with the directories it is in.
 pub fn write_json(path: &str, value: &impl serde::Serialize) {
     let Ok(mut text) = serde_json::to_string_pretty(value) else {
         return;
     };
     text.push('\n');
-    let _ = fs::create_dir_all(paths::dirname(path));
-    let _ = fs::write(path, text);
+    let _ = write_private(path, text.as_bytes());
 }
 
 fn flag(value: Option<&Value>, fallback: bool) -> bool {

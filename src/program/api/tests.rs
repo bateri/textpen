@@ -306,3 +306,49 @@ fn the_pages_of_the_file_index_are_of_one_reading_of_it_however_the_files_change
     let stale = answer(&mut conversation).1.unwrap_err();
     assert_eq!(stale["code"], json!("out-of-sync"));
 }
+
+#[test]
+fn a_file_is_not_moved_onto_the_name_of_a_buffer_with_changes_that_are_not_saved() {
+    let (dir, session) = session(&[("a.txt", "a")]);
+    let mut conversation = conversation(&session);
+    // `a.txt` is open, and so is `b.txt`, which is not on disk: opened empty, typed in, not saved.
+    send(&mut conversation, 2, "open", json!({ "path": "a.txt" }));
+    answer(&mut conversation).1.unwrap();
+    send(&mut conversation, 3, "open", json!({ "path": "b.txt" }));
+    answer(&mut conversation).1.unwrap();
+    let edit = json!({ "path": "b.txt", "base": 1, "edits": [[0, 0, "mine"]] });
+    send(&mut conversation, 4, "edit", edit);
+    answer(&mut conversation).1.unwrap();
+    send(
+        &mut conversation,
+        4,
+        "rename",
+        json!({ "from": "a.txt", "to": "b.txt" }),
+    );
+    let (_, refused) = answer(&mut conversation);
+    let error = refused.expect_err("the move is refused");
+    assert_eq!(error["code"], json!("failed"), "{error}");
+    assert!(dir.path().join("project/a.txt").exists());
+    assert!(!dir.path().join("project/b.txt").exists());
+    // Saved, `b.txt` is on disk, and the move is refused for that, as before.
+    send(
+        &mut conversation,
+        5,
+        "save",
+        json!({ "path": "b.txt", "version": 2 }),
+    );
+    answer(&mut conversation).1.unwrap();
+    send(
+        &mut conversation,
+        6,
+        "rename",
+        json!({ "from": "a.txt", "to": "b.txt" }),
+    );
+    let (_, refused) = answer(&mut conversation);
+    assert!(
+        refused.unwrap_err()["message"]
+            .as_str()
+            .unwrap()
+            .contains("already exists")
+    );
+}

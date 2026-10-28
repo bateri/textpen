@@ -11,7 +11,7 @@
 //! would not do is [`Error::Failed`], in words for the person.
 
 use std::fs;
-use std::io;
+use std::io::{self, Read as _};
 use std::sync::{Arc, Mutex, PoisonError, Weak};
 use std::time::{Duration, SystemTime};
 
@@ -19,7 +19,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use super::later::Later;
-use super::store::key_of;
+use super::store::{key_of, write_private};
 use crate::project::tree::{self, Tree};
 use crate::project::{ms_of, now_ms, paths, said};
 
@@ -99,6 +99,14 @@ pub struct Unopenable {
 pub enum Opening {
     Opened(Opened),
     Unopenable(Unopenable),
+}
+
+impl Opening {
+    /// Whether the file opened is one that is not on disk.
+    #[cfg(test)]
+    fn is_opened_missing(&self) -> bool {
+        matches!(self, Self::Opened(opened) if opened.info.missing)
+    }
 }
 
 /// A piece of a long text, and where the next begins.
@@ -202,6 +210,16 @@ fn byte_of(text: &str, place: usize) -> Option<usize> {
         .nth(place)
 }
 
+/// What is left of the buffer name `path` when it is `from` or under it: "" for `from` itself, and
+/// `/rest` for a file under it.
+fn under<'a>(path: &'a str, from: &str) -> Option<&'a str> {
+    if path == from {
+        Some("")
+    } else {
+        path.strip_prefix(from).filter(|rest| rest.starts_with('/'))
+    }
+}
+
 /// Whether a file can be written to by this program.
 fn writable(path: &str) -> bool {
     let Ok(path) = std::ffi::CString::new(path) else {
@@ -245,6 +263,16 @@ fn read_file_text(absolute: &str, name: &str) -> Result<Read, Unopenable> {
             format!("{name} is a directory"),
         ));
     }
+    // A pipe, a socket or a device is not a file to read to its end: a pipe waits for whoever writes
+    // to it, with the lock of every buffer held, and `/dev/zero` has no end.
+    if !meta.is_file() {
+        return Err(unopenable(
+            name,
+            Reason::Unreadable,
+            0,
+            format!("{name} is not a regular file"),
+        ));
+    }
     let size = meta.len();
     if size > tree::TEXT_LIMIT {
         // Sizes a person reads, to a tenth of a megabyte.
@@ -260,8 +288,23 @@ fn read_file_text(absolute: &str, name: &str) -> Result<Read, Unopenable> {
             format!("{name} is {megabytes:.1} MB; textpen opens files up to {limit} MB"),
         ));
     }
-    let bytes =
-        fs::read(absolute).map_err(|why| unopenable(name, Reason::Unreadable, size, said(&why)))?;
+    // No more is read than the limit allows (and one byte more, to know a file grew past it since
+    // its size was asked).
+    let mut bytes = Vec::new();
+    fs::File::open(absolute)
+        .and_then(|file| file.take(tree::TEXT_LIMIT + 1).read_to_end(&mut bytes))
+        .map_err(|why| unopenable(name, Reason::Unreadable, size, said(&why)))?;
+    if bytes.len() as u64 > tree::TEXT_LIMIT {
+        return Err(unopenable(
+            name,
+            Reason::TooLarge,
+            bytes.len() as u64,
+            format!(
+                "{name} is larger than {} MB; textpen opens files up to that",
+                tree::TEXT_LIMIT / 1024 / 1024
+            ),
+        ));
+    }
     if tree::is_binary(&bytes) {
         return Err(unopenable(
             name,
@@ -377,9 +420,11 @@ impl Buffers {
     }
 
     fn write_draft(&self, buffer: &Buffer) {
-        let _ = fs::create_dir_all(&self.drafts);
         let draft = json!({ "path": buffer.absolute, "text": buffer.text, "at": now_ms() });
-        let _ = fs::write(self.draft_file(&buffer.absolute), draft.to_string());
+        let _ = write_private(
+            &self.draft_file(&buffer.absolute),
+            draft.to_string().as_bytes(),
+        );
     }
 
     /// A draft of `absolute` is due: written if its buffer has changes, removed if it has none.
@@ -503,7 +548,9 @@ impl Buffers {
     /// overwritten unless `force`: the answer says so, and the page asks.
     pub fn save(&mut self, path: &str, version: i64, force: bool) -> Result<Saved, Error> {
         let buffer = self.at(path, version)?;
-        if !force && !buffer.missing {
+        if !force {
+            // A file that was not there when it was opened (`mtime` none) is in conflict if it is
+            // now: whoever made it has not been asked, whether or not the program has looked yet.
             let now = tree::modified(&buffer.absolute);
             if now.is_some() && now != buffer.mtime {
                 buffer.conflict = true;
@@ -531,6 +578,8 @@ impl Buffers {
         buffer.missing = false;
         buffer.conflict = false;
         buffer.readonly = false;
+        // The draft an earlier run left is gone with the one this run wrote: none is offered now.
+        buffer.draft = None;
         let (absolute, info) = (buffer.absolute.clone(), buffer.info());
         self.later.cancel(&absolute);
         self.remove_draft(&absolute);
@@ -613,19 +662,35 @@ impl Buffers {
         Ok(())
     }
 
+    /// The name of a buffer with changes not saved that moving `from` to `to` would leave without its
+    /// file: it is of a name a moved buffer would have, a file that is not on disk (or the move would
+    /// not be allowed), and `moved` drops it. Asked before the move, so that nothing is lost.
+    pub fn unsaved_in_the_way(&self, from: &str, to: &str) -> Option<String> {
+        let arrivals: Vec<String> = self
+            .list
+            .iter()
+            .filter_map(|buffer| under(&buffer.path, from))
+            .map(|rest| {
+                self.project
+                    .name(&self.project.absolute(&format!("{to}{rest}")))
+            })
+            .collect();
+        self.list
+            .iter()
+            .find(|buffer| {
+                under(&buffer.path, from).is_none()
+                    && buffer.is_dirty()
+                    && arrivals.contains(&buffer.path)
+            })
+            .map(|buffer| buffer.path.clone())
+    }
+
     /// After a rename on disk: the buffers of the file, or of the files under the directory, follow.
     pub fn moved(&mut self, from: &str, to: &str) {
         // The names the moved buffers have now, and whether each buffer is one of them.
         let (mut taken, mut moved, mut drafts) = (Vec::new(), Vec::new(), Vec::new());
         for buffer in &mut self.list {
-            let rest = if buffer.path == from {
-                Some("")
-            } else {
-                buffer
-                    .path
-                    .strip_prefix(from)
-                    .filter(|rest| rest.starts_with('/'))
-            };
+            let rest = under(&buffer.path, from);
             moved.push(rest.is_some());
             if let Some(rest) = rest {
                 let was = std::mem::replace(
@@ -843,5 +908,143 @@ mod tests {
         buffers.moved("y.txt", "z.txt");
         let paths: Vec<String> = buffers.all().into_iter().map(|info| info.path).collect();
         assert_eq!(paths, ["e/f/x.txt", "z.txt"]);
+    }
+
+    #[test]
+    fn a_file_that_appeared_since_a_missing_one_was_opened_is_not_overwritten() {
+        let (dir, buffers) = project();
+        let mut buffers = buffers.lock().unwrap();
+        assert!(buffers.open("new.txt").is_opened_missing());
+        buffers
+            .edit("new.txt", 1, &[(0, 0, "mine".to_owned())])
+            .unwrap();
+        // Another program makes the file before the program has looked at the disk again.
+        fs::write(dir.path().join("new.txt"), "theirs").unwrap();
+        let saved = buffers.save("new.txt", 2, false).unwrap();
+        assert!(!saved.saved && saved.info.conflict);
+        assert_eq!(
+            fs::read_to_string(dir.path().join("new.txt")).unwrap(),
+            "theirs"
+        );
+        // Told to, it is overwritten; and a file that is still not there is made as before.
+        assert!(buffers.save("new.txt", 2, true).unwrap().saved);
+        assert!(buffers.open("other.txt").is_opened_missing());
+        assert!(buffers.save("other.txt", 1, false).unwrap().saved);
+    }
+
+    #[test]
+    fn a_save_leaves_no_draft_of_an_earlier_run_to_be_offered() {
+        let (dir, shared_buffers) = project();
+        fs::write(dir.path().join("a.txt"), "world").unwrap();
+        {
+            let mut buffers = shared_buffers.lock().unwrap();
+            buffers.open("a.txt");
+            buffers.edit("a.txt", 1, &[(5, 5, "!".to_owned())]).unwrap();
+            buffers.flush_drafts();
+        }
+        let root = dir.path().to_str().unwrap();
+        let again = shared(Arc::new(Tree::new(root)), &format!("{root}/state"));
+        let mut again = again.lock().unwrap();
+        let Opening::Opened(opened) = again.open("a.txt") else {
+            panic!("not opened");
+        };
+        assert!(opened.info.draft.is_some());
+        let edited = again
+            .edit("a.txt", 1, &[(0, 0, "new ".to_owned())])
+            .unwrap();
+        let saved = again
+            .save("a.txt", edited.version.try_into().unwrap(), false)
+            .unwrap();
+        assert!(
+            saved.saved && saved.info.draft.is_none(),
+            "{:?}",
+            saved.info.draft
+        );
+        // Taking a draft that is gone does not put its text over what was saved.
+        assert_eq!(again.draft("a.txt", true).unwrap().text, "new world");
+    }
+
+    #[test]
+    fn a_pipe_is_not_opened_as_a_file_to_be_read_to_its_end() {
+        let (dir, buffers) = project();
+        let pipe = dir.path().join("pipe");
+        let c_path = std::ffi::CString::new(pipe.to_str().unwrap()).unwrap();
+        // SAFETY: a C string of ours, which outlives the call.
+        assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+        // Whoever writes to it, as a pipe in a project may have someone to.
+        let writer = {
+            let pipe = pipe.clone();
+            std::thread::spawn(move || fs::write(pipe, "text"))
+        };
+        let opening = buffers.lock().unwrap().open("pipe");
+        let Opening::Unopenable(unopenable) = opening else {
+            panic!("a pipe was opened");
+        };
+        assert_eq!(unopenable.reason, Reason::Unreadable);
+        // Let the writer go.
+        let _ = fs::read(&pipe);
+        writer.join().unwrap().unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_draft_is_for_its_owner_alone_and_is_written_whole() {
+        use std::os::unix::fs::PermissionsExt;
+        let (dir, shared_buffers) = project();
+        fs::write(dir.path().join("secret.txt"), "key").unwrap();
+        let mut buffers = shared_buffers.lock().unwrap();
+        buffers.open("secret.txt");
+        buffers
+            .edit("secret.txt", 1, &[(3, 3, "!".to_owned())])
+            .unwrap();
+        buffers.flush_drafts();
+        let drafts = dir.path().join("state/drafts");
+        let mode =
+            |path: &std::path::Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&drafts), 0o700);
+        let files: Vec<_> = fs::read_dir(&drafts).unwrap().flatten().collect();
+        assert_eq!(
+            files.len(),
+            1,
+            "no half-written file is left beside the draft"
+        );
+        assert_eq!(mode(&files[0].path()), 0o600);
+        assert!(buffers.read_draft(&buffers.list[0].absolute).is_some());
+    }
+
+    #[test]
+    fn a_move_onto_a_buffer_with_changes_not_saved_is_seen_before_it_is_made() {
+        let (dir, buffers) = project();
+        fs::write(dir.path().join("a.txt"), "a").unwrap();
+        fs::create_dir(dir.path().join("d")).unwrap();
+        fs::write(dir.path().join("d/x.txt"), "x").unwrap();
+        let mut buffers = buffers.lock().unwrap();
+        buffers.open("a.txt");
+        buffers.open("d/x.txt");
+        // A file typed in a buffer and not saved yet is not on disk, so a move may be made to it.
+        buffers.open("b.txt");
+        assert_eq!(
+            buffers.unsaved_in_the_way("a.txt", "b.txt"),
+            None,
+            "no changes yet"
+        );
+        buffers
+            .edit("b.txt", 1, &[(0, 0, "mine".to_owned())])
+            .unwrap();
+        assert_eq!(
+            buffers.unsaved_in_the_way("a.txt", "b.txt"),
+            Some("b.txt".to_owned())
+        );
+        assert_eq!(buffers.unsaved_in_the_way("d", "e"), None);
+        buffers.open("e/x.txt");
+        buffers
+            .edit("e/x.txt", 1, &[(0, 0, "mine".to_owned())])
+            .unwrap();
+        assert_eq!(
+            buffers.unsaved_in_the_way("d", "e"),
+            Some("e/x.txt".to_owned())
+        );
+        // A buffer that moves with the others is not in their way.
+        assert_eq!(buffers.unsaved_in_the_way("e", "d"), None);
     }
 }
