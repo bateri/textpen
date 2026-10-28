@@ -17,6 +17,7 @@ local area = require("./parts/area")
 local status = require("./parts/status")
 local dialogs = require("./parts/dialogs")
 local sidebar = require("./parts/sidebar")
+local palette = require("./parts/palette")
 
 local b, ui, S, SIZE, act = kit.b, kit.ui, kit.S, kit.SIZE, kit.act
 local layout = b.layout
@@ -98,6 +99,8 @@ local function render(size, now)
 	if overlay then
 		if overlay.kind == "dialog" then
 			root:child(dialogs.view(size))
+		elseif overlay.kind == "palette" then
+			root:child(palette.view(size))
 		elseif act.overlay_view then
 			root:child(act.overlay_view(overlay, size))
 		end
@@ -131,7 +134,11 @@ local function click(id, event)
 		dialogs.press(id)
 		return
 	end
-	if S.overlay and act.overlay_press and act.overlay_press(id, event) then
+	if S.overlay and S.overlay.kind == "palette" then
+		if palette.press(id) then
+			return
+		end
+	elseif S.overlay and act.overlay_press and act.overlay_press(id, event) then
 		return
 	end
 	if dialogs.dismiss(id) then
@@ -190,6 +197,9 @@ local function moved(event)
 	end
 	local changed = ui:point(layout, { x = event.x, y = event.y })
 	local over = ui.hover
+	if S.overlay and S.overlay.kind == "palette" and palette.hover(over) then
+		changed = true
+	end
 	local cursor = "arrow"
 	if event.place then
 		cursor = "text"
@@ -208,6 +218,9 @@ local function key(event)
 	local overlay = S.overlay
 	if overlay and overlay.kind == "dialog" then
 		return dialogs.key(name, mods)
+	end
+	if overlay and overlay.kind == "palette" then
+		return palette.key(name, mods)
 	end
 	if overlay and act.overlay_key then
 		return act.overlay_key(name, mods)
@@ -241,12 +254,19 @@ local function handle(event)
 	elseif kind == "key" then
 		reply = key(event)
 	elseif kind == "command" then
-		if not (act.overlay_command and act.overlay_command(event.id)) then
+		local overlay = S.overlay
+		local taken = false
+		if overlay and overlay.kind == "palette" then
+			taken = palette.command(event.id)
+		elseif overlay and act.overlay_command then
+			taken = act.overlay_command(event.id)
+		end
+		if not taken then
 			commands.run(event.id)
 		end
 		reply = true
 	elseif kind == "text" then
-		if not dialogs.text(event.field, event.text) and act.text then
+		if not dialogs.text(event.field, event.text) and not palette.text(event.field, event.text) and act.text then
 			act.text(event.field, event.text)
 		end
 		reply = true
