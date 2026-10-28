@@ -253,9 +253,13 @@ local function handle(event)
 	elseif kind == "command" then
 		local overlay = S.overlay
 		local taken = false
-		if overlay and overlay.kind == "palette" then
+		if overlay and overlay.kind == "dialog" then
+			-- Asked for over a dialog: the dialog goes unanswered (its `done` told nil), then the
+			-- command runs.
+			dialogs.cancel()
+		elseif overlay and overlay.kind == "palette" then
 			taken = palette.command(event.id)
-		elseif overlay and act.overlay_command then
+		elseif overlay then
 			taken = act.overlay_command(event.id)
 		end
 		if not taken then

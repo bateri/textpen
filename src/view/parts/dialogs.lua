@@ -32,14 +32,14 @@ function act.ask(spec, done)
 			letters[letter] = action.id
 		end
 	end
-	S.overlay = {
+	act.set_overlay({
 		kind = "dialog",
 		spec = spec,
 		value = spec.input and spec.input.value or "",
 		chosen = primary,
 		letters = letters,
 		done = done,
-	}
+	})
 	if spec.input then
 		S.field = FIELD
 		kit.gather({ redraw = true, fill = { [FIELD] = spec.input.value or "" }, keyboard = { field = FIELD } })
@@ -49,6 +49,29 @@ function act.ask(spec, done)
 	end
 end
 
+-- A dialog is answered once, whichever way it goes: by one of its buttons, by Esc or a click beside
+-- it (nil), or by what takes its place over the page (nil): `done` is told exactly once.
+local function resolve(overlay, action)
+	if overlay.resolved then
+		return
+	end
+	overlay.resolved = true
+	if overlay.done then
+		overlay.done(action, overlay.value)
+	end
+end
+
+-- What is over the page goes, or another takes its place: every way of putting something over the
+-- page (or nothing) is this, so that a dialog it takes the place of is answered (nil) and not lost.
+function act.set_overlay(overlay)
+	local before = S.overlay
+	S.overlay = overlay
+	if before and before ~= overlay and before.kind == "dialog" then
+		resolve(before, nil)
+	end
+	kit.gather(true)
+end
+
 local function answer(action)
 	local overlay = S.overlay
 	if not (overlay and overlay.kind == "dialog") then
@@ -56,10 +79,13 @@ local function answer(action)
 	end
 	S.overlay = nil
 	act.regain()
-	if overlay.done then
-		overlay.done(action, overlay.value)
-	end
+	resolve(overlay, action)
 	kit.gather(true)
+end
+
+-- The dialog goes unanswered (a command was asked for over it): its `done` is told nil.
+function dialogs.cancel()
+	answer(nil)
 end
 
 function dialogs.view(size)
@@ -85,6 +111,7 @@ function dialogs.view(size)
 		box:child(
 			b.div()
 				:text_field(FIELD)
+				:label(spec.title)
 				:h(30)
 				:px(8)
 				:rounded(6)

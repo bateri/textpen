@@ -145,7 +145,7 @@ local function field(id, hint, width, toggles)
 		:grow(1)
 		:min_w(math.min(width, 120))
 		:max_w(width)
-		:child(b.div():text_field(id):grow(1):h_full():child(b.text(hint)))
+		:child(b.div():text_field(id):label(hint):grow(1):h_full():child(b.text(hint)))
 	if toggles then
 		box:child(toggle("find-case", F.case, "Match case", "cmd+alt+c"))
 		box:child(toggle("find-word", F.word, "Whole words", "cmd+alt+w"))

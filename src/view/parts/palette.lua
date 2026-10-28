@@ -431,14 +431,14 @@ function act.open_palette(mode, query)
 	if mode == "line" and doc then
 		origin = { doc = doc, y = layout.scroll_offset(doc.id) }
 	end
-	S.overlay = {
+	act.set_overlay({
 		kind = "palette",
 		mode = mode,
 		query = query or "",
 		chosen = mode == "tabs" and 2 or 1,
 		items = {},
 		origin = origin,
-	}
+	})
 	if mode == "files" then
 		act.file_index()
 	end
@@ -449,7 +449,7 @@ function act.open_palette(mode, query)
 end
 
 local function close()
-	S.overlay = nil
+	act.set_overlay(nil)
 	act.regain()
 	kit.gather(true)
 end
@@ -558,7 +558,7 @@ function palette.view(size)
 		:child(b.div():row():items_center():gap(6):h(26):px(8):rounded(6):bg(b.alpha("accent", 0.14)):no_shrink()
 			:child(kit.icon(mode.icon, 14, "accent"))
 			:child(b.text(mode.label):weight(650):color("accent")))
-		:child(b.div():text_field(FIELD):grow(1):h(30):child(b.text(mode.hint)))
+		:child(b.div():text_field(FIELD):label(mode.label):grow(1):h(30):child(b.text(mode.hint)))
 	local list = b.div():id(LIST):col():p(4):max_h(math.min(SHOWN * ROW + 8, math.max(size.h * 0.5, ROW * 3))):scroll()
 	if #overlay.items == 0 then
 		local words = "Nothing matches"

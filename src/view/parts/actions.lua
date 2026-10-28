@@ -675,7 +675,7 @@ function act.end_view(discard)
 	end
 	act.keep_ui(function()
 		S.handing_off = "quit"
-		S.overlay = nil
+		act.set_overlay(nil)
 		if not discard then
 			quit()
 			return
@@ -754,7 +754,7 @@ function act.shell()
 						kit.toast(err.message, "bad")
 					elseif answer.state == "scheduled" then
 						S.handing_off = "shell"
-						S.overlay = nil
+						act.set_overlay(nil)
 					elseif answer.state == "busy" then
 						kit.toast("The pane is already being handed over.", "warn")
 					else
