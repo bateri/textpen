@@ -806,6 +806,30 @@ mod tests {
         );
     }
 
+    /// A rename moves the draft that is due and the one on disk to the new name; a close that drops
+    /// the changes right after drops them under it, and no draft is written later under either.
+    #[test]
+    fn a_renamed_buffer_closed_with_its_changes_dropped_leaves_no_draft_under_either_name() {
+        let (dir, shared_buffers) = project();
+        fs::write(dir.path().join("a.txt"), "world").unwrap();
+        {
+            let mut buffers = shared_buffers.lock().unwrap();
+            buffers.open("a.txt");
+            buffers.edit("a.txt", 1, &[(5, 5, "!".to_owned())]).unwrap();
+            // A draft of the old name on disk, and another one due.
+            buffers.flush_drafts();
+            buffers.edit("a.txt", 2, &[(6, 6, "?".to_owned())]).unwrap();
+            fs::rename(dir.path().join("a.txt"), dir.path().join("b.txt")).unwrap();
+            buffers.moved("a.txt", "b.txt");
+            buffers.close("b.txt", true).unwrap();
+        }
+        std::thread::sleep(DRAFT_DELAY + Duration::from_millis(500));
+        let left: Vec<_> = fs::read_dir(dir.path().join("state/drafts"))
+            .map(|drafts| drafts.flatten().map(|draft| draft.file_name()).collect())
+            .unwrap_or_default();
+        assert!(left.is_empty(), "drafts left: {left:?}");
+    }
+
     #[test]
     fn a_buffer_follows_its_file_and_the_files_under_a_directory() {
         let (dir, buffers) = project();
