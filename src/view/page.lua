@@ -20,6 +20,7 @@ local sidebar = require("./parts/sidebar")
 local palette = require("./parts/palette")
 local find = require("./parts/find")
 local search = require("./parts/search")
+local preview = require("./parts/preview")
 
 local b, ui, S, SIZE, act = kit.b, kit.ui, kit.S, kit.SIZE, kit.act
 local layout = b.layout
@@ -146,7 +147,7 @@ local function click(id, event)
 	if dialogs.dismiss(id) then
 		return
 	end
-	if tabs.press(id, event) or status.press(id) or area.press(id) or find.press(id) or search.press(id, event)
+	if tabs.press(id, event) or status.press(id) or area.press(id) or find.press(id) or search.press(id, event) or preview.press(id)
 		or sidebar.press(id, event) then
 		return
 	end
@@ -243,6 +244,7 @@ local function handle(event)
 	if event.editor ~= nil then
 		docs.handle(event)
 		find.editor_event(event)
+		preview.follow(event)
 		reply = kind ~= "viewport" or nil
 	elseif kind == "move" then
 		reply = moved(event)

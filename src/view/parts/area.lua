@@ -23,7 +23,7 @@ function area.options(tab, doc)
 	return {
 		wrap = settings.wrap,
 		tab_width = math.clamp(settings.tabSize, 1, 16),
-		hard_tabs = not settings.insertSpaces,
+		hard_tabs = lang.tabs == true or not settings.insertSpaces,
 		numbers = numbers,
 		read_only = (tab.info and tab.info.readonly) or false,
 		whitespace = settings.whitespace,

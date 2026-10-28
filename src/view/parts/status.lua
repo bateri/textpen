@@ -132,7 +132,8 @@ function status.view()
 		row:child(place)
 		if S.layout ~= "narrow" then
 			local settings = S.settings
-			row:child(item("status-indent", (settings.insertSpaces and "Spaces: " or "Tab: ") .. settings.tabSize, "Indentation"))
+			local spaces = settings.insertSpaces and not doc.lang.tabs
+			row:child(item("status-indent", (spaces and "Spaces: " or "Tab: ") .. settings.tabSize, "Indentation"))
 			row:child(item(nil, info.bom and "UTF-8 BOM" or "UTF-8"))
 			row:child(item("status-eol", string.upper(info.eol), "Line endings: click to change"))
 		end
