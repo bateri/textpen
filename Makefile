@@ -1,21 +1,26 @@
 # textpen is one native file: the program (src/program/, Rust, on the pencere crate) with the page
-# (src/view/) and the pictures (src/assets/) carried in it by build.rs. The gate and the steps of a
-# release are here; RELEASING.md says in what order and why.
-.PHONY: setup view check-page fmt lint test build check dist sums release-prepare release publish
+# (src/view/, a page of pencere's kit) and the pictures (src/assets/) carried in it by build.rs. The
+# gate, `make dev` and the steps of a release are here; RELEASING.md says in what order and why.
+# Nothing here needs Node but the release steps, which run tools/release.mjs.
+.PHONY: fmt lint test check build pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
 
-setup:
-	npm ci
+# pencere is pinned in one place, Cargo.lock (Cargo.toml names the commit): the crate the program is
+# built on is of it, and so are the `pencere` command `make dev` runs textpen under and the stand-in
+# terminal the program's tests run it in, which are built from it in .cache/pencere. To work against
+# a checkout you are changing, say so; one that is not at Cargo.lock's ref is said to be so, and used:
+#
+#   make dev PENCERE_SRC=../pencere
+PENCERE_REF = $(shell sed -n 's|^source = "git+https://github.com/bateri/pencere?rev=[0-9a-f]*\#\([0-9a-f]\{40\}\)"$$|\1|p' Cargo.lock | head -n 1)
+PENCERE_CACHE = .cache/pencere
+PENCERE_SRC ?= $(PENCERE_CACHE)
+PENCERE ?= $(PENCERE_SRC)/target/release/pencere
+PENCERE_GIT = https://github.com/bateri/pencere
 
-# view builds the web editor of the earlier textpen into dist/view; the program does not carry it.
-view:
-	npm run build
-
-# check-page is the part of the gate that needs neither Rust nor a pencere checkout: the types,
-# formatting and tests of the page's side that are still in TypeScript. CI runs this.
-check-page:
-	npm run typecheck
-	npx prettier --check .
-	npm test
+# The stand-in terminal the program's tests run textpen in (FAKE_HOST): by default the one built in
+# the pencere checkout beside this one. `make fake-host` builds one at Cargo.lock's pencere instead:
+#
+#   make fake-host && make check FAKE_HOST=.cache/pencere/target/debug/pencere-fake-host
+FAKE_HOST ?= ../pencere/target/debug/pencere-fake-host
 
 fmt:
 	cargo fmt
@@ -24,26 +29,63 @@ lint:
 	cargo fmt -- --check
 	cargo clippy --locked --all-targets -- -D warnings
 
-# test runs the program's tests: its own, and the ones that run it in a pane under pencere's
-# stand-in terminal, which is built in a pencere checkout (cargo build -p pencere-fake-host). Nothing
-# in them is skipped; a stand-in that is not there stops the run.
-FAKE_HOST ?= ../pencere/target/debug/pencere-fake-host
-
+# The program's tests: its own, and the ones that run it in a pane under the stand-in terminal. Nothing
+# in them is skipped; a stand-in that is not there stops the run and says which.
 test:
 	FAKE_HOST="$(FAKE_HOST)" cargo test --locked
+
+# check is the gate: formatting, lints, the program's tests.
+#
+# test-page: the page's tests join the gate here (plan Phase 5), as cargo tests that run src/view/ on
+# pencere's headless page host. They are not written yet, and nothing stands in for them.
+check: lint test
 
 # build makes target/release/textpen, the program for this machine, with the page in it.
 build:
 	cargo build --locked --release
 
-# check is the gate: the page's checks, then the program's lints and tests.
-check: check-page lint test
+# pencere-src makes PENCERE_SRC ready: fetched at Cargo.lock's ref when it is the cache (one checkout,
+# moved to another ref when Cargo.lock moves, so that cargo builds again only what changed).
+pencere-src:
+	@command -v cargo >/dev/null || { echo "pencere: cargo is not installed: pencere is built from its source (https://rustup.rs)"; exit 1; }
+	@ref="$(PENCERE_REF)"; test -n "$$ref" || { echo "pencere: Cargo.lock takes no pencere from $(PENCERE_GIT) at a commit"; exit 1; }; \
+	if [ "$(PENCERE_SRC)" = "$(PENCERE_CACHE)" ]; then \
+		if [ "$$(cat $(PENCERE_CACHE).ref 2>/dev/null)" != "$$ref" ]; then \
+			echo "pencere: fetching $(PENCERE_GIT) at $$ref into $(PENCERE_CACHE)"; \
+			{ test -d "$(PENCERE_CACHE)/.git" || git init -q "$(PENCERE_CACHE)"; } && \
+			git -C "$(PENCERE_CACHE)" fetch -q --depth 1 "$(PENCERE_GIT)" "$$ref" && \
+			git -C "$(PENCERE_CACHE)" checkout -q --detach --force FETCH_HEAD && \
+			echo "$$ref" > "$(PENCERE_CACHE).ref" || exit 1; \
+		fi; \
+	else \
+		head=$$(git -C "$(PENCERE_SRC)" rev-parse HEAD 2>/dev/null); \
+		[ "$$head" = "$$ref" ] || \
+			echo "pencere: $(PENCERE_SRC) is at $${head:-no commit}, not at $$ref (Cargo.lock) that textpen is built with"; \
+	fi
+
+# pencere builds the `pencere` command in PENCERE_SRC.
+pencere: pencere-src
+	cd "$(PENCERE_SRC)" && cargo build --release -p pencere-cli
+
+# fake-host builds the stand-in terminal in PENCERE_SRC.
+fake-host: pencere-src
+	cd "$(PENCERE_SRC)" && cargo build -p pencere-fake-host
+
+# pencere-ref says which pencere Cargo.lock takes.
+pencere-ref:
+	@echo "$(PENCERE_REF)"
+
+# dev runs textpen from its files in this pane, in a terminal that hosts pencere (bateri): the page
+# is shown again when a file of src/view/ or src/assets/ changes, and the program built and run again
+# when one of it does. It opens on this directory as its project.
+dev: pencere
+	"$(PENCERE)" dev
 
 # dist makes the program for one target (TARGET, a Rust target triple) into dist/release, as
 # textpen-<version>-<target>: Apple silicon Macs and both Linux architectures, the Linux ones linked
 # statically with musl (bateri, the terminal that shows the editor, runs on Apple silicon only).
-# Each is built on a machine of its own target; `make sums` then names the three where they are
-# together.
+# Each is built on a machine of its own target, with that target added to the toolchain; `make sums`
+# then names the three where they are together.
 TARGETS = aarch64-apple-darwin aarch64-unknown-linux-musl x86_64-unknown-linux-musl
 PACKAGE_VERSION = $(shell sed -n 's/^version = "\(.*\)"$$/\1/p' Cargo.toml | head -n 1)
 
@@ -53,7 +95,7 @@ dist:
 	mkdir -p dist/release
 	cp target/$(TARGET)/release/textpen dist/release/textpen-$(PACKAGE_VERSION)-$(TARGET)
 
-# sums writes the SHA256SUMS of the files of dist/release.
+# sums writes the SHA256SUMS of the three files of dist/release.
 sums:
 	cd dist/release && { sha256sum textpen-* 2>/dev/null || shasum -a 256 textpen-*; } > SHA256SUMS
 	@cat dist/release/SHA256SUMS
@@ -64,7 +106,7 @@ release-prepare:
 	node tools/release.mjs prepare $(VERSION)
 
 # release runs the gate and the release checks (dist/release holds the three files of this
-# version, made after the release commit), then tags. Nothing is pushed.
+# version and their SHA256SUMS, made after the release commit), then tags. Nothing is pushed.
 release: check
 	node tools/release.mjs tag
 

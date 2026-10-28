@@ -1,8 +1,11 @@
-# The gate on every push to main and every pull request, as far as CI can run it: the editor's
-# types, formatting, build and tests. The program is one file made by pencere's Lua runner, and
-# until pencere has a release CI has no runner to make it with, so the end-to-end tests of the
-# program do not run here. The job says so in its annotations and its summary, and `make check`
-# on a machine with a pencere checkout is the whole gate (README.md, Work on it).
+# The gate on every push to main and every pull request: `make check` (rustfmt and clippy, and the
+# program's tests: its own, and the ones that run it in a pane under pencere's stand-in terminal), on
+# Linux and macOS. The page's tests join it when they are written (plan Phase 5).
+#
+# pencere, which textpen is built and tested with, is the one Cargo.lock takes: the program is built
+# on that crate, and the stand-in terminal the tests run it in is built from the same commit
+# (`make fake-host`, into .cache/pencere). Nothing else says which pencere. Moving it is a change of
+# Cargo.toml and Cargo.lock, and of nothing here.
 name: check
 
 on:
@@ -14,26 +17,35 @@ permissions:
   contents: read
 
 jobs:
-  page:
-    runs-on: ubuntu-latest
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      # The toolchain the crate's rust-version names, so a new lint of a later release does not turn
+      # the gate red on code nobody touched.
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
         with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: make check-page
-      - run: make view
-      # Not a pass: the step that would build dist/textpen and run test/e2e.test.ts and
-      # test/calls.test.ts is not here, and this says so where a person reads a run. It becomes
-      # `make check` when `pencere build --target` can fetch a runner from a pencere release.
-      - name: Binary end-to-end tests (not run)
+          toolchain: 1.88.0
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          shared-key: gate
+          workspaces: |
+            . -> target
+            .cache/pencere -> target
+      - name: The stand-in terminal, of the pencere Cargo.lock takes
+        run: make fake-host
+      - run: make check FAKE_HOST=.cache/pencere/target/debug/pencere-fake-host
+      - name: Say what the gate was held to
         run: |
-          message="The program (dist/textpen) was not built and its end-to-end tests did not run: pencere has no release yet, so CI cannot fetch the runner. Run make check with a pencere checkout beside this one."
-          echo "::warning title=Binary end-to-end tests did not run::$message"
           {
-            echo "### Binary end-to-end tests: not run"
+            echo "### What this run was held to"
             echo
-            echo "$message"
+            echo "pencere at \`$(make -s pencere-ref)\` (\`Cargo.lock\`): the crate the program is built on, and the stand-in terminal its tests ran it in."
+            echo
+            echo "Not run: the page's tests, which are not written yet (plan Phase 5)."
           } >> "$GITHUB_STEP_SUMMARY"

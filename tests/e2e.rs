@@ -132,9 +132,10 @@ fn the_pane_is_not_handed_to_a_shell_until_pencere_can_take_the_view_back() {
     assert!(!log.contains("program: dismiss"), "{log}");
 }
 
-// The view is closed by the person: the stand-in of this pencere passes a page of the kit's own
-// `close` to the program as a message, so `--then page-close` does not close it; the program's way
-// out is the same for both.
+// The view is closed by the person (`--then close`): the stand-in of this pencere passes a page of
+// the kit's own `close` to the program as a message (host/fake/src/host.rs, `react`), so `--then
+// page-close` does not close it. That is pencere's to mend (handed to its set 009); the program's
+// way out is the same for both.
 #[test]
 fn closing_the_view_ends_textpen_with_success() {
     let pane = pane();
