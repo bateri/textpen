@@ -1,0 +1,285 @@
+-- The page of textpen: an editor of a project's files, drawn by the terminal in its own font and
+-- theme.
+--
+-- Each open file is an editor of the terminal's (`pencere.editor`), coloured by a language of the
+-- kit's (`pencere.Syntax`); around them the tabs, the project's tree and its search, a palette for
+-- going anywhere, and the status line. The program reads and writes the files, keeps git and the
+-- search, and remembers where the person was; the page talks to it only by the calls of
+-- docs/calls.md.
+
+local kit = require("./lib/kit")
+local text = require("./lib/text")
+local docs = require("./parts/docs")
+local actions = require("./parts/actions")
+local commands = require("./parts/commands")
+local tabs = require("./parts/tabs")
+local area = require("./parts/area")
+local status = require("./parts/status")
+local dialogs = require("./parts/dialogs")
+
+local b, ui, S, SIZE, act = kit.b, kit.ui, kit.S, kit.SIZE, kit.act
+local layout = b.layout
+
+local _ = actions
+
+-- --- The page -----------------------------------------------------------------------------------------
+
+local function layout_of(width)
+	if width < SIZE.narrow then
+		return "narrow"
+	elseif width < SIZE.medium then
+		return "medium"
+	end
+	return "wide"
+end
+
+-- Whether the sidebar is beside the editor (a wide enough page, and shown).
+function act.sidebar_docked()
+	return S.layout ~= "narrow" and S.settings ~= nil and S.settings.sidebar == true and act.sidebar_view ~= nil
+end
+
+local function booting()
+	local box = b.div():size_full():col():items_center():justify_center():gap(8):bg("background"):family("terminal")
+	if S.boot_error then
+		box:child(b.text("The program did not answer"):weight(650))
+		box:child(b.text(S.boot_error):color("dim"):wrap():max_w(520):align("center"))
+	else
+		box:child(kit.icon("loader-2", 20, "quiet"))
+	end
+	return box
+end
+
+local function handing_off()
+	local words = S.handing_off == "shell" and "Handing the pane to a shell…" or "Closing textpen…"
+	local box = b.div()
+		:row()
+		:items_center()
+		:gap(10)
+		:px(16)
+		:py(12)
+		:rounded(10)
+		:bg("raised2")
+		:border(1, "border")
+		:child(kit.icon("terminal-2", 20, "dim"))
+		:child(b.text(words))
+	if S.handing_off == "shell" then
+		box:child(b.text("exit or ⌃D comes back here"):color("quiet"))
+	end
+	return b.div():overlay():inset(0, 0, 0, 0):bg(b.alpha("background", 0.6)):col():items_center():justify_center():child(box)
+end
+
+local function render(size, now)
+	S.now, S.width, S.height = now, size.w, size.h
+	S.layout = layout_of(size.w)
+	S.short = size.h < SIZE.short
+	if S.layout ~= "narrow" then
+		S.drawer = false
+	end
+	local toast_wake = dialogs.expire(now)
+	if not S.boot then
+		return booting(), false, nil
+	end
+	local docked = act.sidebar_docked()
+	local main = b.div():col():grow(1):min_w(0):min_h(0):child(tabs.view(docked)):child(area.view(size))
+	local body = b.div():row():grow(1):min_h(0)
+	if docked then
+		body:child(act.sidebar_view(math.clamp(S.settings.sidebarWidth, 160, math.max(size.w - 280, 160))))
+		body:child(act.resizer_view())
+	end
+	body:child(main)
+	local root = b.div():size_full():col():bg("background"):color("foreground"):family("terminal")
+	commands.on(root)
+	root:child(body):child(status.view())
+	if S.layout == "narrow" and S.drawer and act.drawer_view then
+		root:child(act.drawer_view(size))
+	end
+	local overlay = S.overlay
+	if overlay then
+		if overlay.kind == "dialog" then
+			root:child(dialogs.view(size))
+		elseif act.overlay_view then
+			root:child(act.overlay_view(overlay, size))
+		end
+	end
+	if #S.toasts > 0 then
+		root:child(dialogs.toasts(SIZE.status))
+	end
+	if S.handing_off then
+		root:child(handing_off())
+	end
+	local wake = toast_wake
+	local saved = status.wake(now)
+	if saved then
+		wake = wake and math.min(wake, saved) or saved
+	end
+	return root, false, wake
+end
+
+local function settle()
+	local changed = docs.settle()
+	tabs.reveal()
+	return changed
+end
+
+-- --- What the person does -------------------------------------------------------------------------------
+
+-- A click (a press and a release on the same element, not dragged), by the element's name.
+local function click(id, event)
+	if S.overlay and S.overlay.kind == "dialog" then
+		dialogs.press(id)
+		return
+	end
+	if S.overlay and act.overlay_press and act.overlay_press(id, event) then
+		return
+	end
+	if dialogs.dismiss(id) then
+		return
+	end
+	if tabs.press(id, event) or status.press(id) or area.press(id) then
+		return
+	end
+	if act.press then
+		act.press(id, event)
+	end
+end
+
+local press_event = nil
+
+local function pressed(event)
+	local at = { x = event.x, y = event.y }
+	local hit = ui:press(layout, at)
+	press_event = event
+	if hit and (event.button == "right" or event.button == "middle") then
+		-- The right button opens a row's menu, the middle one closes a tab: at once, no click.
+		if event.button == "middle" or not act.context_menu or not act.context_menu(hit, event) then
+			tabs.press(hit, event)
+		end
+		return true
+	end
+	if act.pressed and act.pressed(hit, event) then
+		return true
+	end
+	return true
+end
+
+local function released(event)
+	local at = { x = event.x, y = event.y }
+	if act.released and act.released(event) then
+		ui:release(layout, at)
+		return true
+	end
+	local clicked = ui:release(layout, at)
+	local dropped = ui:take_drop()
+	if dropped then
+		if tabs.drop(dropped) or (act.drop and act.drop(dropped)) then
+			return true
+		end
+		return true
+	end
+	if clicked and press_event and (press_event.button or "left") == "left" then
+		click(clicked, press_event)
+	end
+	return true
+end
+
+local function moved(event)
+	if act.dragged and act.dragged(event) then
+		return true
+	end
+	local changed = ui:point(layout, { x = event.x, y = event.y })
+	local over = ui.hover
+	local cursor = "arrow"
+	if event.place then
+		cursor = "text"
+	elseif over == "resizer" then
+		cursor = "resize_horizontal"
+	elseif ui:dragging() then
+		cursor = "grabbing"
+	elseif over then
+		cursor = "pointer"
+	end
+	return { redraw = changed, cursor = cursor }
+end
+
+local function key(event)
+	local name, mods = event.key, event.mods or {}
+	local overlay = S.overlay
+	if overlay and overlay.kind == "dialog" then
+		return dialogs.key(name, mods)
+	end
+	if overlay and act.overlay_key then
+		return act.overlay_key(name, mods)
+	end
+	if act.key and act.key(name, mods) then
+		return true
+	end
+	if name == "escape" and ui:cancel_drag() then
+		return true
+	end
+	return nil
+end
+
+local function handle(event)
+	local kind = event.type
+	local reply = nil
+	if event.editor ~= nil then
+		docs.handle(event)
+		if act.editor_event then
+			act.editor_event(event)
+		end
+		reply = kind ~= "viewport" or nil
+	elseif kind == "move" then
+		reply = moved(event)
+	elseif kind == "leave" then
+		reply = ui:point(layout, nil)
+	elseif kind == "press" then
+		reply = pressed(event)
+	elseif kind == "release" then
+		reply = released(event)
+	elseif kind == "key" then
+		reply = key(event)
+	elseif kind == "command" then
+		if not (act.overlay_command and act.overlay_command(event.id)) then
+			commands.run(event.id)
+		end
+		reply = true
+	elseif kind == "text" then
+		if not dialogs.text(event.field, event.text) and act.text then
+			act.text(event.field, event.text)
+		end
+		reply = true
+	elseif kind == "focus" then
+		local field = event.field
+		S.field = field
+		if field and docs.by_id(field) then
+			S.focus = "editor"
+		elseif field and act.focus_field then
+			act.focus_field(field)
+		end
+		reply = true
+	elseif kind == "menu" then
+		act.menu_pick(event.index)
+		reply = true
+	elseif kind == "files" then
+		for _, path in event.paths or {} do
+			act.open_file(path, { focus = true })
+		end
+		reply = true
+	elseif kind == "scrolled" then
+		reply = act.scrolled and act.scrolled(event) or nil
+	end
+	return kit.take(reply)
+end
+
+-- --- Starting -------------------------------------------------------------------------------------------
+
+kit.call("boot", {}, function(boot, err)
+	if err then
+		S.boot_error = err.message or err.code
+		return true
+	end
+	act.start(boot)
+	return true
+end)
+
+return { render = render, settle = settle, handle = handle }
