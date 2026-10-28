@@ -14,7 +14,7 @@ path = "src/program/main.rs"
 [dependencies]
 # The program's side of pencere, at the commit whose kit has the editor (crates.io's 0.3 has kit 1.0).
 # Every pencere crate here is at the same commit, written whole: Cargo.lock is where it is pinned.
-pencere = { git = "https://github.com/bateri/pencere", rev = "824f75acea0308a581b2a6c264d58db5ba9bd4c3" }
+pencere = { git = "https://github.com/bateri/pencere", rev = "777f921ae6b5f666450fc8023b53ca618ea2748c" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # The project search: patterns a person types, searched in time linear in the text (no
@@ -30,7 +30,7 @@ base64 = "0.22"
 libc = "0.2"
 
 [build-dependencies]
-pencere = { git = "https://github.com/bateri/pencere", rev = "824f75acea0308a581b2a6c264d58db5ba9bd4c3" }
+pencere = { git = "https://github.com/bateri/pencere", rev = "777f921ae6b5f666450fc8023b53ca618ea2748c" }
 
 [dev-dependencies]
 # Each test has a directory of its own as its home and its project.
@@ -39,11 +39,3 @@ tempfile = "3"
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "warn"
-
-# Only until pencere's d9b52bb (or a later commit) is pushed and the `rev`s above move to it: the
-# lending of the terminal to a shell (`ViewControl::hand_off`) and the lanes of calls are in that
-# commit of the pencere checkout beside this one, which is not pushed yet. Every pencere crate textpen
-# takes comes from that checkout, so that they stay one pencere. The gate refuses this section on
-# textpen's main (`make pin`): main is built on a pencere anyone can fetch.
-[patch."https://github.com/bateri/pencere"]
-pencere = { path = "../pencere/program" }
