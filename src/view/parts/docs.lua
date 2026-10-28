@@ -112,9 +112,16 @@ local function deliver()
 			table.remove(loads, index)
 			kit.after(0, function()
 				loading = false
-				if not load.doc.closed then
-					kit.ask(load.doc.id, { load = load.text, more = load.more })
-					load.doc.loads += 1
+				local doc = load.doc
+				if not doc.closed then
+					-- An empty text into an empty editor changes nothing, and is told of by nothing.
+					local silent = load.text == "" and (layout.editor_length(doc.id) or 0) == 0
+					kit.ask(doc.id, { load = load.text, more = load.more })
+					doc.delivered += 1
+					if not silent then
+						doc.loads += 1
+					end
+					docs.check_arrived(doc)
 				end
 				if load.sent then
 					load.sent()
@@ -143,7 +150,7 @@ end
 local function take_text(doc, opened, done, failed)
 	doc.version = opened.version
 	doc.bytes = 0
-	doc.loads, doc.loads_expected = 0, nil
+	doc.loads, doc.loads_expected, doc.delivered = 0, nil, 0
 	doc.loaded = false
 	if not opened.partial then
 		doc.loads_expected = 1
@@ -197,8 +204,11 @@ local function new_doc(path)
 		mounted = false,
 		in_tree = false,
 		loaded = false,
-		loads = 0,
+		-- The pieces of a text from the program: how many there are (once the last is read), how many
+		-- went to the editor, and how many of those it has not yet told of.
 		loads_expected = nil,
+		delivered = 0,
+		loads = 0,
 		bytes = 0,
 		-- The file's calls, one at a time.
 		lane = {},
@@ -302,6 +312,15 @@ local function arrived(doc)
 	kit.ask(doc.id, { reveal = head, version = doc.edited })
 	if center then
 		docs.center(doc, center)
+	end
+end
+
+-- Whether the program's text is all in the editor: every piece went, and the editor told of each.
+function docs.check_arrived(doc)
+	if doc.loads_expected and doc.delivered >= doc.loads_expected and doc.loads <= 0 then
+		doc.loads_expected = nil
+		doc.loads = 0
+		arrived(doc)
 	end
 end
 
@@ -605,11 +624,7 @@ local function edited(doc, event)
 	doc.edited = event.version
 	if event.origin == "load" then
 		doc.loads -= 1
-		if doc.loads_expected and doc.loads <= 0 then
-			doc.loads_expected = nil
-			doc.loads = 0
-			arrived(doc)
-		end
+		docs.check_arrived(doc)
 		return
 	end
 	local changes = event.changes or {}

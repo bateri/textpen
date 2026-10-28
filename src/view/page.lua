@@ -16,6 +16,7 @@ local tabs = require("./parts/tabs")
 local area = require("./parts/area")
 local status = require("./parts/status")
 local dialogs = require("./parts/dialogs")
+local sidebar = require("./parts/sidebar")
 
 local b, ui, S, SIZE, act = kit.b, kit.ui, kit.S, kit.SIZE, kit.act
 local layout = b.layout
@@ -118,6 +119,7 @@ end
 local function settle()
 	local changed = docs.settle()
 	tabs.reveal()
+	sidebar.settle()
 	return changed
 end
 
@@ -135,7 +137,7 @@ local function click(id, event)
 	if dialogs.dismiss(id) then
 		return
 	end
-	if tabs.press(id, event) or status.press(id) or area.press(id) then
+	if tabs.press(id, event) or status.press(id) or area.press(id) or sidebar.press(id, event) then
 		return
 	end
 	if act.press then
@@ -151,12 +153,12 @@ local function pressed(event)
 	press_event = event
 	if hit and (event.button == "right" or event.button == "middle") then
 		-- The right button opens a row's menu, the middle one closes a tab: at once, no click.
-		if event.button == "middle" or not act.context_menu or not act.context_menu(hit, event) then
+		if event.button == "middle" or not sidebar.context(hit, event) then
 			tabs.press(hit, event)
 		end
 		return true
 	end
-	if act.pressed and act.pressed(hit, event) then
+	if sidebar.pressed(hit, event) then
 		return true
 	end
 	return true
@@ -164,7 +166,7 @@ end
 
 local function released(event)
 	local at = { x = event.x, y = event.y }
-	if act.released and act.released(event) then
+	if sidebar.released(event) then
 		ui:release(layout, at)
 		return true
 	end
@@ -183,7 +185,7 @@ local function released(event)
 end
 
 local function moved(event)
-	if act.dragged and act.dragged(event) then
+	if sidebar.dragged(event) then
 		return true
 	end
 	local changed = ui:point(layout, { x = event.x, y = event.y })
@@ -210,7 +212,7 @@ local function key(event)
 	if overlay and act.overlay_key then
 		return act.overlay_key(name, mods)
 	end
-	if act.key and act.key(name, mods) then
+	if sidebar.key(name, mods) then
 		return true
 	end
 	if name == "escape" and ui:cancel_drag() then
