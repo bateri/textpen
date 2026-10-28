@@ -45,7 +45,15 @@ that day. `textpen --version` takes under 10 ms.
 
 ## Its tests
 
-`cargo test` runs the program's own tests.
+`cargo test` runs the program's own tests and the ones in `tests/`, which run the program Cargo
+built in a pane under `pencere-fake-host`, pencere's stand-in terminal, and read what the page was
+told off its record: the calls and their answers, `bad-params`, the order of a listing, an exclusive
+create, places in code points (with characters of two, three and four bytes), git and its time
+limit, a hangup, the drafts, a long text in pieces, a big directory, the limits of a search, the
+command line. The stand-in is the one `FAKE_HOST` names, or
+`../pencere/target/debug/pencere-fake-host` (`cargo build -p pencere-fake-host` in a pencere
+checkout); one that is not there, or that cannot show a whole result (`PENCERE_FAKE_GIST`), fails
+the run. Nothing is skipped.
 
 ## Details that are not what a person would guess
 
