@@ -47,5 +47,5 @@ jobs:
             echo
             echo "pencere at \`$(make -s pencere-ref)\` (\`Cargo.lock\`): the crate the program is built on, and the stand-in terminal its tests ran it in."
             echo
-            echo "Not run: the page's tests, which are not written yet (plan Phase 5)."
+            echo "Not held to: the kit's 250 ms a call of the page, which the page's tests only keep to on a machine at rest (\`make check-timing\`); they ran with 10 s."
           } >> "$GITHUB_STEP_SUMMARY"

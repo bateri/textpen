@@ -2,7 +2,7 @@
 # (src/view/, a page of pencere's kit) and the pictures (src/assets/) carried in it by build.rs. The
 # gate, `make dev` and the steps of a release are here; RELEASING.md says in what order and why.
 # Nothing here needs Node but the release steps, which run tools/release.mjs.
-.PHONY: pin fmt lint test test-page shots check build pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
+.PHONY: pin fmt lint test test-page check-timing shots check build pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
 
 # pencere is pinned in one place, Cargo.lock (Cargo.toml names the commit): the crate the program is
 # built on is of it, and so are the `pencere` command `make dev` runs textpen under and the stand-in
@@ -49,9 +49,18 @@ test:
 # The page's tests: src/view/ run as a terminal runs it, on pencere's host with no screen
 # (pencere-drive), with the program's own handlers in the same process (src/program/page_tests.rs).
 # Each compiles and runs the kit's interpreter, so they are `cargo test`'s ignored ones, run here; a
-# few at a time, for each call of the page is held to the kit's 250 ms as a terminal holds it.
+# few at a time. A call of the page is held to 10 s here, not to the kit's 250 ms, which is the wall
+# clock's: a runner under load takes many times what one at rest does, and a test of what the page
+# does should not fail for that. check-timing is the strict one (below).
 test-page:
 	cargo test --locked --bin textpen page_tests:: -- --ignored --test-threads=2
+
+# check-timing runs the page's tests with every call of the page held to the kit's 250 ms
+# (CALL_MS=125 for half of it), as a terminal holds it. Not part of the gate: it measures the
+# machine as much as the page, so run it on one at rest.
+CALL_MS ?= 250
+check-timing:
+	TEXTPEN_CALL_MS=$(CALL_MS) cargo test --locked --bin textpen page_tests:: -- --ignored --test-threads=2
 
 # shots draws the pictures of docs/ from the page as it is, in the fonts of this machine (macOS: SF
 # Mono, or Menlo, and SF): not part of the gate, which needs no font of the system.

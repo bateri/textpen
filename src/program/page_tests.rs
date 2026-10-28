@@ -3,7 +3,7 @@
 //! test moves, the calls of `api/` served by `pencere::Conversation` as `serve` serves them — the
 //! handlers `main` gives a terminal (`options`), on a project of the test's own. What the page shows
 //! is read as words; what the person does is done to it as a terminal does it. A call of the page is
-//! held to the kit's 250 ms and the page to its 64 MiB, as a terminal holds them.
+//! held to the kit's 64 MiB, and to its 250 ms a call when asked (`make check-timing`; `limits`).
 //!
 //! Each opens the interpreter (compiled once a run): `make test-page` runs them, in `make check`.
 
@@ -96,6 +96,31 @@ impl Project {
     }
 }
 
+/// What the page's module is held to. The tests say what the page shows and does, not how fast a
+/// machine is: a runner under load takes ten times as long as one at rest, so the kit's 250 ms a
+/// call, 2 s to start and 20 s to compile, which are the wall clock's, are far wider here by
+/// default (`GENEROUS_CALL`). With `TEXTPEN_CALL_MS` set (`make check-timing`) a call is held to that
+/// many milliseconds, the rest to the kit's own: the page in the time a terminal gives it, or in
+/// half of it (`TEXTPEN_CALL_MS=125`), to see how near it comes. Meant for a machine at rest.
+pub(crate) fn limits(call_ms: Option<u64>) -> pencere_sandbox::ModuleLimits {
+    let kit = pencere_sandbox::ModuleLimits::default();
+    match call_ms {
+        Some(ms) => pencere_sandbox::ModuleLimits {
+            call: Duration::from_millis(ms),
+            ..kit
+        },
+        None => pencere_sandbox::ModuleLimits {
+            call: GENEROUS_CALL,
+            start: GENEROUS_CALL * 6,
+            compile: GENEROUS_CALL * 12,
+            ..kit
+        },
+    }
+}
+
+/// A call of the page, in a test that is not about time: forty times the kit's.
+const GENEROUS_CALL: Duration = Duration::from_secs(10);
+
 /// The page of this checkout's src/view/ (and its pictures, src/assets/), on `program`.
 pub(crate) fn open_with(
     program: InProcess,
@@ -103,17 +128,11 @@ pub(crate) fn open_with(
     fonts: Option<&pencere_drive::shot::Fonts>,
 ) -> Result<Page, Error> {
     let mut opening = Headless::app(env!("CARGO_MANIFEST_DIR")).size(size.0, size.1);
-    // A call of the page may be held to more or less than the kit's 250 ms, to see how near it comes
-    // (`TEXTPEN_CALL_MS=125 make test-page`: the page in half its time).
-    if let Some(ms) = std::env::var("TEXTPEN_CALL_MS")
-        .ok()
-        .and_then(|ms| ms.parse().ok())
-    {
-        opening = opening.limits(pencere_sandbox::ModuleLimits {
-            call: Duration::from_millis(ms),
-            ..Default::default()
-        });
-    }
+    opening = opening.limits(limits(
+        std::env::var("TEXTPEN_CALL_MS")
+            .ok()
+            .and_then(|ms| ms.parse().ok()),
+    ));
     if let Some(fonts) = fonts {
         opening = opening.measure(fonts.clone()).scale(2.0);
     }

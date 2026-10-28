@@ -194,7 +194,10 @@ says which. `make check` runs the page's tests too (`make test-page`): `src/view
 terminal runs it, on pencere's host with no screen, with the program's own handlers in the same
 process — opening, typing and saving, a long text in pieces, a conflict, a draft, the tree, the
 palette over twenty thousand files, find and replace, the project's search, the preview, the shell
-and back, an 80×24 pane. `make shots` draws the pictures of `docs/` from the page as it is, in the
+and back, an 80×24 pane. A call of the page is held to 10 s there, not to the kit's 250 ms, which
+is the wall clock's and fails a slow or busy runner for nothing the page did: `make check-timing`
+(`CALL_MS=125` for half the time) runs the same tests with the kit's 250 ms, on a machine at rest.
+`make shots` draws the pictures of `docs/` from the page as it is, in the
 fonts of a Mac. CI runs `make check` on Linux and macOS.
 
 `make dev` builds the `pencere` command of the pencere `Cargo.lock` takes, in `.cache/pencere`,
