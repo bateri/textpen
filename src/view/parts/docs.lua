@@ -151,7 +151,7 @@ local function take_text(doc, opened, done, failed)
 	doc.version = opened.version
 	doc.bytes = 0
 	doc.loads, doc.loads_expected, doc.delivered = 0, nil, 0
-	doc.loaded = false
+	-- A file read again stays shown while its new text goes in: `loaded` says it was in once.
 	if not opened.partial then
 		doc.loads_expected = 1
 		queue_load(doc, opened.text or "", false)
