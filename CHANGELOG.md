@@ -10,15 +10,35 @@ change what the previous one did.
 ### Changed
 
 - The editor is a page of pencere's kit, in Lua, and the text is in the terminal's own editor, drawn
-  in its font, in place of a web page with CodeMirror. It reads 31 languages in place of well over
+  in its font, in place of a web page with CodeMirror. It reads 33 languages in place of well over
   a hundred: JavaScript, TypeScript, JSX, TSX, Rust, Go, C, C++, C#, Java, Kotlin, Swift, PHP,
   Python, Ruby, the shell, Lua, HTML, XML, Markdown, JSON, YAML, TOML, INI and `.env`, CSS, SCSS,
-  Less, SQL, the Dockerfile, the Makefile and a diff, each with its own comments, indentation
+  Less, SQL, PostgreSQL, SQLite, the Dockerfile, the Makefile and a diff, each with its own comments, indentation
   (Python's after a colon, Ruby's and Lua's by their words) and folding. Each open file keeps what
   can be undone, its cursors and its folds while another is shown. The tooltips, menus and the list
   of commands are the terminal's own.
 - The quick open keeps up with a project of tens of thousands of files, the list filling in as it
-  is scored, and a long Markdown file's preview shows its start.
+  is searched, and a long Markdown file's preview is read where you changed it and shown to its
+  end, a screen of it at a time.
+- A file's language is told by its name, its extension or its first line (`#!/usr/bin/env python3`),
+  and every one of the 33 is in Change Language.
+- The other places of what is selected are marked in the text. Select Line, Join Lines, Duplicate
+  Line Up, Insert Line Below, Split Line, Transpose Characters, Delete to Start and End of Line
+  and Fold All are commands, in the palette (`⌘I`, `⌃J`, `⌃⌥[` and `⌃⏎` are keys of four of
+  them); Next Tab and Previous Tab are also on `⌃⇥` and `⌃⇧⇥`, and Delete Line on `⌃⇧K`.
+- A box opened with something in it (the find bar on the words you selected, the palette on `>`
+  and a query, the search, the dialog that renames a file) has that selected, so that what you
+  type takes its place; renaming selects the file's name, not its folders or its extension.
+  Backspace in a palette with nothing typed goes back to the files.
+- A file that changed on disk while you had no changes of your own is changed where it differs, not
+  loaded again whole: what you did before in it can still be undone.
+- A file opened at a place (a match of the search, `name:12`) has that line in the middle of the
+  editor.
+- The unsaved changes an earlier run left say how long ago they were kept ("7 minutes ago"), and
+  what is waited for turns.
+- The status line loses the branch when the repository is removed, where it kept the old one.
+- Shortcuts are written as the terminal's own system writes them (`⇧⌘K` on a Mac, `Super+Shift+K`
+  elsewhere), the palette's and the menus' included.
 - What is long — a text, a folder, the file index, a search — comes to the editor in pieces of a
   quarter of a message (256 KiB), which it reads in the time it has for one: a folder shows as many
   of its entries as fit in one, a few thousand, where it showed five thousand.

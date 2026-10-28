@@ -18,14 +18,16 @@ conflict — and of the folders that hold them; which files are open and which h
 that are not saved. Make, rename, move and delete files and folders from it. It follows the
 file you are in.
 
-**An editor**, the terminal's own, drawn in its font, that reads 31 languages: the C family
+**An editor**, the terminal's own, drawn in its font, that reads 33 languages: the C family
 (JavaScript, TypeScript, JSX, TSX, Rust, Go, C, C++, C#, Java, Kotlin, Swift, PHP), the
 scripting ones (Python, Ruby, the shell, Lua), markup (HTML, XML, Markdown), data (JSON,
 YAML, TOML, INI and `.env`), style sheets (CSS, SCSS, Less) and the files of the tools (SQL,
-the Dockerfile, the Makefile, a diff), each with its own comments, indentation and folding;
-Markdown with the code in its fences read in their own languages. Multiple cursors, folding,
-bracket matching, find and replace in the file with a count of the matches, go to a line,
-comment lines out, move and copy them.
+PostgreSQL's and SQLite's, the Dockerfile, the Makefile, a diff), each with its own comments,
+indentation and folding; Markdown with the code in its fences read in their own languages. A
+file's language is told by its name, its extension or its first line (`#!/usr/bin/env python3`).
+Multiple cursors, folding (and fold all), bracket matching, the other places of what is
+selected marked, find and replace in the file with a count of the matches, go to a line,
+comment lines out, move, copy, join, split and delete them whole.
 
 **Every colour is the terminal's.** A terminal gives its view a handful of colours — its
 background and foreground, a dimmed one, an accent, and the colours it says success, danger,
@@ -37,7 +39,8 @@ theme and the editor follows, live.
 **Search in the project's files**, as words, whole words or patterns, with the matches by
 file; go through them from anywhere with `F4` and `⇧F4`.
 
-**A preview of Markdown**, beside the text in a wide pane and in its place in a narrow one.
+**A preview of Markdown**, beside the text in a wide pane and in its place in a narrow one,
+read again only where you changed the text, and shown to its end for a long file.
 
 **Nothing is lost to a ⌃C.** textpen keeps what you have not saved, and when it ends — a
 ⌃C, a dropped connection — it writes a draft; open the file again and it offers to bring
@@ -73,12 +76,13 @@ type `@`, `#`, `[` or `{`.
 | `⌘E`                       | the open files, by when you last saw them                                 |
 | `⌘S`, `⌥⌘S`                | save, save all                                                            |
 | `⌃W`, `⇧⌘T`                | close the tab, open the one closed last                                   |
-| `⌃PgUp` `⌃PgDn`, `⌃1`–`⌃9` | the previous and next tab, a tab by its place                             |
+| `⌃PgUp` `⌃PgDn`, `⌃1`–`⌃9` | the previous and next tab (`⌃⇧⇥` `⌃⇥` too), a tab by its place           |
 | `⌘B`, `⇧⌘E`, `F6`          | the files: show or hide, go to them, between them and the editor          |
 | `⌘F`, `⌥⌘F`, `⇧⌘F`         | find, replace, search in the project                                      |
 | `⌘L`                       | go to a line                                                              |
 | `⌃G`, `⇧⌘L`, `⌃⇧↑` `⌃⇧↓`   | add the next match, every match, a cursor above or below                  |
-| `⌘/`, `⌥↑` `⌥↓`, `⇧⌘K`     | comment, move the line, delete it                                         |
+| `⌘/`, `⌥↑` `⌥↓`, `⇧⌘K`     | comment, move the line, delete it (`⌃⇧K` too)                             |
+| `⌘I`, `⌃J`, `⌃⏎`, `⌃⌥[`    | select the line, join lines, a line below, fold all                       |
 | `⇧⌘V`                      | the preview of a Markdown file                                            |
 | `⌘,`, `⇧⌘/`                | the settings, every key                                                   |
 | `⌘J`                       | a shell in the project, in this pane                                      |
