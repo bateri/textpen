@@ -22,6 +22,7 @@ local search = require("./parts/search")
 local preview = require("./parts/preview")
 local welcome = require("./parts/welcome")
 local sheets = require("./parts/sheets")
+local changes = require("./parts/changes")
 
 local b, ui, S, SIZE, act = kit.b, kit.ui, kit.S, kit.SIZE, kit.act
 local layout = b.layout
@@ -147,7 +148,7 @@ local function click(id, event)
 	if dialogs.dismiss(id) then
 		return
 	end
-	local _ = tabs.press(id, event) or status.press(id) or area.press(id) or find.press(id)
+	local _ = tabs.press(id, event) or status.press(id) or area.press(id) or changes.press(id) or find.press(id)
 		or search.press(id, event) or welcome.press(id) or sidebar.press(id, event)
 end
 

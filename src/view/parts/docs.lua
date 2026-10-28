@@ -26,6 +26,18 @@ local layout = b.layout
 
 local docs = {}
 
+-- Set by the part that marks what differs from git: called with a doc whose text is new (loaded, read
+-- again, or changes of the person's are with the program now).
+docs.on_text = nil
+-- And the pointer in a column of the gutter of a doc's editor, which the same part answers.
+docs.on_gutter = nil
+
+local function text_is_new(doc)
+	if docs.on_text and not doc.closed then
+		docs.on_text(doc)
+	end
+end
+
 -- The most characters of inserted text one `edit` carries (docs/calls.md).
 local CALL_TEXT = 64 * 1024
 -- How long after the last change the changes go to the program, seconds.
@@ -264,6 +276,7 @@ docs.set_language = set_language
 -- The text is all in the editor: the caret goes where it was asked to.
 local function arrived(doc)
 	doc.loaded = true
+	text_is_new(doc)
 	local arrive = doc.arrive
 	doc.arrive = nil
 	local tab = docs.tab_of(doc.path)
@@ -520,6 +533,9 @@ local function reload(doc, keep, done)
 			else
 				docs.update_info(opened)
 				refill(doc, opened, keep)
+				if doc.loaded and not docs.unsent(doc) then
+					text_is_new(doc)
+				end
 			end
 			next()
 			if done then
@@ -634,7 +650,7 @@ function docs.flush(doc, done)
 		doc.timer = nil
 	end
 	lane(doc, function(next)
-		local function finish(err)
+		local function finish(err, sent)
 			if err then
 				doc.broken = true
 				kit.toast(
@@ -647,6 +663,9 @@ function docs.flush(doc, done)
 			next()
 			if done then
 				done(err == nil)
+			end
+			if sent and not err then
+				text_is_new(doc)
 			end
 		end
 		if doc.broken then
@@ -665,7 +684,7 @@ function docs.flush(doc, done)
 				doc.broken = false
 				resync(doc, finish)
 			else
-				finish(nil)
+				finish(nil, true)
 			end
 		end)
 	end)
@@ -752,6 +771,10 @@ function docs.handle(event)
 		-- The editor was made, as the page was laid out with it, shown or hidden: its text goes in.
 		doc.mounted = true
 		deliver()
+	elseif kind == "gutter" then
+		if docs.on_gutter then
+			docs.on_gutter(doc, event)
+		end
 	elseif kind == "editor_refused" then
 		if event.reason == "too-large" then
 			kit.toast(text.basename(doc.path) .. " is too large for what the editors may hold: close a tab first", "bad", 6)

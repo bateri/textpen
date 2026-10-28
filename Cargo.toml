@@ -14,7 +14,7 @@ path = "src/program/main.rs"
 [dependencies]
 # The program's side of pencere, at the commit whose kit has the editor and the library of @pencere modules (crates.io's 0.3 has kit 1.0).
 # Every pencere crate here is at the same commit, written whole: Cargo.lock is where it is pinned.
-pencere = { git = "https://github.com/bateri/pencere", rev = "b1dac9a227c5ea10d541e38ea0c15a7bf327cb48" }
+pencere = { git = "https://github.com/bateri/pencere", rev = "6ad519e36011d94873d441861678c15fa495a081" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # The project search: patterns a person types, searched in time linear in the text (no
@@ -25,12 +25,15 @@ regex = "1"
 sha2 = "0.10"
 # The icons a terminal draws beside the program's name travel as `data:` URIs.
 base64 = "0.22"
+# The lines that differ between the buffer and the file in git's index (the marks of the gutter): a
+# line diff with a time limit, and nothing else of it.
+similar = "2"
 # What the standard library does not say: the machine's name, the user's, whether a file can be
 # written to.
 libc = "0.2"
 
 [build-dependencies]
-pencere = { git = "https://github.com/bateri/pencere", rev = "b1dac9a227c5ea10d541e38ea0c15a7bf327cb48" }
+pencere = { git = "https://github.com/bateri/pencere", rev = "6ad519e36011d94873d441861678c15fa495a081" }
 
 [dev-dependencies]
 # Each test has a directory of its own as its home and its project.
@@ -38,12 +41,12 @@ tempfile = "3"
 # The page (src/view/) run as a terminal runs it, with no screen: the kit's interpreter and editors,
 # a clock the test moves, and the program's own handlers in this process (`program`); and pictures
 # of it for the eye, in the fonts of the machine (`shot`, `make shots`).
-pencere-drive = { git = "https://github.com/bateri/pencere", rev = "b1dac9a227c5ea10d541e38ea0c15a7bf327cb48", features = ["program", "shot"] }
+pencere-drive = { git = "https://github.com/bateri/pencere", rev = "6ad519e36011d94873d441861678c15fa495a081", features = ["program", "shot"] }
 # The names of the page's elements (`Id`), to tell which of its editors is shown.
-pencere-view = { git = "https://github.com/bateri/pencere", rev = "b1dac9a227c5ea10d541e38ea0c15a7bf327cb48" }
+pencere-view = { git = "https://github.com/bateri/pencere", rev = "6ad519e36011d94873d441861678c15fa495a081" }
 # The files of a page's bundle (`Assets`): a test's own script beside the page; and what a page's
 # calls are held to (`ModuleLimits`).
-pencere-sandbox = { git = "https://github.com/bateri/pencere", rev = "b1dac9a227c5ea10d541e38ea0c15a7bf327cb48" }
+pencere-sandbox = { git = "https://github.com/bateri/pencere", rev = "6ad519e36011d94873d441861678c15fa495a081" }
 
 # The page tests compile the kit's interpreter to machine code, with wasmtime's code generator, as
 # each page opens; built without optimization (a debug build) that takes some 13 seconds a page,
@@ -64,6 +67,10 @@ opt-level = 2
 [profile.dev.package.wasmtime-environ]
 opt-level = 2
 [profile.dev.package.wasmparser]
+opt-level = 2
+
+# The line diff of the marks of the gutter runs as the person types, in tests as in the release.
+[profile.dev.package.similar]
 opt-level = 2
 
 [lints.clippy]

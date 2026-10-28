@@ -42,6 +42,8 @@ local S = {
 	places = {},
 	-- The Markdown files shown as their preview.
 	preview = {},
+	-- The peek of a change of a file ({ path =, index = }), or none.
+	peek = nil,
 	-- What is over the page: { kind = "palette" | "dialog" | "help" | "settings", ... }.
 	overlay = nil,
 	toasts = {},

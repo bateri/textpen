@@ -356,6 +356,7 @@ impl Param for Settings {
             auto_save: fields.required("autoSave")?,
             sidebar: fields.required("sidebar")?,
             sidebar_width: size("sidebarWidth", SIDEBAR_WIDTHS)?,
+            diff_decorations: fields.required("diffDecorations")?,
         })
     }
 }

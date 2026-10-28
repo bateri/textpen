@@ -19,6 +19,9 @@ use serde::Serialize;
 /// How long git may take before it is given up on (the files are then walked).
 const GIT_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// The most bytes of a file git keeps that are read for the marks of the gutter.
+const INDEX_LIMIT: usize = super::diff::TEXT_LIMIT + super::diff::TEXT_LIMIT / 4;
+
 /// How much of what git writes on its error output is kept, for the words of a failure.
 const STDERR_LIMIT: u64 = 16 * 1024;
 
@@ -41,6 +44,9 @@ pub struct GitInfo {
     pub ahead: u64,
     pub behind: u64,
     pub changes: BTreeMap<String, GitState>,
+    /// When git's index file was last written, milliseconds since 1970 (0 where it cannot be said):
+    /// what is staged or unstaged moves it, and the lines marked as differing from the index with it.
+    pub index: u64,
 }
 
 /// git, with its time limit and a limit on what it may say. The output is bytes: names are ended by
@@ -159,6 +165,7 @@ fn parse_status(out: &[u8], prefix: &str) -> GitInfo {
         ahead: 0,
         behind: 0,
         changes: BTreeMap::new(),
+        index: 0,
     };
     // git names paths from the top of the repository; the page names them from the root, and is
     // not told of what lies outside it. A name that is not UTF-8 is left out, as a listing leaves it.
@@ -215,6 +222,19 @@ fn parse_status(out: &[u8], prefix: &str) -> GitInfo {
     info
 }
 
+/// When git's index was last written: the time of the file `git rev-parse --git-path index` names,
+/// in milliseconds since 1970; 0 where git or the file cannot say.
+fn index_written(root: &str) -> u64 {
+    let Ok(said) = run(&["rev-parse", "--git-path", "index"], root, 1 << 16) else {
+        return 0;
+    };
+    let named = text_of(&said);
+    let path = std::path::Path::new(root).join(named.trim());
+    std::fs::metadata(path)
+        .and_then(|meta| meta.modified())
+        .map_or(0, super::ms_of)
+}
+
 fn read(root: &str) -> Result<GitInfo, String> {
     // Where the root is in the repository, as git names it: a path git gives is made the page's by
     // taking this off, whatever links lie between the two (/var and /private/var).
@@ -231,6 +251,7 @@ fn read(root: &str) -> Result<GitInfo, String> {
         32 << 20,
     )?;
     let mut info = parse_status(&out, &prefix);
+    info.index = index_written(root);
     if info.branch == "(detached)" {
         if let Ok(short) = run(&["rev-parse", "--short", "HEAD"], root, 1 << 20) {
             info.branch = text_of(&short);
@@ -303,6 +324,27 @@ impl Git {
                 .map(str::to_owned)
                 .collect(),
         )
+    }
+
+    /// The text git keeps of `path` (relative to the project's root) in its index, as textpen holds a
+    /// buffer's: line ends `\n`, no byte order mark. None for a file outside the root, one git does
+    /// not keep (untracked, new in the index's absence, in a submodule), one that is not text, or
+    /// where git cannot say. What is in the index and not what was committed: a change that is
+    /// staged is not a difference, as VS Code's.
+    pub fn index_text(&self, path: &str) -> Option<String> {
+        if path.is_empty() || path.starts_with('/') || path.split('/').any(|part| part == "..") {
+            return None;
+        }
+        if !self.is_repository() {
+            return None;
+        }
+        let bytes = run(&["show", &format!(":./{path}")], &self.root, INDEX_LIMIT).ok()?;
+        if super::tree::is_binary(&bytes) {
+            return None;
+        }
+        let text = String::from_utf8(bytes).ok()?;
+        let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
+        Some(text.replace("\r\n", "\n").replace('\r', "\n"))
     }
 
     /// What git says of the project: its branch and changed files, none outside a repository or

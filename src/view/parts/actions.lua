@@ -5,6 +5,7 @@
 local kit = require("../lib/kit")
 local text = require("../lib/text")
 local docs = require("./docs")
+local marks = require("./changes")
 
 local b, S, act = kit.b, kit.S, kit.act
 local json = b.json
@@ -451,6 +452,9 @@ function act.change_settings(change)
 		settings[key] = value
 	end
 	S.settings = settings
+	if change.diffDecorations ~= nil then
+		marks.refresh_all()
+	end
 	if settings_timer then
 		settings_timer:cancel()
 	end
@@ -535,6 +539,8 @@ local function apply(changes)
 	-- `git: null` is the repository gone, no `git` that nothing changed there.
 	if json.has(changes, "git") then
 		S.git = changes.git
+		-- What differs from git's index may have: asked again for the files open.
+		marks.refresh_all()
 	end
 	if changes.handoffFailed then
 		S.handing_off = nil

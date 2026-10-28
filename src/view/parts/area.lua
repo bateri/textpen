@@ -5,6 +5,7 @@
 local kit = require("../lib/kit")
 local text = require("../lib/text")
 local docs = require("./docs")
+local changes = require("./changes")
 
 local b, S, act = kit.b, kit.S, kit.act
 
@@ -25,6 +26,7 @@ function area.options(tab, doc)
 		tab_width = math.clamp(settings.tabSize, 1, 16),
 		hard_tabs = config.hard_tabs == true or not settings.insertSpaces,
 		numbers = numbers,
+		gutters = changes.gutters(),
 		read_only = (tab.info and tab.info.readonly) or false,
 		whitespace = settings.whitespace,
 		indent_guides = settings.indentGuides,
@@ -148,6 +150,10 @@ function area.view(size)
 		local front = entry.tab == tab and entry.doc.loaded and not only
 		if front then
 			shown = true
+			local peek = changes.peek(entry.doc)
+			if peek then
+				editor:child(peek)
+			end
 			if S.focus == "editor" and S.overlay == nil and S.field == entry.doc.id then
 				editor:focused(true)
 			end

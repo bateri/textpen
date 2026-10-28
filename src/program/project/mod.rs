@@ -1,6 +1,7 @@
 //! The project on disk: the tree of files, git, the search through them. It knows nothing of the
 //! page: plain values in and out, and failures as the words a person reads.
 
+pub mod diff;
 pub mod git;
 pub mod paths;
 pub mod search;

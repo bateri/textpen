@@ -62,6 +62,17 @@ fn with_git(project: &Project) {
             project.read("src/lib/format.ts")
         ),
     );
+    // The file the editor's picture shows: a line changed, two added and two taken away, as a
+    // person working in it would have left it.
+    let server = project
+        .read("src/server.ts")
+        .replace("8080", "3000")
+        .replace(
+            "/** Answers with JSON. */\n",
+            "/** Answers with JSON. */\n// Every price is in cents.\n// Nothing here rounds.\n",
+        )
+        .replace("import { formatPrice } from \"./lib/format.ts\";\n\n", "");
+    project.write("src/server.ts", &server);
     project.write(
         "src/routes/products.ts",
         "export const products = [\n  { name: \"Brass Lantern\", price: 1999 },\n];\n",
@@ -117,6 +128,12 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     go_to(&mut page, "src/server.ts:19:5")?;
     page.advance(1.5)?;
     save(&page, &fonts, Palette::Dark, "editor.png");
+
+    // A change peeked: the lines as they were on red, as they are on green, in a gap of the editor.
+    page.press("alt+f5")?;
+    page.advance(0.5)?;
+    save(&page, &fonts, Palette::Dark, "changes.png");
+    page.press("escape")?;
 
     // The palette: the project's files, those seen last first (what is typed into its field is the
     // host's to draw, and is not in the picture).

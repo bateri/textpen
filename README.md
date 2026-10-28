@@ -29,6 +29,18 @@ Multiple cursors, folding (and fold all), bracket matching, the other places of 
 selected marked, find and replace in the file with a count of the matches, go to a line,
 comment lines out, move, copy, join, split and delete them whole.
 
+**What you changed since git's index, marked as VS Code marks it.** A bar down the gutter along
+the lines you changed (blue) or added (green) and a small red triangle where lines were taken
+away, the same on the editor's right edge so that a change in a long file is found; the bar is
+wider under the pointer. Click one (or `⌥F5`, `⇧⌥F5` for the next and the previous change) and a
+peek opens under it with the lines as they were on red and as they are on green, `Revert Change`
+(an edit like any other: `⌘Z` brings the change back), the change before and after, and `Esc`
+to close it. The original is what git's index keeps of the file, so a change you staged is no
+longer marked, and a file git does not keep has no marks. They follow what you type, and the
+setting `Changes in the gutter` (or Toggle Changes in the Gutter) turns them off.
+
+![A change peeked: the lines as they were and as they are](docs/changes.png)
+
 **Every colour is the terminal's.** A terminal gives its view a handful of colours — its
 background and foreground, a dimmed one, an accent, and the colours it says success, danger,
 warning and information with — and textpen draws code with those, as the theme's author
@@ -83,6 +95,7 @@ type `@`, `#`, `[` or `{`.
 | `⌃G`, `⇧⌘L`, `⌃⇧↑` `⌃⇧↓`   | add the next match, every match, a cursor above or below                  |
 | `⌘/`, `⌥↑` `⌥↓`, `⇧⌘K`     | comment, move the line, delete it (`⌃⇧K` too)                             |
 | `⌘I`, `⌃J`, `⌃⌥[`          | select the line, join lines, fold all                                     |
+| `⌥F5`, `⇧⌥F5`              | the next and the previous change against git, with its peek (`⌃⇧⌫` reverts it) |
 | `⇧⌘V`                      | the preview of a Markdown file                                            |
 | `⌘,`, `⇧⌘/`                | the settings, every key                                                   |
 | `⌘J`                       | a shell in the project, in this pane                                      |

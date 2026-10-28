@@ -171,6 +171,13 @@ local ROWS = {
 		step = function(s) return { indentGuides = not s.indentGuides } end,
 	},
 	{
+		key = "diffDecorations",
+		title = "Changes in the gutter",
+		detail = "Mark the lines that differ from git",
+		value = function(s) return s.diffDecorations and "On" or "Off" end,
+		step = function(s) return { diffDecorations = not s.diffDecorations } end,
+	},
+	{
 		key = "autoSave",
 		title = "Save when leaving",
 		detail = "Before the shell, on another tab",

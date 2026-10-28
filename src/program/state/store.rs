@@ -125,6 +125,7 @@ pub fn settings_of(read: &Map<String, Value>) -> Settings {
             SIDEBAR_WIDTHS,
             defaults.sidebar_width,
         ),
+        diff_decorations: flag(read.get("diffDecorations"), defaults.diff_decorations),
     }
 }
 

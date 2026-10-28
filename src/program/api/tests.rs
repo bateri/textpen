@@ -352,3 +352,173 @@ fn a_file_is_not_moved_onto_the_name_of_a_buffer_with_changes_that_are_not_saved
             .contains("already exists")
     );
 }
+
+/// Runs git in `dir`, with no config of the machine's.
+fn git(dir: &std::path::Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args([
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "commit.gpgsign=false",
+        ])
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .status()
+        .expect("git runs");
+    assert!(status.success(), "git {args:?}");
+}
+
+/// What `diff` says of `path`: the version, the hunks (as `[line, count, old]`) or none, and `more`.
+fn diffed(conversation: &mut Conversation, id: u64, path: &str) -> Value {
+    send(conversation, id, "diff", json!({ "path": path }));
+    answer(conversation).1.expect("an answer")
+}
+
+fn hunks_of(answer: &Value) -> Vec<(u64, u64, Vec<String>)> {
+    answer["hunks"]
+        .as_array()
+        .expect("hunks")
+        .iter()
+        .map(|hunk| {
+            (
+                hunk["line"].as_u64().unwrap(),
+                hunk["count"].as_u64().unwrap(),
+                hunk["old"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|line| line.as_str().unwrap().to_owned())
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn the_lines_that_differ_from_the_index_are_told_as_the_buffer_makes_them_and_staged_ones_are_not()
+{
+    let (dir, session) = session(&[("a.txt", "one\ntwo\nthree\n"), ("new.txt", "x\n")]);
+    let project = dir.path().join("project");
+    git(&project, &["init", "-q"]);
+    git(&project, &["add", "a.txt"]);
+    git(&project, &["commit", "-q", "-m", "first"]);
+    let mut conversation = conversation(&session);
+    send(&mut conversation, 1, "open", json!({ "path": "a.txt" }));
+    answer(&mut conversation).1.unwrap();
+    // As it was committed: no hunk, and none for a file git does not keep.
+    let told = diffed(&mut conversation, 2, "a.txt");
+    assert_eq!(
+        (told["version"].clone(), hunks_of(&told)),
+        (json!(1), vec![])
+    );
+    send(&mut conversation, 3, "open", json!({ "path": "new.txt" }));
+    answer(&mut conversation).1.unwrap();
+    assert_eq!(
+        diffed(&mut conversation, 4, "new.txt")["hunks"],
+        Value::Null
+    );
+    // The page's edit: `two` changed, a line added after `three`.
+    send(
+        &mut conversation,
+        5,
+        "edit",
+        json!({ "path": "a.txt", "base": 1, "edits": [[4, 7, "TWO"], [14, 14, "four\n"]] }),
+    );
+    answer(&mut conversation).1.unwrap();
+    let told = diffed(&mut conversation, 6, "a.txt");
+    assert_eq!(told["version"], json!(2));
+    assert_eq!(
+        hunks_of(&told),
+        vec![(1, 1, vec!["two".to_owned()]), (3, 1, vec![])]
+    );
+    // What is staged is what the buffer is compared with: no hunk where the index has the change.
+    send(
+        &mut conversation,
+        7,
+        "save",
+        json!({ "path": "a.txt", "version": 2 }),
+    );
+    answer(&mut conversation).1.unwrap();
+    git(&project, &["add", "a.txt"]);
+    assert!(hunks_of(&diffed(&mut conversation, 8, "a.txt")).is_empty());
+    // A call for a file that is not open fails as a buffer call does.
+    send(
+        &mut conversation,
+        9,
+        "diff",
+        json!({ "path": "nothing.txt" }),
+    );
+    assert_eq!(
+        answer(&mut conversation).1.unwrap_err()["code"],
+        json!("out-of-sync")
+    );
+}
+
+#[test]
+fn a_file_with_crlf_line_ends_and_a_mark_is_compared_as_the_buffer_holds_it() {
+    let (dir, session) = session(&[]);
+    let project = dir.path().join("project");
+    std::fs::write(project.join("w.txt"), "\u{feff}a\r\nb\r\nc\r\n").unwrap();
+    git(&project, &["init", "-q"]);
+    git(&project, &["-c", "core.autocrlf=false", "add", "w.txt"]);
+    git(&project, &["commit", "-q", "-m", "first"]);
+    let mut conversation = conversation(&session);
+    send(&mut conversation, 1, "open", json!({ "path": "w.txt" }));
+    answer(&mut conversation).1.unwrap();
+    // The same text: no hunk, not one from the first line to the last.
+    assert!(hunks_of(&diffed(&mut conversation, 2, "w.txt")).is_empty());
+    send(
+        &mut conversation,
+        3,
+        "edit",
+        json!({ "path": "w.txt", "base": 1, "edits": [[2, 3, "B"]] }),
+    );
+    answer(&mut conversation).1.unwrap();
+    assert_eq!(
+        hunks_of(&diffed(&mut conversation, 4, "w.txt")),
+        vec![(1, 1, vec!["b".to_owned()])]
+    );
+}
+
+#[test]
+fn a_link_a_file_outside_the_project_and_a_project_outside_a_repository_have_no_marks() {
+    let (dir, session) = session(&[("real.txt", "a\n")]);
+    let project = dir.path().join("project");
+    let mut conversation = conversation(&session);
+    // Not a repository: none.
+    send(&mut conversation, 1, "open", json!({ "path": "real.txt" }));
+    answer(&mut conversation).1.unwrap();
+    assert_eq!(
+        diffed(&mut conversation, 2, "real.txt")["hunks"],
+        Value::Null
+    );
+    git(&project, &["init", "-q"]);
+    git(&project, &["add", "real.txt"]);
+    git(&project, &["commit", "-q", "-m", "first"]);
+    std::os::unix::fs::symlink("real.txt", project.join("link.txt")).unwrap();
+    let outside = dir.path().join("outside.txt");
+    std::fs::write(&outside, "o\n").unwrap();
+    // A link, and a file outside the root (an absolute path): none, repository or not.
+    send(&mut conversation, 3, "open", json!({ "path": "link.txt" }));
+    answer(&mut conversation).1.unwrap();
+    assert_eq!(
+        diffed(&mut conversation, 4, "link.txt")["hunks"],
+        Value::Null
+    );
+    send(
+        &mut conversation,
+        5,
+        "open",
+        json!({ "path": outside.to_str().unwrap() }),
+    );
+    answer(&mut conversation).1.unwrap();
+    assert_eq!(
+        diffed(&mut conversation, 6, outside.to_str().unwrap())["hunks"],
+        Value::Null
+    );
+}

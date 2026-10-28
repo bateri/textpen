@@ -42,7 +42,10 @@ Entry       = { name: string, path: string, kind: "file" | "dir", link?: true, s
               -- path: relative to the root, "/"-separated; absolute outside it.
               -- link: a symbolic link, followed (kind is what it points to).
 Listing     = { dir: string, entries: Entry[], truncated: boolean }
-GitInfo     = { branch: string, ahead: number, behind: number, changes: { [path]: GitState } }
+GitInfo     = { branch: string, ahead: number, behind: number, changes: { [path]: GitState },
+              index: number }
+              -- index: when git's index file was last written (ms; 0 if not said): staging or unstaging
+              -- moves it, so the page asks `diff` again for the files it marks.
 Eol         = "lf" | "crlf"
 BufferInfo  = {
   path: string,          -- relative to the root, or absolute outside it; also the buffer's id
@@ -67,10 +70,11 @@ Settings    = {
   whitespace: Whitespace, indentGuides: boolean,
   autoSave: boolean,     -- save a file when the editor loses it: another tab, the shell, quitting
   sidebar: boolean, sidebarWidth: number,
+  diffDecorations: boolean,   -- mark the lines that differ from git's index (VS Code's scm.diffDecorations)
 }
               -- defaults: wrap false, lineNumbers "on", tabSize 2, insertSpaces true,
               -- whitespace "selection", indentGuides true, autoSave false, sidebar true,
-              -- sidebarWidth 240.
+              -- sidebarWidth 240, diffDecorations true.
               -- Gone from the web editor's: vim (no vim mode), fontSize (the terminal's text size
               -- is the page's; textpen has no zoom of its own). A settings file from an older
               -- textpen is read: unknown keys are dropped, `whitespace: true/false` is "all"/"none".
@@ -102,6 +106,13 @@ Changes     = {
   dirs: string[],        -- listed directories that changed
   handoffFailed?: string,
 }
+Hunk        = { line: number, count: number, old: string[], cut?: true }
+              -- one place the buffer differs from what git's index keeps of the file. line: the first
+              -- line of it in the buffer (0-based); count: how many lines of the buffer (0: lines were
+              -- only taken away, before `line`); old: the lines the index has there, with no line end;
+              -- cut: some of old is not told.
+Diffed      = { version: number, hunks: Hunk[] | null, more?: true }
+              -- of the text at `version`. hunks null: nothing is marked (see `diff`).
 SearchMatch = { line: number, start: number, end: number, text: string, offset: number }
               -- line 1-based; start/end the match within text, code points; text the line, cut
               -- around the match when long; offset where text begins in the line, code points
@@ -130,6 +141,7 @@ FilesPage   = { files: string[], truncated: boolean, next: number | null, genera
 | `buffer`   | `{ path, action, discard?: boolean }`                                                    | by `action`: `text` → `Opened`; `revert` → `Opened \| Unopenable`; `keep` → `BufferInfo`; `restore` / `drop` (the draft) → `Opened`; `lf` / `crlf` → `BufferInfo`; `close` → `{ path }` (`failed` if dirty and not `discard`). |
 | `discard`  | `{}`                                                                                     | `{}`. Quitting without saving: nothing unsaved is kept as a draft.                                                                                                                                                             |
 | `quit`     | `{}`                                                                                     | `{}`, or no answer: the program closes its view once the buffer calls sent before it are done, and textpen ends, what is not saved kept as drafts (none after `discard`). `failed` where the terminal cannot close the view.     |
+| `diff`     | `{ path: string }`                                                                       | `Diffed`: where the open buffer `path` differs from `git show :path`, the file as git's **index** keeps it (a change staged is not a difference, as VS Code's). Both texts are the program's buffer text: line ends `\n`, no byte order mark, so a file with CRLF line ends or a mark is not one hunk. `hunks` is `null`, and nothing is marked, for a file outside the project, a symbolic link, one git does not keep (untracked), a project that is not in a repository, a file that is not UTF-8 text, one that is not on disk yet, or a text of more than 2 MiB or 50 000 lines on either side; `out-of-sync` where `path` is not open. What is told fits one message: at most 2 000 hunks (`more`), and of each at most 64 lines (8 Ki code points) of `old`, 192 Ki code points together (`cut`: the hunk is marked, its old lines are not all there). It runs beside the buffer calls and not in their lane: the page asks after its edit was answered, and takes the answer only when `version` is the buffer's. |
 | `search`   | `{ query: string (≥ 1), regex?: boolean, caseSensitive?: boolean, wholeWord?: boolean }` | `SearchResult`, cut to fit one message. The pattern is the Rust `regex` crate's: back-references and lookaround are refused (`failed`, with words), so a search ends in time linear in the text.                               |
 
 A page of the kit has no message of the host's own to close its view with (the protocol, Section

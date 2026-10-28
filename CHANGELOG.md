@@ -7,6 +7,21 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Added
+
+- **The lines that differ from git's index are marked in the editor**, as VS Code marks them: a bar
+  down the gutter (between the numbers and the buttons that fold) along the lines changed (blue)
+  and added (green), a small red triangle where lines were taken away, and the same marks on the
+  editor's right edge so that they are found in a long file. A click on one, or `⌥F5` and `⇧⌥F5`
+  (go to the next and the previous change), opens a peek under the change with the lines as they
+  were (on red) and as they are (on green), Revert Change (an edit that can be undone), the change
+  before and after, and `Esc` to close it. The original is git's index, so a staged change is not
+  marked and neither is a file git does not keep; the marks follow what you type, and the setting
+  `Changes in the gutter` turns them off. A file with CRLF line ends or a byte order mark is compared
+  as textpen holds it, not as one change from its first line to its last. The program has a
+  `diff` call for it (`docs/calls.md`), the `changes` topic tells when git's index was written, and
+  the Settings have `diffDecorations`.
+
 ### Changed
 
 - The editor is a page of pencere's kit, in Lua, and the text is in the terminal's own editor, drawn

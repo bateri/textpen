@@ -507,6 +507,16 @@ impl Buffers {
         })
     }
 
+    /// What the marks of the gutter compare with git's: the version and the text of an open buffer
+    /// whose file is on disk, none for one that is not or whose text is longer than `limit` bytes.
+    pub fn for_diff(&mut self, path: &str, limit: usize) -> Result<Option<(u64, String)>, Error> {
+        let buffer = self.get(path)?;
+        if buffer.missing || buffer.text.len() > limit {
+            return Ok(None);
+        }
+        Ok(Some((buffer.version, buffer.text.clone())))
+    }
+
     /// The current text of an open buffer.
     pub fn text(&mut self, path: &str) -> Result<Opened, Error> {
         Ok(self.get(path)?.opened())

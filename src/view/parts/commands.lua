@@ -11,6 +11,7 @@
 local kit = require("../lib/kit")
 local text = require("../lib/text")
 local docs = require("./docs")
+local changes = require("./changes")
 
 local S, act = kit.S, kit.act
 
@@ -50,6 +51,32 @@ add({ id = "switch", title = "Switch to Open File…", category = "Go", keys = "
 	run = function() act.open_palette("tabs") end })
 add({ id = "line", title = "Go to Line…", category = "Go", keys = "cmd+l", when = has_file, run = function() act.open_palette("line") end })
 add({ id = "language", title = "Change Language…", category = "View", when = has_file, run = function() act.open_palette("language") end })
+
+-- --- Changes against git ---------------------------------------------------------------------------------
+
+local function has_changes()
+	local doc = docs.active()
+	return doc ~= nil and doc.hunks ~= nil and #doc.hunks > 0
+end
+
+add({ id = "next-change", title = "Go to Next Change", category = "Go", keys = "alt+f5", when = has_changes,
+	run = function() changes.go(1) end })
+add({ id = "previous-change", title = "Go to Previous Change", category = "Go", keys = "alt+shift+f5", when = has_changes,
+	run = function() changes.go(-1) end })
+add({ id = "revert-change", title = "Revert Change", category = "Edit", keys = "ctrl+shift+backspace",
+	when = function() return changes.peeking() or changes.at_caret() ~= nil end,
+	run = function()
+		local doc, index = changes.at_caret()
+		if S.peek then
+			doc = docs.tab_of(S.peek.path) and docs.tab_of(S.peek.path).doc
+			index = S.peek.index
+		end
+		if doc and index then
+			changes.revert(doc, index)
+		end
+	end })
+add({ id = "close-peek", title = "Close the Peek of a Change", category = "Go", keys = "escape", when = changes.peeking,
+	hidden = true, run = function() changes.close() end })
 
 -- --- Files ----------------------------------------------------------------------------------------------
 
@@ -187,6 +214,8 @@ add({ id = "line-numbers", title = "Line Numbers: On, Relative, Off", category =
 add({ id = "preview", title = "Toggle Markdown Preview", category = "View", keys = "cmd+shift+v",
 	when = function() return S.active ~= nil and act.is_markdown(S.active) end,
 	run = function() act.toggle_preview() end })
+add({ id = "diff-decorations", title = "Toggle Changes in the Gutter", category = "View",
+	run = function() act.change_settings({ diffDecorations = not S.settings.diffDecorations }) end })
 add({ id = "indentation", title = "Indentation…", category = "View", run = function() act.open_palette("indent") end })
 add({ id = "settings", title = "Settings", category = "textpen", keys = "cmd+,", run = function() act.open_settings() end })
 add({ id = "help", title = "Keyboard Shortcuts", category = "textpen", keys = "cmd+shift+/", run = function() act.open_help() end })
