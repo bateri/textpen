@@ -1418,6 +1418,48 @@ fn a_clean_file_read_again_keeps_what_can_be_undone() -> Result<(), Error> {
     Ok(())
 }
 
+/// The strip of tabs is the person's to scroll: it is brought to the tab in front when another tab
+/// comes to the front, not after every turn of the wheel.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_tabs_scroll_away_from_the_tab_in_front_and_come_to_the_next_one() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&[
+        "README.md",
+        "src/server.ts",
+        "src/lib/format.ts",
+        "src/lib/orders.ts",
+        "src/routes/refunds.ts",
+        "worker/mailer.py",
+        "config.yaml",
+        "Dockerfile",
+        "notes/emoji.txt",
+    ]);
+    let mut page = project.open(&session, PANE)?;
+    let strip = page.bounds("tabs").expect("the strip of tabs");
+    let front = page.bounds("tab:README.md").expect("the tab in front");
+    assert!(
+        front.x >= strip.x,
+        "in view at first: {front:?} in {strip:?}"
+    );
+    // The wheel takes the strip to its other end, and it stays there.
+    page.wheel("tabs", 2000.0, 0.0)?;
+    page.advance(1.0)?;
+    let front = page.bounds("tab:README.md").expect("the tab in front");
+    assert!(
+        front.x + front.w <= strip.x,
+        "the strip stays where the wheel took it: {front:?} in {strip:?}"
+    );
+    // Another tab to the front is brought into view.
+    go_to(&mut page, "src/server.ts")?;
+    let next = page.bounds("tab:src/server.ts").expect("the tab in front");
+    assert!(
+        next.x >= strip.x && next.x + next.w <= strip.x + strip.w,
+        "the tab in front is in view: {next:?} in {strip:?}"
+    );
+    Ok(())
+}
+
 /// Every open file's editor takes its text as the terminal makes it (`editor_ready`), shown or
 /// hidden, with nothing refused.
 #[test]

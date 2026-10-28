@@ -216,22 +216,39 @@ function tabs.drop(dropped)
 	return true
 end
 
--- Keeps the tab in front in view in the strip.
+-- The tab last brought into view: the strip goes to the tab in front when another tab comes to the
+-- front, and is otherwise the person's to scroll.
+local revealed = nil
+-- How many times the strip was moved for the tab in front: a move the host makes short (it takes the
+-- box where it can go) is made again at the next settle, a few times at most.
+local tries = 0
+
+-- Brings the tab in front into view in the strip when another tab comes to the front, and then leaves
+-- the strip to the person.
 function tabs.reveal()
 	local active = S.active and ("tab:" .. S.active)
-	if not active then
+	if not active or active == revealed then
 		return
 	end
 	local strip = b.layout.bounds(tabs.STRIP)
 	local rect = b.layout.bounds(active)
 	if not (strip and rect) then
+		-- Not laid out yet: tried again when the page next settles.
 		return
 	end
+	local right = strip.x + strip.w
+	-- A tab wider than the strip is in view when its start is.
+	local wide = rect.w > strip.w
+	if (rect.x >= strip.x and (wide or rect.x + rect.w <= right)) or tries >= 3 then
+		revealed, tries = active, 0
+		return
+	end
+	tries += 1
 	local offset = select(2, b.layout.scroll_offset(tabs.STRIP)) or 0
-	if rect.x < strip.x then
+	if rect.x < strip.x or wide then
 		b.layout.scroll_to(tabs.STRIP, { x = offset - (strip.x - rect.x) })
-	elseif rect.x + rect.w > strip.x + strip.w then
-		b.layout.scroll_to(tabs.STRIP, { x = offset + (rect.x + rect.w - strip.x - strip.w) })
+	else
+		b.layout.scroll_to(tabs.STRIP, { x = offset + (rect.x + rect.w - right) })
 	end
 end
 
