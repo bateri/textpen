@@ -415,8 +415,8 @@ function act.copy_path(path, absolute)
 	kit.toast("Copied " .. words, "info", 2)
 end
 
--- A menu at the pointer for the host to show: `items` are { title, key, run } and "-" for a line;
--- the one picked runs (`act.menu_pick`).
+-- A menu at the pointer for the host to show: `items` are { title, keys, run } (`keys` written as a
+-- command's are: "ctrl+w", "f2", "shift+a") and "-" for a line; the one picked runs (`act.menu_pick`).
 local menu_items = nil
 
 function act.menu(items, at)
@@ -426,7 +426,7 @@ function act.menu(items, at)
 		if item == "-" then
 			entries[#entries + 1] = "-"
 		else
-			entries[#entries + 1] = { title = item[1], key = item[2], enabled = item[4] ~= false }
+			entries[#entries + 1] = { title = item[1], keys = item[2], enabled = item[4] ~= false }
 		end
 	end
 	kit.gather({ menu = { at = { x = at.x, y = at.y }, entries = entries } })
@@ -438,52 +438,6 @@ function act.menu_pick(index)
 	if type(item) == "table" then
 		item[3]()
 	end
-end
-
--- The lines the carets are on, gone (⇧⌘K): one change, made against the version the page saw.
-function act.delete_lines()
-	local doc = docs.active()
-	if not doc or doc.edited == nil then
-		return
-	end
-	local layout = b.layout
-	local lines = layout.editor_lines(doc.id) or 1
-	local length = layout.editor_length(doc.id) or 0
-	local spans = {}
-	for _, range in doc.ranges do
-		local first = layout.line_of(doc.id, math.min(range.anchor, range.head)) or 0
-		local last_at = math.max(range.anchor, range.head)
-		local last = layout.line_of(doc.id, last_at) or first
-		-- A selection that ends at the start of a line does not take that line.
-		if last > first and layout.line_start(doc.id, last) == last_at then
-			last -= 1
-		end
-		spans[#spans + 1] = { first, last }
-	end
-	table.sort(spans, function(x, y)
-		return x[1] < y[1]
-	end)
-	local changes = {}
-	local previous = nil
-	for _, span in spans do
-		if previous and span[1] <= previous[2] + 1 then
-			previous[2] = math.max(previous[2], span[2])
-		else
-			previous = { span[1], span[2] }
-			changes[#changes + 1] = previous
-		end
-	end
-	local out = {}
-	for _, span in changes do
-		local from = layout.line_start(doc.id, span[1]) or 0
-		local to = span[2] + 1 < lines and layout.line_start(doc.id, span[2] + 1) or length
-		-- The last line goes with the line break before it.
-		if span[2] + 1 >= lines and from > 0 then
-			from -= 1
-		end
-		out[#out + 1] = { from = from, to = to, insert = "" }
-	end
-	kit.ask(doc.id, { change = out, base = doc.edited })
 end
 
 -- --- Settings -----------------------------------------------------------------------------------------
@@ -578,7 +532,8 @@ end
 
 -- What the program says happens to the files (`changes`).
 local function apply(changes)
-	if changes.git ~= nil then
+	-- `git: null` is the repository gone, no `git` that nothing changed there.
+	if json.has(changes, "git") then
 		S.git = changes.git
 	end
 	if changes.handoffFailed then

@@ -149,7 +149,7 @@ function act.focus_search(results)
 		kit.keyboard("page")
 	else
 		S.field = FIELD
-		kit.gather({ redraw = true, fill = { [FIELD] = Q.query }, keyboard = { field = FIELD } })
+		kit.gather({ redraw = true, fill = { [FIELD] = { text = Q.query, select = Q.query ~= "" or nil } }, keyboard = { field = FIELD } })
 	end
 end
 
@@ -271,7 +271,7 @@ function act.search_view()
 	local summary
 	local result = Q.result
 	if Q.running then
-		summary = b.div():row():items_center():gap(6):child(kit.icon("loader-2", 12, "quiet")):child(b.text("Searching…"):color("dim"))
+		summary = b.div():row():items_center():gap(6):child(kit.spinner(12, "quiet")):child(b.text("Searching…"):color("dim"))
 	elseif Q.error then
 		summary = b.text(Q.error):color("error"):wrap()
 	elseif result then

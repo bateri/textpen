@@ -4,9 +4,9 @@
 
 local kit = require("../lib/kit")
 local text = require("../lib/text")
-local fuzzy = require("../lib/fuzzy")
+local fuzzy = require("@pencere/fuzzy")
 local files = require("../lib/files")
-local languages = require("../lib/languages")
+local language = require("../lib/language")
 local docs = require("./docs")
 local commands = require("./commands")
 
@@ -44,7 +44,7 @@ function act.file_index()
 		return
 	end
 	indexing = true
-	local paths, lower = {}, {}
+	local paths = {}
 	-- The listing's pages are of the index its first page was taken from (its `generation`); where
 	-- the program began another since, it is read again from the start, a few times at the most.
 	local generation, tries = nil, 0
@@ -52,7 +52,7 @@ function act.file_index()
 		kit.call("files", from == 0 and {} or { from = from, generation = generation }, function(answer, err)
 			if err and err.code == "out-of-sync" and tries < 3 then
 				tries += 1
-				paths, lower, generation = {}, {}, nil
+				paths, generation = {}, nil
 				page(0)
 				return true
 			end
@@ -63,14 +63,13 @@ function act.file_index()
 			generation = answer.generation
 			for _, path in answer.files do
 				paths[#paths + 1] = path
-				lower[#lower + 1] = string.lower(path)
 			end
 			if answer.next ~= nil and answer.next > from then
 				page(answer.next)
 			else
 				indexing = false
 				indexed_at = S.now
-				S.file_index = { files = paths, lower = lower, truncated = answer.truncated }
+				S.file_index = { files = paths, truncated = answer.truncated }
 				palette.refresh()
 			end
 			return true
@@ -81,15 +80,19 @@ end
 
 -- --- The lists ------------------------------------------------------------------------------------------
 
--- A line of the list: { id, icon = { name, color }, title = parts, detail = parts, badge, keys,
--- current, run }.
-local function parts_of(words, positions, from, to)
-	return fuzzy.marks(words, positions, from, to)
+-- The words of a line of the list as parts of a text of many looks: the characters at `positions`
+-- (characters from 1) marked, `from` to `to` of `words` (all of it by default).
+local function marked(words, positions, from, to)
+	return fuzzy.spans(words, positions, nil, from, to)
 end
 
--- How many files one call scores: the rest are scored at the next wakes, the list filling in as they
--- are, so that typing in a project of many files never takes a call past its time.
-local CHUNK = 1500
+local function plain(words)
+	return { b.span(words) }
+end
+
+-- How many of the best files a search keeps: the ones opened lately are put before the rest of
+-- these, and the first `LIMIT` of them are listed.
+local KEPT = 400
 
 -- The files the quick open looks through, in its order: the ones opened lately, then the open ones,
 -- then the rest of the project; made once for each palette and each reading of the project.
@@ -98,17 +101,16 @@ local function candidates()
 	for _, tab in S.tabs do
 		open[tab.path] = true
 	end
-	local index = S.file_index or { files = {}, lower = {} }
+	local index = S.file_index or { files = {} }
 	local in_index = {}
 	for _, path in index.files do
 		in_index[path] = true
 	end
-	local paths, lowers, seen = {}, {}, {}
-	local function add(path, lower)
+	local paths, seen = {}, {}
+	local function add(path)
 		if not seen[path] then
 			seen[path] = true
 			paths[#paths + 1] = path
-			lowers[#lowers + 1] = lower or string.lower(path)
 		end
 	end
 	for _, path in S.recent do
@@ -119,25 +121,27 @@ local function candidates()
 	for _, tab in S.tabs do
 		add(tab.path)
 	end
-	for position, path in index.files do
-		add(path, index.lower[position])
+	for _, path in index.files do
+		add(path)
 	end
 	local rank = {}
 	for position, path in S.recent do
 		rank[path] = position
 	end
-	return { paths = paths, lowers = lowers, open = open, rank = rank, index = S.file_index }
+	return { paths = paths, open = open, rank = rank, index = S.file_index }
 end
 
+-- A line of the list for a file; `positions` the characters the query is found at.
 local function file_item(path, positions, pool, place)
-	local name_start = #path - #text.basename(path) + 1
+	local total = text.len(path)
+	local name_start = total - text.len(text.basename(path)) + 1
 	local kind = files.kind(path)
 	local state = S.git and S.git.changes and S.git.changes[path]
 	return {
 		id = path,
 		icon = { kind.icon, kind.color },
-		title = parts_of(path, positions, name_start, #path),
-		detail = name_start > 1 and parts_of(path, positions, 1, name_start - 2) or nil,
+		title = marked(path, positions, name_start, total),
+		detail = name_start > 1 and marked(path, positions, 1, name_start - 2) or nil,
 		badge = pool.open[path] and "open" or nil,
 		git = state,
 		run = function()
@@ -146,52 +150,32 @@ local function file_item(path, positions, pool, place)
 	}
 end
 
--- The best of what a scan found so far, as lines of the list.
-local function scan_items(scan)
-	local best = table.clone(scan.scored)
+-- The best of what a search found so far, as lines of the list: the files seen lately a little
+-- above the same match in the rest.
+local function search_items(search, pool, place)
+	local best = {}
+	for _, hit in search:results() do
+		local rank = pool.rank[hit.item]
+		best[#best + 1] = { hit = hit, score = hit.score + (rank and (12 - math.min(10, rank - 1)) or 0) }
+	end
 	table.sort(best, function(a, c)
 		if a.score ~= c.score then
 			return a.score > c.score
 		end
-		return #scan.pool.paths[a.at] < #scan.pool.paths[c.at]
+		return a.hit.index < c.hit.index
 	end)
 	local out = {}
 	for position = 1, math.min(#best, LIMIT) do
-		out[#out + 1] = file_item(scan.pool.paths[best[position].at], best[position].positions, scan.pool, scan.place)
+		out[#out + 1] = file_item(best[position].hit.item, best[position].hit.positions, pool, place)
 	end
 	return out
 end
 
--- Scores the next chunk of a scan; goes on at the next wake while there is more.
-local function scan_step(scan)
-	local pool = scan.pool
-	local list = scan.within
-	local count = list and #list or #pool.paths
-	local stop = math.min(scan.next + CHUNK - 1, count)
-	for position = scan.next, stop do
-		local at = list and list[position] or position
-		local path = pool.paths[at]
-		local found = fuzzy.path(scan.query, path, pool.lowers[at])
-		if found then
-			local rank = pool.rank[path]
-			local bonus = rank and (12 - math.min(10, rank - 1)) or 0
-			scan.scored[#scan.scored + 1] = { at = at, score = found.score + bonus, positions = found.positions }
-			scan.matched[#scan.matched + 1] = at
-		end
-	end
-	scan.next = stop + 1
-	scan.done = scan.next > count
-	if not scan.done then
-		kit.after(0, function()
-			local overlay = S.overlay
-			if overlay and overlay.kind == "palette" and overlay.scan == scan then
-				scan_step(scan)
-				overlay.items = scan_items(scan)
-				overlay.chosen = math.clamp(overlay.chosen, 1, math.max(#overlay.items, 1))
-				palette.reveal()
-			end
-			return true
-		end)
+local function cancel_search()
+	local overlay = S.overlay
+	if overlay and overlay.kind == "palette" and overlay.search then
+		overlay.search:cancel()
+		overlay.search = nil
 	end
 end
 
@@ -201,71 +185,67 @@ local function file_items(raw)
 	local place = { line = line and tonumber(line), column = column and column ~= "" and tonumber(column) or nil }
 	local overlay = S.overlay
 	if not overlay.pool or overlay.pool.index ~= S.file_index then
+		cancel_search()
 		overlay.pool = candidates()
-		overlay.scan = nil
 	end
 	local pool = overlay.pool
 	if string.match(query, "^%s*$") then
-		overlay.scan = nil
+		cancel_search()
 		local out = {}
 		for at = 1, math.min(#pool.paths, LIMIT) do
 			out[#out + 1] = file_item(pool.paths[at], {}, pool, place)
 		end
 		return out
 	end
-	-- A query that goes on from the one before looks only through what that one found.
-	local before = overlay.scan
-	local within = nil
-	if before and before.done and #query > #before.query and string.sub(query, 1, #before.query) == before.query then
-		within = before.matched
-	end
-	local scan = { query = query, pool = pool, within = within, next = 1, scored = {}, matched = {}, done = false, place = place }
-	overlay.scan = scan
-	scan_step(scan)
-	return scan_items(scan)
+	-- A query that goes on from the one before looks only through what that one found. The search
+	-- goes through the files a step a frame, the list filling in as it does, so that typing in a
+	-- project of tens of thousands never takes a call past its time.
+	local before = overlay.search
+	local search = before and before:narrow(query) or fuzzy.search(query, pool.paths, { path = true, limit = KEPT })
+	overlay.search = search
+	local sync = true
+	search:run(function(running)
+		local now = S.overlay
+		if not (now and now.kind == "palette" and now.search == running) then
+			return nil
+		end
+		now.items = search_items(running, pool, place)
+		now.chosen = math.clamp(now.chosen, 1, math.max(#now.items, 1))
+		palette.reveal()
+		return not sync and kit.take(true) or nil
+	end)
+	sync = false
+	return overlay.items
 end
 
 local function command_items(query)
-	local scored = {}
-	for _, command in commands.available() do
-		local words = command.category .. ": " .. command.title
-		local found = fuzzy.match(query, words)
-		if found then
-			scored[#scored + 1] = { command = command, found = found, words = words }
-		end
-	end
+	local found = fuzzy.filter(query, commands.available(), {
+		text = function(command)
+			return command.category .. ": " .. command.title
+		end,
+	})
 	if string.match(query, "^%s*$") then
 		local function rank(id)
 			return text.index_of(recent_commands, id) or 1000
 		end
-		table.sort(scored, function(a, c)
-			local ra, rc = rank(a.command.id), rank(c.command.id)
+		table.sort(found, function(a, c)
+			local ra, rc = rank(a.item.id), rank(c.item.id)
 			if ra ~= rc then
 				return ra < rc
 			end
-			return false
-		end)
-	else
-		table.sort(scored, function(a, c)
-			return a.found.score > c.found.score
+			return a.index < c.index
 		end)
 	end
 	local out = {}
-	for position = 1, math.min(#scored, LIMIT) do
-		local entry = scored[position]
-		local command = entry.command
-		local split = #command.category + 2
-		local category = parts_of(entry.words, entry.found.positions, 1, split)
-		for _, part in category do
-			part.quiet = true
-		end
-		local title = parts_of(entry.words, entry.found.positions, split + 1, #entry.words)
-		for _, part in title do
-			category[#category + 1] = part
-		end
+	for position = 1, math.min(#found, LIMIT) do
+		local hit = found[position]
+		local command = hit.item
+		local words = command.category .. ": " .. command.title
+		local split = text.len(command.category) + 2
 		out[#out + 1] = {
 			id = command.id,
-			title = category,
+			lead = marked(words, hit.positions, 1, split),
+			title = marked(words, hit.positions, split + 1, text.len(words)),
 			keys = command.keys or command.shown,
 			run = function()
 				recent_commands = text.without(recent_commands, command.id)
@@ -293,24 +273,23 @@ local function tab_items(query)
 		add(tab.path)
 	end
 	local out = {}
-	for _, path in ordered do
-		local found = fuzzy.path(query, path)
-		if found then
-			local tab = docs.tab_of(path)
-			local name_start = #path - #text.basename(path) + 1
-			local kind = files.kind(path)
-			out[#out + 1] = {
-				id = path,
-				icon = { kind.icon, kind.color },
-				title = parts_of(path, found.positions, name_start, #path),
-				detail = name_start > 1 and { { text.dirname(path), false } } or nil,
-				current = path == S.active,
-				dirty = tab and tab.info and tab.info.dirty,
-				run = function()
-					act.open_file(path, { focus = true })
-				end,
-			}
-		end
+	for _, hit in fuzzy.filter(query, ordered, { path = true }) do
+		local path = hit.item
+		local tab = docs.tab_of(path)
+		local total = text.len(path)
+		local name_start = total - text.len(text.basename(path)) + 1
+		local kind = files.kind(path)
+		out[#out + 1] = {
+			id = path,
+			icon = { kind.icon, kind.color },
+			title = marked(path, hit.positions, name_start, total),
+			detail = name_start > 1 and plain(text.dirname(path)) or nil,
+			current = path == S.active,
+			dirty = tab and tab.info and tab.info.dirty,
+			run = function()
+				act.open_file(path, { focus = true })
+			end,
+		}
 	end
 	return out
 end
@@ -334,8 +313,8 @@ local function line_items(query)
 	return {
 		{
 			id = "line",
-			title = { { "Go to line " .. line .. (column and (", column " .. column) or ""), false } },
-			detail = { { "of " .. lines, false } },
+			title = plain("Go to line " .. line .. (column and (", column " .. column) or "")),
+			detail = plain("of " .. lines),
 			run = function()
 				doc.arrive = { line = line, column = column }
 				docs.arrive_now(doc)
@@ -350,35 +329,19 @@ local function language_items(query)
 	if not doc then
 		return {}
 	end
-	local scored = {}
-	for _, lang in languages.all() do
-		local found = fuzzy.match(query, lang.name)
-		if found then
-			scored[#scored + 1] = { lang = lang, found = found }
-		end
-	end
-	table.sort(scored, function(a, c)
-		if string.match(query, "^%s*$") then
-			if a.lang == languages.plain or c.lang == languages.plain then
-				return a.lang == languages.plain
-			end
-			return a.lang.name < c.lang.name
-		end
-		return a.found.score > c.found.score
-	end)
 	local out = {}
-	for _, entry in scored do
-		local lang = entry.lang
+	for _, hit in fuzzy.filter(query, language.names()) do
+		local name = hit.item
 		out[#out + 1] = {
-			id = lang.name,
-			title = parts_of(lang.name, entry.found.positions),
-			current = doc.lang == lang,
+			id = name,
+			title = marked(name, hit.positions),
+			current = doc.lang.name == name,
 			run = function()
 				local tab = docs.tab_of(S.active)
 				if tab then
-					tab.language = lang.name
+					tab.language = name
 				end
-				docs.set_language(doc, lang)
+				docs.set_language(doc, language.find(name))
 				act.focus_editor()
 			end,
 		}
@@ -402,7 +365,7 @@ local function indent_items(query)
 			local change = item.change
 			out[#out + 1] = {
 				id = item.id,
-				title = { { item.words, false } },
+				title = plain(item.words),
 				current = item.current,
 				run = function()
 					act.change_settings(change)
@@ -436,6 +399,7 @@ function palette.refresh()
 end
 
 function act.open_palette(mode, query)
+	cancel_search()
 	local origin = nil
 	local doc = docs.active()
 	if mode == "line" and doc then
@@ -454,11 +418,17 @@ function act.open_palette(mode, query)
 	end
 	palette.refresh()
 	S.field = FIELD
-	kit.gather({ redraw = true, fill = { [FIELD] = query or "" }, keyboard = { field = FIELD } })
+	-- A query it is opened with is selected, so that what is typed takes its place.
+	kit.gather({
+		redraw = true,
+		fill = { [FIELD] = { text = query or "", select = (query or "") ~= "" or nil } },
+		keyboard = { field = FIELD },
+	})
 	palette.reveal()
 end
 
 local function close()
+	cancel_search()
 	act.set_overlay(nil)
 	act.regain()
 	kit.gather(true)
@@ -496,17 +466,7 @@ function palette.reveal()
 	end
 end
 
-local function title_view(parts, current)
-	local spans = {}
-	for _, part in parts do
-		local span = b.span(part[1])
-		if part[2] then
-			span:color("accent"):bold()
-		elseif part.quiet then
-			span:color("dim")
-		end
-		spans[#spans + 1] = span
-	end
+local function title_view(spans, current)
 	return b.rich(spans):truncate():min_w(0):weight(current and 600 or 400)
 end
 
@@ -526,14 +486,17 @@ local function item_view(item, index, chosen)
 	if item.icon then
 		row:child(kit.icon(item.icon[1], 15, item.icon[2]))
 	end
-	local words = b.div():row():items_center():gap(8):grow(1):min_w(0):child(title_view(item.title, item.current))
+	local words = b.div():row():items_center():gap(8):grow(1):min_w(0)
+	if item.lead then
+		-- The category of a command, before its title.
+		words:child(b.div():row():items_center():min_w(0)
+			:child(b.rich(item.lead):color("dim"):no_shrink())
+			:child(title_view(item.title, item.current)))
+	else
+		words:child(title_view(item.title, item.current))
+	end
 	if item.detail then
-		local detail = {}
-		for _, part in item.detail do
-			local span = b.span(part[1]):color(part[2] and "accent" or "quiet")
-			detail[#detail + 1] = span
-		end
-		words:child(b.rich(detail):truncate():min_w(0):text_size(11.5))
+		words:child(b.rich(item.detail):color("quiet"):truncate():min_w(0):text_size(11.5))
 	end
 	row:child(words)
 	if item.badge then
@@ -590,7 +553,7 @@ function palette.view(size)
 	foot:child(hint("↑ ↓", "choose"))
 	foot:child(hint("⏎", overlay.mode == "commands" and "run" or "go"))
 	if overlay.mode == "files" or overlay.mode == "commands" then
-		foot:child(hint("⌘K", overlay.mode == "files" and "commands" or "files"))
+		foot:child(hint(kit.keys_of("cmd+k"), overlay.mode == "files" and "commands" or "files"))
 	end
 	foot:child(hint("Esc", "close"))
 	if S.file_index and S.file_index.truncated and overlay.mode == "files" then
@@ -684,6 +647,9 @@ function palette.key(key, mods)
 		run_item(overlay.items[overlay.chosen])
 	elseif key == "escape" then
 		dismiss()
+	elseif key == "backspace" and overlay.query == "" and overlay.mode ~= "files" then
+		-- Nothing left to take back: the files, where the commands (`>`) and the lines (`:`) came from.
+		act.open_palette("files")
 	end
 	kit.gather(true)
 	return true

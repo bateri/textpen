@@ -3,7 +3,7 @@
 
 local kit = require("../lib/kit")
 local text = require("../lib/text")
-local fuzzy = require("../lib/fuzzy")
+local fuzzy = require("@pencere/fuzzy")
 local commands = require("./commands")
 
 local b, S, act = kit.b, kit.S, kit.act
@@ -81,7 +81,7 @@ local function help_view(size)
 	for _, command in commands.list do
 		local keys = command.keys or command.shown
 		local listed = keys and (not string.match(command.id, "^tab%-%d$") or command.id == "tab-1")
-		if listed and (query == "" or fuzzy.match(query, command.category .. " " .. command.title)) then
+		if listed and (query == "" or fuzzy.match(query, command.category .. " " .. command.title) ~= nil) then
 			if not groups[command.category] then
 				groups[command.category] = {}
 				order[#order + 1] = command.category
@@ -97,10 +97,10 @@ local function help_view(size)
 	for _, category in order do
 		local group = b.div():col():gap(2):child(b.text(string.upper(category)):text_size(11):weight(700):color("quiet"))
 		for _, command in groups[category] do
-			local keys = kit.keys_of(command.keys or command.shown)
+			local keys = kit.keys_all(command.keys or command.shown, "   ")
 			local words = command.title
 			if command.id == "tab-1" then
-				words, keys = "Go to Tab 1–9", "⌃1 … ⌃9"
+				words, keys = "Go to Tab 1–9", kit.keys_of("ctrl+1") .. " … " .. kit.keys_of("ctrl+9")
 			end
 			group:child(line(words, keys))
 		end

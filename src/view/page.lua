@@ -2,7 +2,7 @@
 -- theme.
 --
 -- Each open file is an editor of the terminal's (`pencere.editor`), coloured by a language of the
--- kit's (`pencere.Syntax`); around them the tabs, the project's tree and its search, a palette for
+-- kit's library (`@pencere/languages`, `@pencere/syntax`); around them the tabs, the project's tree and its search, a palette for
 -- going anywhere, and the status line. The program reads and writes the files, keeps git and the
 -- search, and remembers where the person was; the page talks to it only by the calls of
 -- docs/calls.md.
@@ -50,7 +50,7 @@ local function booting()
 		box:child(b.text("The program did not answer"):weight(650))
 		box:child(b.text(S.boot_error):color("dim"):wrap():max_w(520):align("center"))
 	else
-		box:child(kit.icon("loader-2", 20, "quiet"))
+		box:child(kit.spinner(20, "quiet"))
 	end
 	return box
 end
@@ -124,10 +124,9 @@ local function render(size, now)
 end
 
 local function settle()
-	local changed = docs.settle()
 	tabs.reveal()
 	sidebar.settle()
-	return changed
+	return preview.settle()
 end
 
 -- --- What the person does -------------------------------------------------------------------------------
@@ -149,7 +148,7 @@ local function click(id, event)
 		return
 	end
 	local _ = tabs.press(id, event) or status.press(id) or area.press(id) or find.press(id)
-		or search.press(id, event) or preview.press(id) or welcome.press(id) or sidebar.press(id, event)
+		or search.press(id, event) or welcome.press(id) or sidebar.press(id, event)
 end
 
 local press_event = nil
@@ -245,9 +244,9 @@ local function handle(event)
 	elseif kind == "leave" then
 		reply = ui:point(layout, nil)
 	elseif kind == "press" then
-		reply = pressed(event)
+		reply = b.merge(pressed(event), preview.handle(event))
 	elseif kind == "release" then
-		reply = released(event)
+		reply = b.merge(released(event), preview.handle(event))
 	elseif kind == "key" then
 		reply = key(event)
 	elseif kind == "command" then

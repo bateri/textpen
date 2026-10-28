@@ -13,7 +13,7 @@ local area = {}
 -- What the editor is told, from the settings and the file's language.
 function area.options(tab, doc)
 	local settings = S.settings
-	local lang = doc.lang
+	local config = doc.lang.config
 	local numbers = "absolute"
 	if settings.lineNumbers == "relative" then
 		numbers = "relative"
@@ -23,24 +23,26 @@ function area.options(tab, doc)
 	return {
 		wrap = settings.wrap,
 		tab_width = math.clamp(settings.tabSize, 1, 16),
-		hard_tabs = lang.tabs == true or not settings.insertSpaces,
+		hard_tabs = config.hard_tabs == true or not settings.insertSpaces,
 		numbers = numbers,
 		read_only = (tab.info and tab.info.readonly) or false,
 		whitespace = settings.whitespace,
 		indent_guides = settings.indentGuides,
-		comment = lang.comment,
-		indent = lang.indent,
-		folds = lang.folds or "page",
-		pairs = lang.pairs,
+		comment = config.comment,
+		indent = config.indent,
+		folds = config.folds or "page",
+		pairs = config.pairs,
 		line_height = 1.6,
 		padding = 6,
 		scroll_margin = 3,
 		current_line = "all",
+		matches = "selection",
 		colors = {
 			current_line = b.alpha("foreground", 0.045),
 			selection = b.alpha("accent", 0.3),
 			selection_blurred = b.alpha("foreground", 0.12),
 			found = b.alpha("warning", 0.24),
+			matches = b.alpha("accent", 0.16),
 			brackets = b.alpha("accent", 0.55),
 			numbers = "quiet",
 			current_number = "foreground",
@@ -76,10 +78,14 @@ local function banner_of(tab)
 	end
 	local name = text.basename(tab.path)
 	if info.draft then
+		-- `draft.at` is the program's time of day, milliseconds; the page's is `pencere.time.wall()`.
+		local wall = b.time.wall()
+		local when = info.draft.at and info.draft.at > 0 and wall
+			and (" " .. text.ago(math.max(wall - info.draft.at / 1000, 0)) .. ", ") or " "
 		return banner("info", "history", {
 			"Unsaved changes to ",
 			b.span(name):bold(),
-			" were kept when textpen last ended.",
+			" were kept" .. when .. "when textpen last ended.",
 		}, {
 			kit.button("banner-draft-restore", "Restore", { tone = "primary", h = 24 }),
 			kit.button("banner-draft-drop", "Discard", { h = 24 }),
@@ -103,7 +109,7 @@ end
 local function placeholder(tab)
 	local box = b.div():col():grow(1):items_center():justify_center():gap(8):p(20)
 	if tab.status == "loading" then
-		return box:child(kit.icon("loader-2", 22, "quiet"))
+		return box:child(kit.spinner(22, "quiet"))
 	end
 	local reason = tab.unopenable
 	box:child(kit.icon(reason and reason.reason == "binary" and "binary" or "file-alert", 34, "quiet"))

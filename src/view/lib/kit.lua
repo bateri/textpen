@@ -3,6 +3,8 @@
 -- page is made of more than once (an icon, a button, the keys of a command, a note that comes and
 -- goes).
 
+local keys = require("@pencere/keys")
+
 local b = pencere
 local ui = b.Ui.new()
 
@@ -90,7 +92,7 @@ local gathered = nil
 local syntaxes = {}
 
 local function gather(reply)
-	gathered = b._merge(gathered, reply)
+	gathered = b.merge(gathered, reply)
 end
 
 -- An ask of the editor named `editor`, after the ones asked before it.
@@ -109,12 +111,12 @@ local function take(reply)
 	for _, syntax in syntaxes do
 		local asks = syntax:asks()
 		if #asks > 0 then
-			out = b._merge(out, { editor = { [syntax.editor] = asks } })
+			out = b.merge(out, { editor = { [syntax.editor] = asks } })
 		end
 	end
-	out = b._merge(out, gathered)
+	out = b.merge(out, gathered)
 	gathered = nil
-	return b._merge(out, reply)
+	return b.merge(out, reply)
 end
 
 -- Asks the program to do `method`; `done(result, err)` is called with its answer, and what it
@@ -150,64 +152,61 @@ local function icon(name, size, color)
 	return b.image("assets/icons/" .. name .. ".svg"):size(size, size):tint(color or "dim"):no_shrink()
 end
 
--- The keys of a command as a Mac writes them: "cmd+shift+k" is "⇧⌘K". bateri, the terminal that
--- shows the page, runs on a Mac.
-local KEY_NAMES = {
-	enter = "⏎",
-	escape = "Esc",
-	tab = "⇥",
-	backspace = "⌫",
-	delete = "⌦",
-	up = "↑",
-	down = "↓",
-	left = "←",
-	right = "→",
-	page_up = "PgUp",
-	page_down = "PgDn",
-	home = "Home",
-	["end"] = "End",
-	space = "Space",
-	[" "] = "Space",
-}
-local MOD_ORDER = { "ctrl", "alt", "shift", "cmd" }
-local MOD_SIGNS = { ctrl = "⌃", alt = "⌥", shift = "⇧", cmd = "⌘" }
+-- The keys of a command as the host's keyboard writes them (`@pencere/keys`: "cmd+shift+k" is
+-- "⇧⌘K" on a Mac, "Super+Shift+K" elsewhere). `spec` is the words of a command's keys, or a list of
+-- them: the first is the one shown.
+local function first_keys(spec)
+	if type(spec) == "table" then
+		return spec[1]
+	end
+	return spec
+end
 
 local function keys_of(spec)
+	spec = first_keys(spec)
 	if not spec then
 		return nil
 	end
-	local parts = string.split(spec, "+")
-	local key = parts[#parts]
-	local held = {}
-	for index = 1, #parts - 1 do
-		held[parts[index]] = true
+	return keys.label(spec)
+end
+
+-- Every way a command is done, one after the other.
+local function keys_all(spec, between)
+	if type(spec) ~= "table" then
+		return keys_of(spec)
 	end
 	local out = {}
-	for _, mod in MOD_ORDER do
-		if held[mod] then
-			out[#out + 1] = MOD_SIGNS[mod]
-		end
+	for _, one in spec do
+		out[#out + 1] = keys.label(one)
 	end
-	local name = KEY_NAMES[key]
-	if not name then
-		name = string.match(key, "^f%d+$") and string.upper(key) or string.upper(key)
-	end
-	out[#out + 1] = name
-	return table.concat(out)
+	return table.concat(out, between or "  ")
 end
 
 -- Keys as keycaps, small: the signs and the key apart, as a person reads them on a keyboard.
 local function kbd(spec, quiet)
-	local words = keys_of(spec) or ""
-	return b.div()
-		:px(4)
-		:h(16)
-		:rounded(4)
-		:border(1, quiet and b.alpha("border", 0.8) or "border")
-		:row()
-		:items_center()
-		:no_shrink()
-		:child(b.text(words):text_size(10.5):color(quiet and "quiet" or "dim"))
+	local row = b.div():row():items_center():gap(2):no_shrink()
+	local words = first_keys(spec)
+	for _, cap in words and keys.caps(words) or {} do
+		row:child(
+			b.div()
+				:px(4)
+				:min_w(16)
+				:h(16)
+				:rounded(4)
+				:border(1, quiet and b.alpha("border", 0.8) or "border")
+				:row()
+				:items_center()
+				:justify_center()
+				:no_shrink()
+				:child(b.text(cap):text_size(10.5):color(quiet and "quiet" or "dim"))
+		)
+	end
+	return row
+end
+
+-- A picture turning round, for what is being waited for: the host turns it, a frame at a time.
+local function spinner(size, color)
+	return icon("loader-2", size, color):motion({ spin = 1 })
 end
 
 -- A button that is an icon alone: its name (the tooltip and the screen reader's word) and the keys
@@ -329,6 +328,8 @@ return {
 	hovered = hovered,
 	icon = icon,
 	keys_of = keys_of,
+	keys_all = keys_all,
+	spinner = spinner,
 	kbd = kbd,
 	icon_button = icon_button,
 	button = button,

@@ -112,7 +112,7 @@ function status.view()
 		row:child(branch:max_w(180))
 	end
 	if S.busy > 0 then
-		row:child(kit.icon("loader-2", 12, "quiet"))
+		row:child(kit.spinner(12, "quiet"))
 	end
 	local saved = S.active and S.saved_at[S.active]
 	if saved and S.now - saved < SAVED_SHOWN then
@@ -139,7 +139,7 @@ function status.view()
 		row:child(place)
 		if S.layout ~= "narrow" then
 			local settings = S.settings
-			local spaces = settings.insertSpaces and not doc.lang.tabs
+			local spaces = settings.insertSpaces and not doc.lang.config.hard_tabs
 			row:child(item("status-indent", (spaces and "Spaces: " or "Tab: ") .. settings.tabSize, "Indentation"))
 			row:child(item(nil, info.bom and "UTF-8 BOM" or "UTF-8"))
 			row:child(item("status-eol", string.upper(info.eol), "Line endings: click to change"))

@@ -80,7 +80,13 @@ function act.find(replacing)
 		end
 	end
 	search(doc)
-	kit.gather({ fill = { [QUERY] = F.query, [REPLACE] = F.replacement } })
+	-- What the bar is opened with is selected in the field the keyboard goes to: typing replaces it.
+	kit.gather({
+		fill = {
+			[QUERY] = { text = F.query, select = (not replacing and F.query ~= "") or nil },
+			[REPLACE] = { text = F.replacement, select = (replacing and F.replacement ~= "") or nil },
+		},
+	})
 	to_field(replacing and REPLACE or QUERY)
 end
 

@@ -84,6 +84,21 @@ function text.lower(s)
 	return table.concat(out)
 end
 
+-- How long ago `seconds` of elapsed time was, as a person says it: "just now", "4 minutes ago".
+function text.ago(seconds)
+	local function many(count, unit)
+		return count .. " " .. unit .. (count == 1 and "" or "s") .. " ago"
+	end
+	if seconds < 45 then
+		return "just now"
+	elseif seconds < 3600 then
+		return many(math.max(math.floor(seconds / 60 + 0.5), 1), "minute")
+	elseif seconds < 86400 then
+		return many(math.floor(seconds / 3600 + 0.5), "hour")
+	end
+	return many(math.floor(seconds / 86400 + 0.5), "day")
+end
+
 -- Whether `s` starts with `prefix`, or ends with `suffix`.
 function text.starts(s, prefix)
 	return string.sub(s, 1, #prefix) == prefix

@@ -13,8 +13,8 @@ use std::process::ExitStatus;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use pencere_drive::headless::{Error, Headless, InProcess};
-use pencere_view::{Id, Paint, Point};
+use pencere_drive::headless::{Error, Focus, Headless, InProcess};
+use pencere_view::{Id, MenuEntry, Paint, Point, Shortcut};
 use serde_json::Value;
 
 use crate::options;
@@ -91,8 +91,18 @@ impl Project {
 
     /// The page opened on the program's handlers for `session`, at `size`.
     pub(crate) fn open(&self, session: &Arc<Session>, size: (f32, f32)) -> Result<Page, Error> {
+        self.open_later(session, size, 0.0)
+    }
+
+    /// As [`Project::open`], the machine's time of day `later` seconds past the real one.
+    pub(crate) fn open_later(
+        &self,
+        session: &Arc<Session>,
+        size: (f32, f32),
+        later: f64,
+    ) -> Result<Page, Error> {
         let program = InProcess::new(options(session, &[], &Arc::new(Mutex::new(None))));
-        open_with(program, size, None)
+        open_after(program, size, None, later)
     }
 }
 
@@ -127,7 +137,23 @@ pub(crate) fn open_with(
     size: (f32, f32),
     fonts: Option<&pencere_drive::shot::Fonts>,
 ) -> Result<Page, Error> {
-    let mut opening = Headless::app(env!("CARGO_MANIFEST_DIR")).size(size.0, size.1);
+    open_after(program, size, fonts, 0.0)
+}
+
+/// As [`open_with`], on a machine whose time of day is `later` seconds past the real one (the page
+/// tells "4 minutes ago" from the host's time of day, `pencere.time.wall()`).
+pub(crate) fn open_after(
+    program: InProcess,
+    size: (f32, f32),
+    fonts: Option<&pencere_drive::shot::Fonts>,
+    later: f64,
+) -> Result<Page, Error> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |since| since.as_secs_f64());
+    let mut opening = Headless::app(env!("CARGO_MANIFEST_DIR"))
+        .size(size.0, size.1)
+        .wall_clock(now + later, 0);
     opening = opening.limits(limits(
         std::env::var("TEXTPEN_CALL_MS")
             .ok()
@@ -479,9 +505,10 @@ fn a_draft_from_the_last_run_is_offered_back_and_taken() -> Result<(), Error> {
         session.ending();
     }
     let session = project.session(&["README.md"]);
-    let mut page = project.open(&session, WIDE)?;
+    // Seven minutes later by the machine's clock: the banner says how long ago the draft was kept.
+    let mut page = project.open_later(&session, WIDE, 7.0 * 60.0)?;
     wait(&mut page, |page| {
-        shows(page, "were kept when textpen last ended")
+        shows(page, "were kept 7 minutes ago, when textpen last ended")
     })?;
     assert_eq!(text(&page), README);
     page.click("banner-draft-restore")?;
@@ -954,6 +981,20 @@ fn every_language_colours_its_sample_and_comments_and_indents_as_it_says() -> Re
         "{:?}",
         text(&page)
     );
+    // The languages of the kit's library are all there to choose from, and a chosen one is kept.
+    page.command("language")?;
+    assert!(
+        shows(&page, "PostgreSQL") && shows(&page, "SQLite") && shows(&page, "Plain Text"),
+        "{:?}",
+        page_words(&page)
+    );
+    page.type_text("sqlite")?;
+    page.press("enter")?;
+    assert!(
+        page_words(&page).iter().any(|word| word == "SQLite"),
+        "{:?}",
+        page_words(&page)
+    );
     Ok(())
 }
 
@@ -1159,5 +1200,316 @@ fn a_dialog_is_answered_exactly_once_however_it_goes() -> Result<(), Error> {
     assert_eq!(probe_says(&page), "probe 3 yes");
     page.advance(1.0)?;
     assert_eq!(probe_says(&page), "probe 3 yes");
+    Ok(())
+}
+
+// --- What the kit's newer calls give the page ---------------------------------------------------------
+
+/// The field of the host's named `name` has the keyboard.
+fn keyboard_is_in(page: &Page, name: &str) -> bool {
+    page.focus() == Focus::Field(Id::named(name))
+}
+
+/// Every field the page opens with a text and the keyboard has both the moment it is there: the
+/// find bar, the palette, a dialog and the sheet of keys. What is seeded is selected, so that what is
+/// typed takes its place; a file's name is selected in the dialog that renames it, not its folders
+/// or its extension.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_field_opens_with_its_text_selected_and_the_keyboard_in_it() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    // The word the caret is selected on is what the find bar is opened with, selected.
+    let editor = shown(&page).expect("an editor");
+    page.select(&editor, 0, 6)?;
+    page.press("cmd+f")?;
+    assert!(keyboard_is_in(&page, "find-query"), "{:?}", page.focus());
+    assert_eq!(page.field("find-query"), Some("import"));
+    assert_eq!(page.field_selection("find-query"), Some(0..6));
+    page.type_text("send")?;
+    assert_eq!(page.field("find-query"), Some("send"), "typed over");
+    page.press("escape")?;
+    // The palette: opened with `>` and a query at once, the query is selected.
+    page.press("cmd+k")?;
+    assert!(keyboard_is_in(&page, "palette-query"), "{:?}", page.focus());
+    page.fill("palette-query", ">word wrap")?;
+    assert_eq!(page.field("palette-query"), Some("word wrap"));
+    assert_eq!(page.field_selection("palette-query"), Some(0..9));
+    assert!(keyboard_is_in(&page, "palette-query"), "{:?}", page.focus());
+    page.type_text("save")?;
+    assert_eq!(page.field("palette-query"), Some("save"), "typed over");
+    page.press("escape")?;
+    // The dialog that renames: the name is selected, in the path of the file.
+    page.press("cmd+shift+e")?;
+    wait(&mut page, |page| page.bounds("row:src/server.ts").is_some())?;
+    page.click("row:src/server.ts")?;
+    page.press("f2")?;
+    assert!(keyboard_is_in(&page, "dialog-input"), "{:?}", page.focus());
+    assert_eq!(page.field("dialog-input"), Some("src/server.ts"));
+    assert_eq!(page.field_selection("dialog-input"), Some(4..10));
+    page.press("escape")?;
+    // The sheet of keys.
+    page.press("cmd+shift+/")?;
+    assert!(keyboard_is_in(&page, "help-filter"), "{:?}", page.focus());
+    Ok(())
+}
+
+/// ⌫ in a palette with nothing typed goes back to the files, from the commands and from a line.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn backspace_in_an_empty_palette_goes_back_to_the_files() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let says = |page: &Page, mode: &str| page_words(page).iter().any(|word| word == mode);
+    page.press("cmd+k")?;
+    page.type_text(">")?;
+    assert!(says(&page, "Commands"), "{:?}", page_words(&page));
+    page.press("backspace")?;
+    assert!(says(&page, "Files"), "{:?}", page_words(&page));
+    assert!(keyboard_is_in(&page, "palette-query"), "{:?}", page.focus());
+    page.type_text(":")?;
+    assert!(says(&page, "Line"), "{:?}", page_words(&page));
+    page.press("backspace")?;
+    assert!(says(&page, "Files"), "{:?}", page_words(&page));
+    // In the files themselves it is the field's: it takes back what was typed.
+    page.type_text("ab")?;
+    page.press("backspace")?;
+    assert_eq!(page.field("palette-query"), Some("a"));
+    assert!(says(&page, "Files"), "{:?}", page_words(&page));
+    Ok(())
+}
+
+/// A command with several keys is done by each of them; a menu's entries show their keys as a
+/// command's are written.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_command_is_done_by_each_of_its_keys_and_a_menu_shows_its_keys() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["src/server.ts", "README.md", "config.yaml"]);
+    let mut page = project.open(&session, WIDE)?;
+    let in_front = |page: &Page| page_words(page).iter().any(|word| word == "config.yaml");
+    page.press("ctrl+tab")?;
+    wait(&mut page, |page| text(page).starts_with("# Lantern"))?;
+    page.press("ctrl+page_down")?;
+    wait(&mut page, |page| text(page).starts_with("# ports"))?;
+    assert!(in_front(&page));
+    page.press("ctrl+shift+tab")?;
+    wait(&mut page, |page| text(page).starts_with("# Lantern"))?;
+    page.press("ctrl+page_up")?;
+    wait(&mut page, |page| text(page) == SERVER)?;
+    // Delete Line, by either of its keys.
+    let editor = shown(&page).expect("an editor");
+    page.caret_to(&editor, 0)?;
+    page.press("ctrl+shift+k")?;
+    page.advance(0.5)?;
+    assert!(
+        text(&page).starts_with("\nimport { formatPrice }"),
+        "{:?}",
+        text(&page)
+    );
+    page.press("cmd+shift+k")?;
+    page.advance(0.5)?;
+    assert!(
+        text(&page).starts_with("import { formatPrice }"),
+        "{:?}",
+        text(&page)
+    );
+    // A tab's menu: Close with its keys as a person writes them.
+    page.right_click("tab:README.md")?;
+    let menu = page.menu().expect("a menu");
+    let keys_of = |title: &str| {
+        menu.entries.iter().find_map(|entry| match entry {
+            MenuEntry::Item {
+                title: named, keys, ..
+            } if named == title => Some(*keys),
+            _ => None,
+        })
+    };
+    assert_eq!(keys_of("Close"), Some(Shortcut::parse("ctrl+w")));
+    assert_eq!(keys_of("Rename…"), Some(Shortcut::parse("f2")));
+    assert_eq!(keys_of("Copy Path"), Some(None));
+    Ok(())
+}
+
+/// The commands of whole lines are the editor's own.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_line_commands_are_the_editors() -> Result<(), Error> {
+    let project = lantern();
+    project.write("lines.txt", "one\ntwo\nthree\nfour\n");
+    let session = project.session(&["lines.txt"]);
+    let mut page = project.open(&session, WIDE)?;
+    let editor = shown(&page).expect("an editor");
+    let selected = |page: &Page| {
+        let buffer = page.editor(&editor)?;
+        let range = buffer.ranges().first().copied()?;
+        let (from, to) = (range.anchor.min(range.head), range.anchor.max(range.head));
+        Some(
+            buffer
+                .text()
+                .chars()
+                .skip(from)
+                .take(to - from)
+                .collect::<String>(),
+        )
+    };
+    page.caret_to(&editor, 5)?;
+    page.press("cmd+i")?;
+    assert_eq!(selected(&page).as_deref(), Some("two\n"));
+    page.press("ctrl+j")?;
+    page.advance(0.5)?;
+    assert_eq!(text(&page), "one\ntwo three\nfour\n");
+    page.caret_to(&editor, 1)?;
+    page.press("ctrl+enter")?;
+    page.advance(0.5)?;
+    assert_eq!(text(&page), "one\n\ntwo three\nfour\n");
+    page.command("duplicate-line-up")?;
+    page.advance(0.5)?;
+    assert_eq!(text(&page), "one\n\n\ntwo three\nfour\n");
+    // Fold All folds what folds: a file of two blocks has two regions folded.
+    project.write(
+        "blocks.py",
+        "def a():\n    x = 1\n    y = 2\n\ndef b():\n    z = 3\n    w = 4\n",
+    );
+    go_to(&mut page, "blocks.py")?;
+    let editor = shown(&page).expect("an editor");
+    page.press("ctrl+alt+[")?;
+    page.advance(0.5)?;
+    assert_eq!(
+        page.editor(&editor).map(|buffer| buffer.folded().len()),
+        Some(2)
+    );
+    Ok(())
+}
+
+/// A file that changed on disk, with nothing of ours in it, is changed where it differs: what the
+/// person did before can still be undone, and the text that came from the disk stays.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_clean_file_read_again_keeps_what_can_be_undone() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    let editor = shown(&page).expect("an editor");
+    page.caret_to(&editor, 0)?;
+    page.type_text("A ")?;
+    page.advance(1.0)?;
+    page.press("cmd+s")?;
+    wait(&mut page, |_| {
+        project.read("README.md").starts_with("A # Lantern")
+    })?;
+    page.advance(1.0)?;
+    // Another program adds to the end and to the middle of the file.
+    let on_disk = format!("{}\nAdded by another program.\n", project.read("README.md"))
+        .replace("API", "service");
+    project.write("README.md", &on_disk);
+    wait(&mut page, |page| text(page) == on_disk)?;
+    page.advance(0.5)?;
+    assert_eq!(shown(&page), Some(editor), "the same editor");
+    // The typing is undone, and the disk's words are still there.
+    page.press("cmd+z")?;
+    page.advance(0.5)?;
+    assert_eq!(text(&page), on_disk.replacen("A # Lantern", "# Lantern", 1));
+    // The change from the disk is nobody's to be sent back or saved: nothing is unsaved.
+    page.advance(1.0)?;
+    assert!(page.bounds("tab:README.md").is_some());
+    Ok(())
+}
+
+/// Every open file's editor takes its text as the terminal makes it (`editor_ready`), shown or
+/// hidden, with nothing refused.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn every_editor_takes_its_text_when_it_is_made() -> Result<(), Error> {
+    let project = lantern();
+    let tabs = [
+        "src/server.ts",
+        "README.md",
+        "config.yaml",
+        "Dockerfile",
+        "worker/mailer.py",
+    ];
+    let session = project.session(&tabs);
+    let mut page = project.open(&session, PANE)?;
+    for (n, tab) in tabs.iter().enumerate().skip(1) {
+        page.press(&format!("ctrl+{}", n + 1))?;
+        let expected = project.read(tab);
+        wait(&mut page, |page| text(page) == expected)?;
+    }
+    assert!(!shows(&page, "did not do it"), "{:?}", page_words(&page));
+    Ok(())
+}
+
+/// A place opened at puts its line in the middle of the editor, and the other places of what is
+/// selected are marked (the editor's `matches`).
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_place_is_centred_and_a_selection_marks_its_other_places() -> Result<(), Error> {
+    let project = lantern();
+    let long: String = (1..=400).map(|n| format!("line {n}\n")).collect();
+    project.write("long.txt", &long);
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    // Where the words of a line are drawn, down the page (the editor's lines are text of the draw list).
+    let y_of = |page: &Page, words: &str| {
+        page.list().items.iter().find_map(|item| match item {
+            Paint::Text(run) if run.text == words => Some(run.origin.y),
+            _ => None,
+        })
+    };
+    go_to(&mut page, "long.txt:150")?;
+    let editor = shown(&page).expect("an editor");
+    let room = page.bounds(&editor).expect("its room");
+    let (at, next) = (y_of(&page, "line 150"), y_of(&page, "line 151"));
+    let (at, row) = (
+        at.expect("the line"),
+        next.expect("the next") - at.expect("the line"),
+    );
+    assert!(row > 8.0, "a row of {row}");
+    // The line is in the middle of the room, not at its edge as a place shown by scrolling as little
+    // as it takes would leave it.
+    let middle = room.y + room.h / 2.0;
+    assert!(
+        (at - middle).abs() <= row * 1.5,
+        "{at} is not about {middle} (a row is {row})"
+    );
+    let marks = format!(
+        "{:?}",
+        page.editor(&editor).map(|buffer| buffer.options().matches)
+    );
+    assert!(marks.contains("Selection"), "{marks}");
+    Ok(())
+}
+
+/// The repository going away is `git: null` in the page's changes, not the same as nothing said of
+/// it: the branch leaves the status line.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_branch_leaves_the_status_line_when_the_repository_goes() -> Result<(), Error> {
+    let project = lantern();
+    let root = project.root();
+    let git = |args: &[&str]| {
+        let status = std::process::Command::new("git")
+            .args(args)
+            .current_dir(&root)
+            .env("GIT_AUTHOR_NAME", "textpen")
+            .env("GIT_AUTHOR_EMAIL", "textpen@example.com")
+            .env("GIT_COMMITTER_NAME", "textpen")
+            .env("GIT_COMMITTER_EMAIL", "textpen@example.com")
+            .status()
+            .expect("git");
+        assert!(status.success(), "git {args:?}");
+    };
+    git(&["init", "-q", "-b", "lantern-branch"]);
+    git(&["add", "-A"]);
+    git(&["commit", "-q", "-m", "The shop"]);
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    let branch = |page: &Page| page_words(page).iter().any(|word| word == "lantern-branch");
+    wait(&mut page, &branch)?;
+    std::fs::remove_dir_all(root.join(".git")).expect("the repository");
+    wait(&mut page, |page| !branch(page))?;
     Ok(())
 }

@@ -132,7 +132,7 @@ local function row_view(row, index, ctx)
 	local name = entry.name .. (entry.link and " ↗" or "")
 	element:child(b.text(name):color(color):weight(path == S.active and 650 or 400):truncate():grow(1):min_w(0))
 	if row.loading then
-		element:child(kit.icon("loader-2", 12, "quiet"))
+		element:child(kit.spinner(12, "quiet"))
 	end
 	if ctx.dirty[path] then
 		element:child(b.div():size(7, 7):rounded(4):bg("foreground"):no_shrink())
@@ -152,7 +152,7 @@ function tree.view()
 	if error_words then
 		return b.div():p(12):child(b.text(error_words):color("error"):wrap())
 	elseif not S.listings[""] then
-		return b.div():row():gap(8):p(12):child(kit.icon("loader-2", 14, "quiet")):child(b.text("Reading the folder…"):color("dim"))
+		return b.div():row():gap(8):p(12):child(kit.spinner(14, "quiet")):child(b.text("Reading the folder…"):color("dim"))
 	elseif #rows == 0 then
 		return b.div():col():gap(6):p(12)
 			:child(b.text("This folder is empty."):color("dim"))
@@ -235,7 +235,7 @@ function tree.menu(entry, at)
 	local dir = entry and (is_dir and entry.path or text.dirname(entry.path)) or ""
 	local items = {
 		{ "New File…", "a", function() act.create("file", dir) end },
-		{ "New Folder…", "A", function() act.create("dir", dir) end },
+		{ "New Folder…", "shift+a", function() act.create("dir", dir) end },
 	}
 	if entry then
 		items[#items + 1] = "-"
@@ -246,7 +246,7 @@ function tree.menu(entry, at)
 		items[#items + 1] = { "Delete…", "d", function() act.remove(entry.path, is_dir) end }
 		items[#items + 1] = "-"
 		items[#items + 1] = { "Copy Path", "y", function() act.copy_path(entry.path, false) end }
-		items[#items + 1] = { "Copy Absolute Path", "Y", function() act.copy_path(entry.path, true) end }
+		items[#items + 1] = { "Copy Absolute Path", "shift+y", function() act.copy_path(entry.path, true) end }
 	end
 	act.menu(items, at)
 end

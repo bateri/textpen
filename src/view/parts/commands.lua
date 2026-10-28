@@ -5,7 +5,8 @@
 -- occurrence, ⌃⇧↑ ⌃⇧↓ for a caret above or below).
 --
 -- A command whose keys are the editor's own (`shown`, not `keys`) is listed with them and runs
--- the same command on the editor; its keys stay the editor's.
+-- the same command on the editor; its keys stay the editor's. `keys` is the words of one set of
+-- keys or a list of them, each doing the command, the first the one shown.
 
 local kit = require("../lib/kit")
 local text = require("../lib/text")
@@ -132,9 +133,9 @@ add({ id = "close-all", title = "Close All Tabs", category = "Tabs", when = func
 	run = function() act.close_others(nil) end })
 add({ id = "reopen", title = "Reopen Closed Tab", category = "Tabs", keys = "cmd+shift+t", when = function() return act.can_reopen() end,
 	run = function() act.reopen_closed() end })
-add({ id = "next-tab", title = "Next Tab", category = "Tabs", keys = "ctrl+page_down", when = function() return tab_count() > 1 end,
+add({ id = "next-tab", title = "Next Tab", category = "Tabs", keys = { "ctrl+page_down", "ctrl+tab" }, when = function() return tab_count() > 1 end,
 	run = function() act.cycle_tab(1) end })
-add({ id = "previous-tab", title = "Previous Tab", category = "Tabs", keys = "ctrl+page_up", when = function() return tab_count() > 1 end,
+add({ id = "previous-tab", title = "Previous Tab", category = "Tabs", keys = { "ctrl+page_up", "ctrl+shift+tab" }, when = function() return tab_count() > 1 end,
 	run = function() act.cycle_tab(-1) end })
 add({ id = "move-tab-right", title = "Move Tab Right", category = "Tabs", keys = "ctrl+shift+page_down",
 	when = function() return tab_count() > 1 end, run = function() act.move_tab(1) end })
@@ -213,8 +214,24 @@ add({ id = "comment", title = "Toggle Comment", category = "Edit", shown = "cmd+
 	run = on_editor({ command = "toggle_comment" }) })
 add({ id = "block-comment", title = "Toggle Block Comment", category = "Edit", when = has_file,
 	run = on_editor({ command = "toggle_block_comment" }) })
-add({ id = "delete-line", title = "Delete Line", category = "Edit", keys = "cmd+shift+k", when = has_file,
-	run = function() act.delete_lines() end })
+add({ id = "delete-line", title = "Delete Line", category = "Edit", keys = { "cmd+shift+k", "ctrl+shift+k" }, when = has_file,
+	run = on_editor({ command = "delete_lines" }) })
+add({ id = "select-line", title = "Select Line", category = "Selection", keys = "cmd+i", when = has_file,
+	run = on_editor({ command = "select_line" }) })
+add({ id = "duplicate-line-up", title = "Duplicate Line Up", category = "Edit", keys = "alt+shift+up", when = has_file,
+	run = on_editor({ command = "duplicate_lines_up" }) })
+add({ id = "join-lines", title = "Join Lines", category = "Edit", keys = "ctrl+j", when = has_file,
+	run = on_editor({ command = "join_lines" }) })
+add({ id = "insert-line", title = "Insert Line Below", category = "Edit", keys = "ctrl+enter", when = has_file,
+	run = on_editor({ command = "insert_blank_line" }) })
+add({ id = "split-line", title = "Split Line at the Caret", category = "Edit", when = has_file,
+	run = on_editor({ command = "split_line" }) })
+add({ id = "transpose", title = "Transpose Characters", category = "Edit", when = has_file,
+	run = on_editor({ command = "transpose_chars" }) })
+add({ id = "delete-to-start", title = "Delete to Start of Line", category = "Edit", when = has_file,
+	run = on_editor({ command = "delete_to_line_start" }) })
+add({ id = "delete-to-end", title = "Delete to End of Line", category = "Edit", when = has_file,
+	run = on_editor({ command = "delete_to_line_end" }) })
 add({ id = "move-line-up", title = "Move Line Up", category = "Edit", shown = "alt+up", when = has_file,
 	run = on_editor({ command = "move_lines_up" }) })
 add({ id = "move-line-down", title = "Move Line Down", category = "Edit", shown = "alt+down", when = has_file,
@@ -225,6 +242,8 @@ add({ id = "indent", title = "Indent Line", category = "Edit", shown = "tab", wh
 add({ id = "outdent", title = "Outdent Line", category = "Edit", shown = "shift+tab", when = has_file, run = on_editor({ command = "outdent" }) })
 add({ id = "fold", title = "Fold", category = "Edit", shown = "cmd+alt+[", when = has_file, run = on_editor({ command = "fold" }) })
 add({ id = "unfold", title = "Unfold", category = "Edit", shown = "cmd+alt+]", when = has_file, run = on_editor({ command = "unfold" }) })
+add({ id = "fold-all", title = "Fold All", category = "Edit", keys = "ctrl+alt+[", when = has_file,
+	run = on_editor({ command = "fold_all" }) })
 add({ id = "unfold-all", title = "Unfold All", category = "Edit", keys = "ctrl+alt+]", when = has_file,
 	run = on_editor({ command = "unfold_all" }) })
 add({ id = "select-all", title = "Select All", category = "Selection", shown = "cmd+a", when = has_file,

@@ -12,9 +12,9 @@ name = "textpen"
 path = "src/program/main.rs"
 
 [dependencies]
-# The program's side of pencere, at the commit whose kit has the editor (crates.io's 0.3 has kit 1.0).
+# The program's side of pencere, at the commit whose kit has the editor and the library of @pencere modules (crates.io's 0.3 has kit 1.0).
 # Every pencere crate here is at the same commit, written whole: Cargo.lock is where it is pinned.
-pencere = { git = "https://github.com/bateri/pencere", rev = "777f921ae6b5f666450fc8023b53ca618ea2748c" }
+pencere = { git = "https://github.com/bateri/pencere", rev = "b1dac9a227c5ea10d541e38ea0c15a7bf327cb48" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # The project search: patterns a person types, searched in time linear in the text (no
@@ -30,7 +30,7 @@ base64 = "0.22"
 libc = "0.2"
 
 [build-dependencies]
-pencere = { git = "https://github.com/bateri/pencere", rev = "777f921ae6b5f666450fc8023b53ca618ea2748c" }
+pencere = { git = "https://github.com/bateri/pencere", rev = "b1dac9a227c5ea10d541e38ea0c15a7bf327cb48" }
 
 [dev-dependencies]
 # Each test has a directory of its own as its home and its project.
@@ -38,12 +38,12 @@ tempfile = "3"
 # The page (src/view/) run as a terminal runs it, with no screen: the kit's interpreter and editors,
 # a clock the test moves, and the program's own handlers in this process (`program`); and pictures
 # of it for the eye, in the fonts of the machine (`shot`, `make shots`).
-pencere-drive = { git = "https://github.com/bateri/pencere", rev = "777f921ae6b5f666450fc8023b53ca618ea2748c", features = ["program", "shot"] }
+pencere-drive = { git = "https://github.com/bateri/pencere", rev = "b1dac9a227c5ea10d541e38ea0c15a7bf327cb48", features = ["program", "shot"] }
 # The names of the page's elements (`Id`), to tell which of its editors is shown.
-pencere-view = { git = "https://github.com/bateri/pencere", rev = "777f921ae6b5f666450fc8023b53ca618ea2748c" }
+pencere-view = { git = "https://github.com/bateri/pencere", rev = "b1dac9a227c5ea10d541e38ea0c15a7bf327cb48" }
 # The files of a page's bundle (`Assets`): a test's own script beside the page; and what a page's
 # calls are held to (`ModuleLimits`).
-pencere-sandbox = { git = "https://github.com/bateri/pencere", rev = "777f921ae6b5f666450fc8023b53ca618ea2748c" }
+pencere-sandbox = { git = "https://github.com/bateri/pencere", rev = "b1dac9a227c5ea10d541e38ea0c15a7bf327cb48" }
 
 # The page tests compile the kit's interpreter to machine code, with wasmtime's code generator, as
 # each page opens; built without optimization (a debug build) that takes some 13 seconds a page,

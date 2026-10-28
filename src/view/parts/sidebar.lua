@@ -346,9 +346,16 @@ end
 
 function act.rename(path)
 	local name = text.basename(path)
+	-- The name without its extension is selected, as the dialog comes up: typing renames it.
+	local start = text.len(path) - text.len(name)
+	local stem = string.match(name, "^(.+)%.[^%.]*$") or name
 	act.ask({
 		title = "Rename " .. name,
-		input = { value = path, hint = "Change the folders too, to move it." },
+		input = {
+			value = path,
+			select = { from = start, to = start + text.len(stem) },
+			hint = "Change the folders too, to move it.",
+		},
 		actions = {
 			{ id = "rename", label = "Rename", primary = true },
 			{ id = "cancel", label = "Cancel" },

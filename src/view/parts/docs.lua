@@ -18,7 +18,8 @@
 
 local kit = require("../lib/kit")
 local text = require("../lib/text")
-local languages = require("../lib/languages")
+local language = require("../lib/language")
+local Syntax = require("@pencere/syntax")
 
 local b, S = kit.b, kit.S
 local layout = b.layout
@@ -29,11 +30,6 @@ local docs = {}
 local CALL_TEXT = 64 * 1024
 -- How long after the last change the changes go to the program, seconds.
 local SEND_DELAY = 0.35
--- How much of a text a syntax reads in one call, bytes: a quarter of the kit's 20 000. The kit
--- counts bytes, and a line costs about as much as a few dozen of its bytes, so a text of short lines
--- (a paste of thousands, a list of numbers in JSON) read 20 000 bytes at a time took some 180 ms a
--- call; 5 000 take under 50 ms, and a file of code is coloured as fast as a person scrolls it.
-local SYNTAX_STEP = 5000
 -- What the page keeps its editors' documents under, bytes: the terminal's 64 MiB, less room for what
 -- is typed into them.
 local DOCUMENTS_BYTES = 56 * 1024 * 1024
@@ -205,9 +201,9 @@ local function new_doc(path)
 		version = 0,
 		-- The version of the editor's document the page was last told of.
 		edited = nil,
-		-- The editor is on the page (laid out at least once), and its text is all in it.
+		-- The terminal made the editor (`editor_ready`): what is asked of it is done from now on. And
+		-- its text is all in it: `loaded`.
 		mounted = false,
-		in_tree = false,
 		loaded = false,
 		-- The pieces of a text from the program: how many there are (once the last is read), how many
 		-- went to the editor, and how many of those it has not yet told of.
@@ -229,7 +225,7 @@ local function new_doc(path)
 		main = 1,
 		first = 0,
 		last = 0,
-		lang = languages.plain,
+		lang = language.plain,
 		syntax = nil,
 		-- Where the caret goes once the text is in: { line =, column =, select =, place =, keep = }.
 		arrive = nil,
@@ -256,7 +252,7 @@ local function set_language(doc, lang)
 	doc.lang = lang
 	doc.syntax = nil
 	if lang.syntax then
-		doc.syntax = b.Syntax.new(lang.syntax, doc.id, { tab_width = S.settings and S.settings.tabSize or 4, step = SYNTAX_STEP })
+		doc.syntax = Syntax.new(lang.syntax, doc.id, { tab_width = S.settings and S.settings.tabSize or 4 })
 		kit.syntaxes[doc.id] = doc.syntax
 		if doc.loaded and doc.last > 0 then
 			doc.syntax:handle({ type = "viewport", editor = doc.id, first = doc.first, last = doc.last })
@@ -314,10 +310,7 @@ local function arrived(doc)
 		return
 	end
 	kit.ask(doc.id, { select = { { anchor = anchor, head = head } }, version = doc.edited, main = 1 })
-	kit.ask(doc.id, { reveal = head, version = doc.edited })
-	if center then
-		docs.center(doc, center)
-	end
+	kit.ask(doc.id, { reveal = head, version = doc.edited, align = center and "center" or nil })
 end
 
 -- Whether the program's text is all in the editor: every piece went, and the editor told of each.
@@ -334,16 +327,12 @@ function docs.arrive_now(doc)
 	arrived(doc)
 end
 
--- Scrolls the editor so that `line` is in the middle of what is in view, where the editor has
--- been laid out.
+-- Scrolls the editor so that `line` (from 0) is in the middle of what is in view.
 function docs.center(doc, line)
-	local extent = layout.scroll_extent(doc.id)
-	local lines = layout.editor_lines(doc.id) or 1
-	if not extent or extent.content <= 0 then
-		return
+	local at = layout.line_start(doc.id, line)
+	if at and doc.edited ~= nil then
+		kit.ask(doc.id, { reveal = at, version = doc.edited, align = "center" })
 	end
-	local row = extent.content / math.max(lines, 1)
-	layout.scroll_to(doc.id, { y = math.max(line * row - extent.view / 2 + row / 2, 0) })
 end
 
 -- The documents the editors hold, bytes.
@@ -415,7 +404,7 @@ function docs.open(tab, arrive, size)
 			tab.info = info
 			take_text(doc, opened, function(first)
 				local line = string.match(first, "^[^\n]*") or ""
-				set_language(doc, tab.language and languages.find(tab.language) or languages.detect(doc.path, line))
+				set_language(doc, tab.language and language.find(tab.language) or language.detect(doc.path, line))
 				next()
 			end, function(message)
 				tab.status, tab.error = "error", message
@@ -428,9 +417,91 @@ function docs.open(tab, arrive, size)
 	end)
 end
 
+-- What the editor is told a change of the file on disk is named: it is the program's already, and
+-- is not sent back to it.
+local DISK = "disk"
+-- The most a text that comes in place of another is, bytes, for one change to carry it (a reply
+-- hands the editors 1 MiB).
+local SWAP_MOST = 512 * 1024
+local STRIDE = 4096
+
+-- Whether the byte at `at` of `s` is not the first of its character.
+local function inside(s, at)
+	local byte = string.byte(s, at)
+	return byte ~= nil and byte >= 0x80 and byte < 0xC0
+end
+
+-- Puts `new` in place of the editor's text as one change that leaves what can be undone as it is:
+-- only the stretch that differs is replaced, so that what was done before it carries over it
+-- (`history = false`: the change is nothing the person did). False where it cannot be done so (the
+-- stretch is more than a change carries).
+local function swap(doc, new)
+	local length = layout.editor_length(doc.id) or 0
+	local pieces = {}
+	local at = 0
+	while at < length do
+		pieces[#pieces + 1] = layout.editor_text(doc.id, at, math.min(at + READ_CHARS, length)) or ""
+		at += READ_CHARS
+	end
+	local old = table.concat(pieces)
+	if old == new then
+		return true
+	end
+	local limit = math.min(#old, #new)
+	local head = 0
+	while head < limit do
+		local stop = math.min(head + STRIDE, limit)
+		if string.sub(old, head + 1, stop) ~= string.sub(new, head + 1, stop) then
+			while string.byte(old, head + 1) == string.byte(new, head + 1) do
+				head += 1
+			end
+			break
+		end
+		head = stop
+	end
+	while head > 0 and (inside(old, head + 1) or inside(new, head + 1)) do
+		head -= 1
+	end
+	local tail = 0
+	local room = limit - head
+	while tail < room do
+		local step = math.min(STRIDE, room - tail)
+		if string.sub(old, #old - tail - step + 1, #old - tail) ~= string.sub(new, #new - tail - step + 1, #new - tail) then
+			while string.byte(old, #old - tail) == string.byte(new, #new - tail) do
+				tail += 1
+			end
+			break
+		end
+		tail += step
+	end
+	while tail > 0 and inside(old, #old - tail + 1) do
+		tail -= 1
+	end
+	local insert = string.sub(new, head + 1, #new - tail)
+	if #insert > SWAP_MOST then
+		return false
+	end
+	local from = head > 0 and text.len(string.sub(old, 1, head)) or 0
+	local to = text.len(old) - (tail > 0 and text.len(string.sub(old, #old - tail + 1)) or 0)
+	kit.ask(doc.id, {
+		change = { { from = from, to = to, insert = insert } },
+		base = layout.editor_version(doc.id),
+		history = false,
+		tag = DISK,
+	})
+	return true
+end
+
 -- Reads the program's text into the editor again (the file changed on disk, a draft was taken, the
--- editor was not there for a load), the carets kept where they were where `keep`.
+-- editor was not there for a load), the carets kept where they were where `keep`. Where the file
+-- on disk is `keep = "disk"` (the editor's text had nothing the program did not), only what
+-- differs is changed, and what can be undone stays so.
 local function refill(doc, opened, keep)
+	if keep == DISK and doc.loaded and not opened.partial and swap(doc, opened.text or "") then
+		doc.version = opened.version
+		doc.pending = {}
+		return
+	end
 	if keep then
 		doc.arrive = { keep = doc.ranges, main = doc.main }
 	end
@@ -632,6 +703,9 @@ local function edited(doc, event)
 		docs.check_arrived(doc)
 		return
 	end
+	if event.tag == DISK then
+		return
+	end
 	local changes = event.changes or {}
 	if #changes == 0 then
 		return
@@ -674,33 +748,18 @@ function docs.handle(event)
 		doc.composing = event.composing
 	elseif kind == "viewport" then
 		doc.first, doc.last = event.first, event.last
+	elseif kind == "editor_ready" then
+		-- The editor was made, as the page was laid out with it, shown or hidden: its text goes in.
+		doc.mounted = true
+		deliver()
 	elseif kind == "editor_refused" then
-		if event.reason == "no-editor" then
-			-- The editor was not on the page yet: its text goes in again once it is.
-			doc.mounted = false
-			reload(doc, false)
-		elseif event.reason == "too-large" then
+		if event.reason == "too-large" then
 			kit.toast(text.basename(doc.path) .. " is too large for what the editors may hold: close a tab first", "bad", 6)
 		elseif event.reason ~= "stale-version" and event.reason ~= "bad-pattern" then
 			kit.toast("The editor did not do it: " .. event.reason, "warn")
 		end
 	end
 	return true
-end
-
--- The page was laid out: an editor that is on the page now takes its text.
-function docs.settle()
-	local any = false
-	for _, doc in by_id do
-		if doc.in_tree and not doc.mounted and not doc.closed then
-			doc.mounted = true
-			any = true
-		end
-	end
-	if any then
-		deliver()
-	end
-	return any
 end
 
 -- --- Saving, closing, the program's words ---------------------------------------------------------------
@@ -848,7 +907,7 @@ function docs.renamed(doc, path)
 		local first = layout.editor_text(doc.id, 0, math.min(layout.editor_length(doc.id) or 0, 400)) or ""
 		local tab = docs.tab_of(path)
 		if not (tab and tab.language) then
-			set_language(doc, languages.detect(path, string.match(first, "^[^\n]*") or ""))
+			set_language(doc, language.detect(path, string.match(first, "^[^\n]*") or ""))
 		end
 	end
 end
@@ -863,7 +922,7 @@ function docs.changed(info)
 	local doc = tab.doc
 	if doc and doc.loaded and not info.dirty and not info.conflict and info.version ~= doc.version
 		and not docs.unsent(doc) then
-		reload(doc, true)
+		reload(doc, DISK)
 		kit.toast(text.basename(info.path) .. " changed on disk and was read again", "info")
 	end
 	docs.update_info(info)
@@ -882,13 +941,9 @@ end
 -- documents kept.
 function docs.editors(options_of)
 	local out = {}
-	for _, doc in by_id do
-		doc.in_tree = false
-	end
 	for _, tab in S.tabs do
 		local doc = tab.doc
 		if doc and not doc.closed then
-			doc.in_tree = true
 			out[#out + 1] = { tab = tab, doc = doc, element = b.editor(doc.id, options_of(tab, doc)) }
 		end
 	end
