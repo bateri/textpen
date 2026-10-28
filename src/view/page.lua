@@ -18,6 +18,8 @@ local status = require("./parts/status")
 local dialogs = require("./parts/dialogs")
 local sidebar = require("./parts/sidebar")
 local palette = require("./parts/palette")
+local find = require("./parts/find")
+local search = require("./parts/search")
 
 local b, ui, S, SIZE, act = kit.b, kit.ui, kit.S, kit.SIZE, kit.act
 local layout = b.layout
@@ -144,7 +146,8 @@ local function click(id, event)
 	if dialogs.dismiss(id) then
 		return
 	end
-	if tabs.press(id, event) or status.press(id) or area.press(id) or sidebar.press(id, event) then
+	if tabs.press(id, event) or status.press(id) or area.press(id) or find.press(id) or search.press(id, event)
+		or sidebar.press(id, event) then
 		return
 	end
 	if act.press then
@@ -225,7 +228,7 @@ local function key(event)
 	if overlay and act.overlay_key then
 		return act.overlay_key(name, mods)
 	end
-	if sidebar.key(name, mods) then
+	if find.key(name, mods) or sidebar.key(name, mods) then
 		return true
 	end
 	if name == "escape" and ui:cancel_drag() then
@@ -239,9 +242,7 @@ local function handle(event)
 	local reply = nil
 	if event.editor ~= nil then
 		docs.handle(event)
-		if act.editor_event then
-			act.editor_event(event)
-		end
+		find.editor_event(event)
 		reply = kind ~= "viewport" or nil
 	elseif kind == "move" then
 		reply = moved(event)
@@ -266,17 +267,18 @@ local function handle(event)
 		end
 		reply = true
 	elseif kind == "text" then
-		if not dialogs.text(event.field, event.text) and not palette.text(event.field, event.text) and act.text then
-			act.text(event.field, event.text)
-		end
+		local _ = dialogs.text(event.field, event.text) or palette.text(event.field, event.text)
+			or find.text(event.field, event.text) or search.text(event.field, event.text)
 		reply = true
 	elseif kind == "focus" then
 		local field = event.field
 		S.field = field
 		if field and docs.by_id(field) then
 			S.focus = "editor"
-		elseif field and act.focus_field then
-			act.focus_field(field)
+		elseif field == "search-query" then
+			S.focus, S.sidebar, S.search.in_results = "sidebar", "search", false
+		elseif field == "find-query" or field == "find-replace" then
+			S.focus = "editor"
 		end
 		reply = true
 	elseif kind == "menu" then

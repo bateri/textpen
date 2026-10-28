@@ -126,6 +126,12 @@ function area.view(size)
 			column:child(strip)
 		end
 	end
+	if tab and tab.doc and tab.doc.loaded and act.find_bar then
+		local bar = act.find_bar(tab.doc)
+		if bar then
+			column:child(bar)
+		end
+	end
 	local row = b.div():row():grow(1):min_h(0)
 	local markdown = tab and act.is_markdown and act.is_markdown(tab.path)
 	local previewing = markdown and tab.doc and tab.doc.loaded and text.index_of(S.preview, tab.path) ~= nil
@@ -141,12 +147,6 @@ function area.view(size)
 			end
 			if act.editor_commands then
 				act.editor_commands(editor, entry.doc)
-			end
-			if act.find_bar then
-				local bar = act.find_bar(entry.doc)
-				if bar then
-					editor:child(bar)
-				end
 			end
 		else
 			editor:hidden()

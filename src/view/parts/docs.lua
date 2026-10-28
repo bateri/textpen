@@ -676,7 +676,7 @@ function docs.handle(event)
 			reload(doc, false)
 		elseif event.reason == "too-large" then
 			kit.toast(text.basename(doc.path) .. " is too large for what the editors may hold: close a tab first", "bad", 6)
-		elseif event.reason ~= "stale-version" then
+		elseif event.reason ~= "stale-version" and event.reason ~= "bad-pattern" then
 			kit.toast("The editor did not do it: " .. event.reason, "warn")
 		end
 	end
