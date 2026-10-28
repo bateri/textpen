@@ -29,6 +29,11 @@ local docs = {}
 local CALL_TEXT = 64 * 1024
 -- How long after the last change the changes go to the program, seconds.
 local SEND_DELAY = 0.35
+-- How much of a text a syntax reads in one call, bytes: a quarter of the kit's 20 000. The kit
+-- counts bytes, and a line costs about as much as a few dozen of its bytes, so a text of short lines
+-- (a paste of thousands, a list of numbers in JSON) read 20 000 bytes at a time took some 180 ms a
+-- call; 5 000 take under 50 ms, and a file of code is coloured as fast as a person scrolls it.
+local SYNTAX_STEP = 5000
 -- What the page keeps its editors' documents under, bytes: the terminal's 64 MiB, less room for what
 -- is typed into them.
 local DOCUMENTS_BYTES = 56 * 1024 * 1024
@@ -251,7 +256,7 @@ local function set_language(doc, lang)
 	doc.lang = lang
 	doc.syntax = nil
 	if lang.syntax then
-		doc.syntax = b.Syntax.new(lang.syntax, doc.id, { tab_width = S.settings and S.settings.tabSize or 4 })
+		doc.syntax = b.Syntax.new(lang.syntax, doc.id, { tab_width = S.settings and S.settings.tabSize or 4, step = SYNTAX_STEP })
 		kit.syntaxes[doc.id] = doc.syntax
 		if doc.loaded and doc.last > 0 then
 			doc.syntax:handle({ type = "viewport", editor = doc.id, first = doc.first, last = doc.last })
