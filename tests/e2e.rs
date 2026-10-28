@@ -269,10 +269,11 @@ fn a_hangup_while_the_shell_has_the_pane_ends_textpen_and_keeps_what_is_not_save
     assert_eq!(pane.read("a.txt"), "world\n");
 }
 
-// The view is closed by the person (`--then close`): the stand-in of this pencere passes a page of
-// the kit's own `close` to the program as a message (host/fake/src/host.rs, `react`), so `--then
-// page-close` does not close it. That is pencere's to mend (handed to its set 009); the program's
-// way out is the same for both.
+// The view is closed by the person, as a terminal's own way of closing it does (`--then close`).
+// A page of the kit has no close of its own (the protocol, Section 10.6; pencere's set 009 holds it
+// so in its stand-in: a kit page's `close` keeps its view): its program ends the view, as textpen's
+// does when the page calls `quit` (api/tests.rs). So the person closing the view is the test here,
+// and not a stand-in for one.
 #[test]
 fn closing_the_view_ends_textpen_with_success() {
     let pane = pane();
