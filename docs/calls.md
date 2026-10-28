@@ -28,7 +28,7 @@ tests hold it to it, and the page's tests hold the page to it.
   file index and a long search come in pieces or are cut and say so. The page keeps each call it
   sends under the same limit: an `edit` carries at most 192 Ki code points of inserted text.
 - **Buffer calls are answered in the order they were sent.** `open`, `edit`, `slice`, `save`,
-  `buffer` and `discard` run one at a time, in the page's order (the program's lane for buffers),
+  `buffer`, `discard` and `quit` run one at a time, in the page's order (the program's lane for buffers),
   so the page may send an `edit` and then a `save` of the version it will make without waiting.
   Other calls run at the same time as each other and as the buffer calls.
 
@@ -127,7 +127,13 @@ FilesPage   = { files: string[], truncated: boolean, next: number | null }
 | `save`     | `{ path, version: integer, force?: boolean }`                                            | `{ saved: boolean, info: BufferInfo }`. A file changed on disk is not overwritten unless `force`: `saved` false and `info.conflict`.                                                                                           |
 | `buffer`   | `{ path, action, discard?: boolean }`                                                    | by `action`: `text` → `Opened`; `revert` → `Opened \| Unopenable`; `keep` → `BufferInfo`; `restore` / `drop` (the draft) → `Opened`; `lf` / `crlf` → `BufferInfo`; `close` → `{ path }` (`failed` if dirty and not `discard`). |
 | `discard`  | `{}`                                                                                     | `{}`. Quitting without saving: nothing unsaved is kept as a draft.                                                                                                                                                             |
+| `quit`     | `{}`                                                                                     | `{}`, or no answer: the program closes its view once the buffer calls sent before it are done, and textpen ends, what is not saved kept as drafts (none after `discard`). `failed` where the terminal cannot close the view.     |
 | `search`   | `{ query: string (≥ 1), regex?: boolean, caseSensitive?: boolean, wholeWord?: boolean }` | `SearchResult`, cut to fit one message. The pattern is the Rust `regex` crate's: back-references and lookaround are refused (`failed`, with words), so a search ends in time linear in the text.                               |
+
+A page of the kit has no message of the host's own to close its view with (the protocol, Section
+10.6: a kit view that wants the program to end sends it a `call`, and the program ends or dismisses
+the view), so textpen ends by `quit`: the page saves or discards first, keeps its state with `ui`,
+then asks.
 
 ## Topic
 
