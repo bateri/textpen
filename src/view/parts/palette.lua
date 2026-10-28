@@ -77,11 +77,13 @@ local function parts_of(words, positions, from, to)
 	return fuzzy.marks(words, positions, from, to)
 end
 
-local function file_items(raw)
-	local place_query, line, column = string.match(raw, "^%s*(.-):(%d+):?(%d*)%s*$")
-	local query = place_query or raw
-	line = line and tonumber(line)
-	column = column and column ~= "" and tonumber(column) or nil
+-- How many files one call scores: the rest are scored at the next wakes, the list filling in as they
+-- are, so that typing in a project of many files never takes a call past its time.
+local CHUNK = 1500
+
+-- The files the quick open looks through, in its order: the ones opened lately, then the open ones,
+-- then the rest of the project; made once for each palette and each reading of the project.
+local function candidates()
 	local open = {}
 	for _, tab in S.tabs do
 		open[tab.path] = true
@@ -91,12 +93,11 @@ local function file_items(raw)
 	for _, path in index.files do
 		in_index[path] = true
 	end
-	-- What was open lately first, then the open files, then the rest.
-	local all, lowers, seen = {}, {}, {}
+	local paths, lowers, seen = {}, {}, {}
 	local function add(path, lower)
 		if not seen[path] then
 			seen[path] = true
-			all[#all + 1] = path
+			paths[#paths + 1] = path
 			lowers[#lowers + 1] = lower or string.lower(path)
 		end
 	end
@@ -111,52 +112,107 @@ local function file_items(raw)
 	for position, path in index.files do
 		add(path, index.lower[position])
 	end
-	local changes = S.git and S.git.changes or {}
-	local function item(path, positions)
-		local name_start = #path - #text.basename(path) + 1
-		local kind = files.kind(path)
-		local state = changes[path]
-		return {
-			id = path,
-			icon = { kind.icon, kind.color },
-			title = parts_of(path, positions, name_start, #path),
-			detail = name_start > 1 and parts_of(path, positions, 1, name_start - 2) or nil,
-			badge = open[path] and "open" or nil,
-			git = state,
-			run = function()
-				act.open_file(path, { focus = true, line = line, column = column })
-			end,
-		}
-	end
-	local out = {}
-	if string.match(query, "^%s*$") then
-		for index_at = 1, math.min(#all, LIMIT) do
-			out[#out + 1] = item(all[index_at], {})
-		end
-		return out
-	end
 	local rank = {}
 	for position, path in S.recent do
 		rank[path] = position
 	end
-	local scored = {}
-	for position, path in all do
-		local found = fuzzy.path(query, path, lowers[position])
-		if found then
-			local bonus = rank[path] and (12 - math.min(10, rank[path] - 1)) or 0
-			scored[#scored + 1] = { path = path, score = found.score + bonus, positions = found.positions }
-		end
-	end
-	table.sort(scored, function(a, c)
+	return { paths = paths, lowers = lowers, open = open, rank = rank, index = S.file_index }
+end
+
+local function file_item(path, positions, pool, place)
+	local name_start = #path - #text.basename(path) + 1
+	local kind = files.kind(path)
+	local state = S.git and S.git.changes and S.git.changes[path]
+	return {
+		id = path,
+		icon = { kind.icon, kind.color },
+		title = parts_of(path, positions, name_start, #path),
+		detail = name_start > 1 and parts_of(path, positions, 1, name_start - 2) or nil,
+		badge = pool.open[path] and "open" or nil,
+		git = state,
+		run = function()
+			act.open_file(path, { focus = true, line = place.line, column = place.column })
+		end,
+	}
+end
+
+-- The best of what a scan found so far, as lines of the list.
+local function scan_items(scan)
+	local best = table.clone(scan.scored)
+	table.sort(best, function(a, c)
 		if a.score ~= c.score then
 			return a.score > c.score
 		end
-		return #a.path < #c.path
+		return #scan.pool.paths[a.at] < #scan.pool.paths[c.at]
 	end)
-	for position = 1, math.min(#scored, LIMIT) do
-		out[#out + 1] = item(scored[position].path, scored[position].positions)
+	local out = {}
+	for position = 1, math.min(#best, LIMIT) do
+		out[#out + 1] = file_item(scan.pool.paths[best[position].at], best[position].positions, scan.pool, scan.place)
 	end
 	return out
+end
+
+-- Scores the next chunk of a scan; goes on at the next wake while there is more.
+local function scan_step(scan)
+	local pool = scan.pool
+	local list = scan.within
+	local count = list and #list or #pool.paths
+	local stop = math.min(scan.next + CHUNK - 1, count)
+	for position = scan.next, stop do
+		local at = list and list[position] or position
+		local path = pool.paths[at]
+		local found = fuzzy.path(scan.query, path, pool.lowers[at])
+		if found then
+			local rank = pool.rank[path]
+			local bonus = rank and (12 - math.min(10, rank - 1)) or 0
+			scan.scored[#scan.scored + 1] = { at = at, score = found.score + bonus, positions = found.positions }
+			scan.matched[#scan.matched + 1] = at
+		end
+	end
+	scan.next = stop + 1
+	scan.done = scan.next > count
+	if not scan.done then
+		kit.after(0, function()
+			local overlay = S.overlay
+			if overlay and overlay.kind == "palette" and overlay.scan == scan then
+				scan_step(scan)
+				overlay.items = scan_items(scan)
+				overlay.chosen = math.clamp(overlay.chosen, 1, math.max(#overlay.items, 1))
+				palette.reveal()
+			end
+			return true
+		end)
+	end
+end
+
+local function file_items(raw)
+	local place_query, line, column = string.match(raw, "^%s*(.-):(%d+):?(%d*)%s*$")
+	local query = place_query or raw
+	local place = { line = line and tonumber(line), column = column and column ~= "" and tonumber(column) or nil }
+	local overlay = S.overlay
+	if not overlay.pool or overlay.pool.index ~= S.file_index then
+		overlay.pool = candidates()
+		overlay.scan = nil
+	end
+	local pool = overlay.pool
+	if string.match(query, "^%s*$") then
+		overlay.scan = nil
+		local out = {}
+		for at = 1, math.min(#pool.paths, LIMIT) do
+			out[#out + 1] = file_item(pool.paths[at], {}, pool, place)
+		end
+		return out
+	end
+	-- A query that goes on from the one before looks only through what that one found.
+	local before = overlay.scan
+	local within = nil
+	if before and before.done and #query > #before.query and string.sub(query, 1, #before.query) == before.query then
+		within = before.matched
+	end
+	local scan = { query = query, pool = pool, within = within, next = 1, scored = {}, matched = {}, done = false, place = place }
+	overlay.scan = scan
+	scan_step(scan)
+	return scan_items(scan)
 end
 
 local function command_items(query)

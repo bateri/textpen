@@ -51,8 +51,10 @@ function clike.reader(o)
 	local special = o.special or {}
 	local definers = o.definers or {}
 
+	-- The state a line leaves: what is left out is nothing open (no block comment, no string, no
+	-- template, no tag), so that the state kept for every line of a long file costs little.
 	local function start()
-		return { block = 0, str = nil, tpl = {}, def = nil, dot = false, last = nil, jsx = false, jsxd = nil }
+		return {}
 	end
 
 	-- A block comment from where the stream is, to its end or the end of the line.
@@ -60,7 +62,7 @@ function clike.reader(o)
 		if not o.nested then
 			if stream:skip_to(o.block[2]) then
 				stream:match(block_close)
-				state.block = 0
+				state.block = nil
 			else
 				stream:skip_to_end()
 			end
@@ -72,6 +74,7 @@ function clike.reader(o)
 			elseif stream:match(block_close) then
 				state.block -= 1
 				if state.block == 0 then
+					state.block = nil
 					return "comment"
 				end
 			else
@@ -91,6 +94,7 @@ function clike.reader(o)
 				if stream.pos == stream.start then
 					stream:match("${")
 					state.str = nil
+					state.tpl = state.tpl or {}
 					state.tpl[#state.tpl + 1] = 0
 					state.last = nil
 					return "string.special"
@@ -150,7 +154,7 @@ function clike.reader(o)
 	end
 
 	local function token(stream, state)
-		if state.block > 0 then
+		if (state.block or 0) > 0 then
 			return block_comment(stream, state)
 		end
 		local open = state.str
@@ -161,11 +165,11 @@ function clike.reader(o)
 			return nil
 		end
 		local after_dot = state.dot
-		state.dot = false
+		state.dot = nil
 		-- Inside a tag of JSX: its name's attributes, their strings, its end.
 		if state.jsx and not state.jsxd then
 			if stream:match("/>") or stream:match(">") then
-				state.jsx = false
+				state.jsx = nil
 				state.last = "value"
 				return "tag"
 			elseif stream:match("^[%a_][%w_%-:]*") then
@@ -280,7 +284,7 @@ function clike.reader(o)
 		end
 		if c == "{" then
 			stream:next()
-			if #state.tpl > 0 then
+			if state.tpl then
 				state.tpl[#state.tpl] += 1
 			end
 			if state.jsxd then
@@ -296,10 +300,13 @@ function clike.reader(o)
 				else
 					state.jsxd -= 1
 				end
-			elseif #state.tpl > 0 then
+			elseif state.tpl then
 				local depth = state.tpl[#state.tpl]
 				if depth == 0 then
 					table.remove(state.tpl)
+					if #state.tpl == 0 then
+						state.tpl = nil
+					end
 					state.str = { close = "`", escapes = true, many = true, template = true }
 					return "string.special"
 				end

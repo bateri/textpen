@@ -16,12 +16,14 @@ local layout = b.layout
 local preview = {}
 
 local BOX = "preview"
--- The most text read for the preview, characters.
-local READ = 400000
--- The most elements a preview draws: a page has 20 000 to a frame, the rest is the editor's.
-local ELEMENTS = 6000
+-- The most text read for the preview, characters: a reading of it fits in what a call of the page may
+-- take, with the rest of the page's work beside it.
+local READ = 64000
+-- The most elements a preview draws, and so the most a call makes for it (a page has 20 000 to a
+-- frame and a call 250 ms): a long file's preview shows its start.
+local ELEMENTS = 2500
 
-local cache = { id = nil, version = nil, blocks = nil, cut = false, links = {} }
+local cache = { id = nil, version = nil, blocks = nil, cut = false, links = {}, waiting = false }
 
 local STYLES = languages.STYLES
 
@@ -48,15 +50,30 @@ local function look_of(name)
 	return merged
 end
 
-local function blocks_of(doc)
-	if cache.id == doc.id and cache.version == doc.edited then
-		return cache.blocks, cache.cut
-	end
+local function parse(doc)
 	local length = layout.editor_length(doc.id) or 0
 	local source = layout.editor_text(doc.id, 0, math.min(length, READ)) or ""
 	local blocks, cut = markdown.parse(source)
 	cache.id, cache.version, cache.blocks, cache.cut = doc.id, doc.edited, blocks, cut or length > READ
-	return blocks, cache.cut
+end
+
+-- The blocks of the file: read at once the first time, and again a moment after the typing stops
+-- (what was read before is shown meanwhile), so that a keystroke in a long file costs no reading.
+local function blocks_of(doc)
+	if cache.id ~= doc.id or cache.blocks == nil then
+		parse(doc)
+	elseif cache.version ~= doc.edited and not cache.waiting then
+		cache.waiting = true
+		kit.after(0.2, function()
+			cache.waiting = false
+			local now = docs.by_id(cache.id)
+			if now and now.edited ~= cache.version then
+				parse(now)
+			end
+			return true
+		end)
+	end
+	return cache.blocks, cache.cut
 end
 
 -- --- Drawing ------------------------------------------------------------------------------------------
@@ -237,16 +254,24 @@ blocks_view = function(blocks, depth)
 	return column
 end
 
+-- The preview of the tab's file. What it draws is made again only when what it reads changed or
+-- the room it has did: a frame of typing in the text beside it costs nothing here.
+local built = { blocks = nil, width = nil, element = nil }
+
 function act.preview_view(tab, size)
 	local doc = tab.doc
 	local blocks, cut = blocks_of(doc)
+	local only = S.layout ~= "wide"
+	local width = only and size.w or math.floor((size.w - (act.sidebar_docked() and S.settings.sidebarWidth or 0)) / 2)
+	if built.blocks == blocks and built.width == width and built.only == only then
+		return built.element
+	end
 	cache.links = {}
 	budget = ELEMENTS
 	local article = blocks_view(blocks, 0):w_full():max_w(780)
 	if cut or budget <= 0 then
 		article:child(b.text("The rest of the file is not shown in the preview."):color("quiet"):text_size(12))
 	end
-	local only = S.layout ~= "wide"
 	local box = b.div()
 		:id(BOX)
 		:col()
@@ -258,10 +283,13 @@ function act.preview_view(tab, size)
 		:bg("background")
 		:child(b.div():col():w_full():items_center():px(28):pt(22):pb(40):child(article))
 	if only then
-		return box:grow(1)
+		box:grow(1)
+	else
+		-- Beside the text, half of what the editor had.
+		box:w(width):no_shrink()
 	end
-	-- Beside the text, half of what the editor had.
-	return box:w(math.floor((size.w - (act.sidebar_docked() and S.settings.sidebarWidth or 0)) / 2)):no_shrink()
+	built.blocks, built.width, built.only, built.element = blocks, width, only, box
+	return box
 end
 
 -- A press in the preview: a link opens in the person's browser.
