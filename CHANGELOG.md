@@ -28,6 +28,10 @@ change what the previous one did.
 - Files named on the command line after a folder are found from the current directory, as your
   shell names them, and not from inside that folder: `textpen src src/main.rs` opens the project
   `src` on `src/main.rs`.
+- The shell in the pane, and your own editor in a terminal that shows no views, run as the
+  terminal's foreground job, as a shell runs a command: ⌃C and ⌃Z are theirs. A connection that
+  drops while the shell has the pane ends the shell, and then textpen, which keeps what is not
+  saved as drafts.
 - Speaks pencere's one protocol (a call, a subscription, a response, a push) in place of MCP
   Apps. The editor is the same one, in the terminal's colours and font, in a terminal that
   hosts the new views; it no longer opens in one that only speaks MCP Apps.

@@ -129,8 +129,6 @@ files cross the stream once; after that the terminal keeps them.
 
 **What it does not do.**
 
-- A shell in the pane is not there yet: it waits for a pencere that can give the terminal to a
-  shell and take the editor back.
 - `--dev` is refused: `make dev` in textpen's checkout runs it from its files and shows the editor
   again when they change ("Work on it").
 - Search in the project reads the files one after another, on a thread of its own, so a search of
@@ -158,9 +156,11 @@ files cross the stream once; after that the terminal keeps them.
   made on a version of the text the program checks, in places counted in characters; saving is a
   word to the program. A message the other way is at most 1 MiB too, so a long text, a long folder
   and the files of a big project come to the editor in pieces. Holding the text is also what lets
-  it outlive the view — a restart of the terminal — and become a draft when the program ends.
-- `src/program/terminal/` is the part that knows about the terminal: the command line, and your
-  own editor in a terminal that shows no views; `src/program/main.rs` shows the view in the pane.
+  it outlive the view — a shell, a restart of the terminal — and become a draft when the program
+  ends.
+- `src/program/terminal/` is the part that knows about the terminal: the command line, the pane
+  lent to a shell and taken back, and your own editor in a terminal that shows no views;
+  `src/program/main.rs` shows the view in the pane.
   `src/program/README.md` has the modules.
 - `src/view` is the editor: a page of pencere's kit, in Lua, which the terminal runs and draws
   itself, with [Tabler icons](https://tabler.io/icons) in `src/assets/`.
