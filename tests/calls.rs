@@ -661,27 +661,33 @@ fn a_folder_of_thousands_is_cut_to_what_a_message_carries_and_the_files_of_a_big
         listing.to_string().len() <= PIECE + 1024,
         "a listing fits a piece"
     );
-    // The index, page after page, each a piece, until there is no next.
+    // The index, page after page, each a piece, until there is no next. A listing's pages are of
+    // one run of the program (they name the generation of its first): each run here reads the pages
+    // known so far and one more.
     let mut all = Vec::new();
     let mut page = heard[1].result().clone();
-    let mut pages = 1;
+    let generation = page["generation"].clone();
+    let mut froms: Vec<u64> = Vec::new();
     loop {
         assert!(
             page.to_string().len() <= PIECE + 1024,
             "a page fits a piece"
         );
         assert_eq!(page["truncated"], json!(false));
+        assert_eq!(page["generation"], generation);
         all.extend(strings(&page["files"]));
         let Some(next) = page["next"].as_u64() else {
             break;
         };
         assert!(next > 0 && next < 3600 + 5100);
-        page = ask(&pane, &[("files", json!({ "from": next }))])[0]
-            .result()
-            .clone();
-        pages += 1;
+        froms.push(next);
+        let mut calls = vec![("files", json!({}))];
+        for from in &froms {
+            calls.push(("files", json!({ "from": from, "generation": generation })));
+        }
+        page = ask(&pane, &calls).last().unwrap().result().clone();
     }
-    assert!(pages > 1, "the files of a big project come in pages");
+    assert!(froms.len() > 1, "the files of a big project come in pages");
     let unique: std::collections::HashSet<&String> = all.iter().collect();
     assert_eq!(unique.len(), 3600 + 5100, "every file, once");
     assert_eq!(all.len(), 3600 + 5100);
