@@ -4,6 +4,7 @@
 
 local kit = require("../lib/kit")
 local docs = require("./docs")
+local search = require("./search")
 
 local b, S, SIZE, act = kit.b, kit.S, kit.SIZE, kit.act
 local layout = b.layout
@@ -24,6 +25,12 @@ local function hints(has_file)
 			{ "d", "delete", "hint:tree-delete" },
 			{ ".", "menu", "hint:tree-menu" },
 			{ "escape", "editor", "hint:editor" },
+		}
+	elseif S.focus == "sidebar" and search.in_results() then
+		return {
+			{ "enter", "open", "hint:search-open" },
+			{ "space", "show", "hint:search-show" },
+			{ "escape", "search", "hint:search-field" },
 		}
 	elseif S.focus == "sidebar" then
 		return {

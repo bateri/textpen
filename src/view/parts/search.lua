@@ -134,6 +134,11 @@ function act.open_match(step, focus)
 	search.show()
 end
 
+-- Whether the keyboard is in the search's results (not its field).
+function search.in_results()
+	return Q.in_results and S.focus == "sidebar" and S.sidebar == "search"
+end
+
 -- The keyboard goes to the search's field (`results` false) or its results.
 function act.focus_search(results)
 	S.focus = "sidebar"
@@ -470,6 +475,9 @@ function act.hint(name)
 		act.focus_search(true)
 	elseif name == "search-regex" then
 		flip("regex")
+	elseif name == "search-open" or name == "search-show" or name == "search-field" then
+		local keys = { ["search-open"] = "enter", ["search-show"] = " ", ["search-field"] = "escape" }
+		act.search_key(keys[name], {})
 	elseif string.sub(name, 1, 5) == "tree-" then
 		local keys = { ["tree-open"] = "enter", ["tree-new"] = "a", ["tree-rename"] = "r", ["tree-delete"] = "d", ["tree-menu"] = "." }
 		tree.key(keys[name], {})
