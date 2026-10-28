@@ -239,3 +239,70 @@ fn quitting_closes_the_view_after_the_buffer_calls_sent_before_it() {
         "world!\n"
     );
 }
+
+/// The names of a page of the file index.
+fn names(page: &Value) -> Vec<String> {
+    page["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|name| name.as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn the_pages_of_the_file_index_are_of_one_reading_of_it_however_the_files_change_meanwhile() {
+    let (dir, session) = session(&[]);
+    let project = dir.path().join("project");
+    // 1 200 names of 255 characters: more than one page holds.
+    let name = |n: usize| format!("f{n:04}{}", "x".repeat(250));
+    for n in 0..1200 {
+        std::fs::write(project.join(name(n * 2)), "").unwrap();
+    }
+    let mut conversation = conversation(&session);
+    send(&mut conversation, 1, "files", json!({}));
+    let first = answer(&mut conversation).1.unwrap();
+    let generation = first["generation"].as_u64().unwrap();
+    let next = first["next"].as_u64().expect("more than one page");
+    // Files are made among those of the first page, and the index is read again meanwhile.
+    for n in 0..50 {
+        std::fs::write(project.join(name(n * 2 + 1)), "").unwrap();
+    }
+    session.project.forget();
+    assert_ne!(session.project.files().generation, generation);
+    // The rest of the listing is of the files as its first page found them: each once.
+    let mut all = names(&first);
+    let (mut from, mut id) = (next, 2);
+    loop {
+        send(
+            &mut conversation,
+            id,
+            "files",
+            json!({ "from": from, "generation": generation }),
+        );
+        let page = answer(&mut conversation).1.unwrap();
+        assert_eq!(page["generation"], json!(generation));
+        all.extend(names(&page));
+        match page["next"].as_u64() {
+            Some(after) => from = after,
+            None => break,
+        }
+        id += 1;
+    }
+    let unique: std::collections::HashSet<&String> = all.iter().collect();
+    assert_eq!((all.len(), unique.len()), (1200, 1200));
+    assert!((0..1200).all(|n| unique.contains(&name(n * 2))));
+    // A listing begun since is of the files as they are; a page of the one before it is out of
+    // step, for the page to read them from the start.
+    send(&mut conversation, 100, "files", json!({}));
+    let again = answer(&mut conversation).1.unwrap();
+    assert_ne!(again["generation"], json!(generation));
+    send(
+        &mut conversation,
+        101,
+        "files",
+        json!({ "from": next, "generation": generation }),
+    );
+    let stale = answer(&mut conversation).1.unwrap_err();
+    assert_eq!(stale["code"], json!("out-of-sync"));
+}

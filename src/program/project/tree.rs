@@ -11,7 +11,7 @@ use std::fs;
 use std::io;
 use std::os::unix::fs::MetadataExt;
 use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
 
 use serde::Serialize;
@@ -148,11 +148,13 @@ pub struct Listing {
     pub truncated: bool,
 }
 
-/// Every file of the project, by the name it travels by.
+/// Every file of the project, by the name it travels by: one reading of them, shared by whoever
+/// holds it. `generation` tells the readings apart (each is one more than the one before).
 #[derive(Debug, Clone)]
 pub struct Index {
-    pub files: Vec<String>,
+    pub files: Arc<Vec<String>>,
     pub truncated: bool,
+    pub generation: u64,
 }
 
 /// The index, and when it was made.
@@ -178,6 +180,8 @@ pub struct Tree {
     listed: Mutex<Listed>,
     /// Held while the index is made, so that the callers who ask at once wait for one.
     index: Mutex<Option<Made>>,
+    /// The index the last listing read a page at a time began on: its later pages are of it.
+    paged: Mutex<Option<Index>>,
     /// How many times what was learnt of the files was forgotten.
     forgotten: AtomicU64,
 }
@@ -191,6 +195,7 @@ impl Tree {
             root,
             listed: Mutex::new(Listed::default()),
             index: Mutex::new(None),
+            paged: Mutex::new(None),
             forgotten: AtomicU64::new(0),
         }
     }
@@ -290,13 +295,18 @@ impl Tree {
                 return known.index.clone();
             }
         }
-        let index = match self.git.files() {
+        let (files, truncated) = match self.git.files() {
             Some(mut files) => {
                 let truncated = files.len() > INDEX_LIMIT;
                 files.truncate(INDEX_LIMIT);
-                Index { files, truncated }
+                (files, truncated)
             }
             None => self.walk(),
+        };
+        let index = Index {
+            files: Arc::new(files),
+            truncated,
+            generation: made.as_ref().map_or(1, |known| known.index.generation + 1),
         };
         *made = Some(Made {
             at: Instant::now(),
@@ -306,8 +316,28 @@ impl Tree {
         index
     }
 
-    /// The files under the root, a level at a time; a link is a file and is not followed.
-    fn walk(&self) -> Index {
+    /// The index for a listing read a page at a time, as [`Tree::files`] has it now; kept, so that
+    /// the listing's later pages are of the same files however they change meanwhile.
+    pub fn files_to_page(&self) -> Index {
+        let index = self.files();
+        *self.paged.lock().unwrap_or_else(PoisonError::into_inner) = Some(index.clone());
+        index
+    }
+
+    /// The index a listing began on, for its later pages: the one of `generation`, if that is the
+    /// last listing begun.
+    pub fn paged_files(&self, generation: u64) -> Option<Index> {
+        self.paged
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .filter(|index| index.generation == generation)
+            .cloned()
+    }
+
+    /// The files under the root, a level at a time; a link is a file and is not followed. Whether
+    /// there were more than the index holds.
+    fn walk(&self) -> (Vec<String>, bool) {
         let mut files = Vec::new();
         let mut queue = VecDeque::from([self.root.clone()]);
         while let Some(dir) = queue.pop_front() {
@@ -335,7 +365,7 @@ impl Tree {
         }
         let truncated = files.len() >= INDEX_LIMIT;
         files.truncate(INDEX_LIMIT);
-        Index { files, truncated }
+        (files, truncated)
     }
 
     /// A file or a directory made where nothing is (not even a link to nothing). The name it has in

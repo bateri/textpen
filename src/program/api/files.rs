@@ -45,20 +45,37 @@ fn list(session: &Session, args: List, _: &Gone<'_>) -> Result<Listing, Failure>
 
 struct Files {
     from: Option<usize>,
+    generation: Option<usize>,
 }
 
 impl Params for Files {
     fn read(fields: &Fields<'_>) -> Checked<Self> {
         Ok(Self {
             from: fields.optional_count("from")?,
+            generation: fields.optional_count("generation")?,
         })
     }
 }
 
-/// The files of the project for the quick open, a message's worth from `from`.
+/// The files of the project for the quick open, a message's worth from `from`. The first page
+/// begins a listing on the index as it is; the pages after it name its `generation` and are of the
+/// same files, or `out-of-sync` where another listing was begun since.
 fn files(session: &Session, args: Files, _: &Gone<'_>) -> Result<Value, Failure> {
     let from = args.from.unwrap_or(0);
-    let index = session.project.files();
+    let index = if from == 0 {
+        session.project.files_to_page()
+    } else {
+        args.generation
+            .and_then(|generation| u64::try_from(generation).ok())
+            .and_then(|generation| session.project.paged_files(generation))
+            .ok_or_else(|| {
+                Failure::OutOfSync(
+                    "The project's files were read again since the first page: read them from \
+                     the start."
+                        .to_owned(),
+                )
+            })?
+    };
     let rest = index.files.get(from..).unwrap_or_default();
     let count = fitting(rest, |path| path.len() + 4);
     let finish = from + count;
@@ -66,6 +83,7 @@ fn files(session: &Session, args: Files, _: &Gone<'_>) -> Result<Value, Failure>
         "files": rest.get(..count).unwrap_or_default(),
         "truncated": index.truncated,
         "next": (finish < index.files.len()).then_some(finish),
+        "generation": index.generation,
     }))
 }
 

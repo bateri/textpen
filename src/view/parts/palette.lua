@@ -45,12 +45,22 @@ function act.file_index()
 	end
 	indexing = true
 	local paths, lower = {}, {}
+	-- The listing's pages are of the index its first page was taken from (its `generation`); where
+	-- the program began another since, it is read again from the start, a few times at the most.
+	local generation, tries = nil, 0
 	local function page(from)
-		kit.call("files", from == 0 and {} or { from = from }, function(answer, err)
+		kit.call("files", from == 0 and {} or { from = from, generation = generation }, function(answer, err)
+			if err and err.code == "out-of-sync" and tries < 3 then
+				tries += 1
+				paths, lower, generation = {}, {}, nil
+				page(0)
+				return true
+			end
 			if err then
 				indexing = false
 				return true
 			end
+			generation = answer.generation
 			for _, path in answer.files do
 				paths[#paths + 1] = path
 				lower[#lower + 1] = string.lower(path)
