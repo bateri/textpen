@@ -76,13 +76,13 @@ type `@`, `#`, `[` or `{`.
 | `⌘E`                       | the open files, by when you last saw them                                 |
 | `⌘S`, `⌥⌘S`                | save, save all                                                            |
 | `⌃W`, `⇧⌘T`                | close the tab, open the one closed last                                   |
-| `⌃PgUp` `⌃PgDn`, `⌃1`–`⌃9` | the previous and next tab (`⌃⇧⇥` `⌃⇥` too), a tab by its place           |
+| `⌃PgUp` `⌃PgDn`, `⌃1`–`⌃9` | the previous and next tab, a tab by its place                             |
 | `⌘B`, `⇧⌘E`, `F6`          | the files: show or hide, go to them, between them and the editor          |
 | `⌘F`, `⌥⌘F`, `⇧⌘F`         | find, replace, search in the project                                      |
 | `⌘L`                       | go to a line                                                              |
 | `⌃G`, `⇧⌘L`, `⌃⇧↑` `⌃⇧↓`   | add the next match, every match, a cursor above or below                  |
 | `⌘/`, `⌥↑` `⌥↓`, `⇧⌘K`     | comment, move the line, delete it (`⌃⇧K` too)                             |
-| `⌘I`, `⌃J`, `⌃⏎`, `⌃⌥[`    | select the line, join lines, a line below, fold all                       |
+| `⌘I`, `⌃J`, `⌃⌥[`          | select the line, join lines, fold all                                     |
 | `⇧⌘V`                      | the preview of a Markdown file                                            |
 | `⌘,`, `⇧⌘/`                | the settings, every key                                                   |
 | `⌘J`                       | a shell in the project, in this pane                                      |

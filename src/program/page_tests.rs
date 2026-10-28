@@ -505,10 +505,10 @@ fn a_draft_from_the_last_run_is_offered_back_and_taken() -> Result<(), Error> {
         session.ending();
     }
     let session = project.session(&["README.md"]);
-    // Seven minutes later by the machine's clock: the banner says how long ago the draft was kept.
-    let mut page = project.open_later(&session, WIDE, 7.0 * 60.0)?;
+    // Seven hours later by the machine's clock: the banner says how long ago the draft was kept.
+    let mut page = project.open_later(&session, WIDE, 7.0 * 3600.0)?;
     wait(&mut page, |page| {
-        shows(page, "were kept 7 minutes ago, when textpen last ended")
+        shows(page, "were kept 7 hours ago, when textpen last ended")
     })?;
     assert_eq!(text(&page), README);
     page.click("banner-draft-restore")?;
@@ -1362,7 +1362,7 @@ fn the_line_commands_are_the_editors() -> Result<(), Error> {
     page.advance(0.5)?;
     assert_eq!(text(&page), "one\ntwo three\nfour\n");
     page.caret_to(&editor, 1)?;
-    page.press("ctrl+enter")?;
+    page.command("insert-line")?;
     page.advance(0.5)?;
     assert_eq!(text(&page), "one\n\ntwo three\nfour\n");
     page.command("duplicate-line-up")?;

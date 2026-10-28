@@ -222,7 +222,7 @@ add({ id = "duplicate-line-up", title = "Duplicate Line Up", category = "Edit", 
 	run = on_editor({ command = "duplicate_lines_up" }) })
 add({ id = "join-lines", title = "Join Lines", category = "Edit", keys = "ctrl+j", when = has_file,
 	run = on_editor({ command = "join_lines" }) })
-add({ id = "insert-line", title = "Insert Line Below", category = "Edit", keys = "ctrl+enter", when = has_file,
+add({ id = "insert-line", title = "Insert Line Below", category = "Edit", when = has_file,
 	run = on_editor({ command = "insert_blank_line" }) })
 add({ id = "split-line", title = "Split Line at the Caret", category = "Edit", when = has_file,
 	run = on_editor({ command = "split_line" }) })

@@ -52,7 +52,7 @@ BufferInfo  = {
   mtime: number,         -- ms; 0 for a file not on disk yet
   missing: boolean,      -- not on disk: new, or removed while open
   conflict: boolean,     -- changed on disk after it was read, and the buffer has changes of its own
-  draft?: { at: number, length: number },   -- a draft an earlier textpen left; length in code points
+  draft?: { at: number, length: number },   -- a draft an earlier textpen left: at in ms (Unix time), length in code points
   readonly: boolean,
 }
 Opened      = BufferInfo & { text: string, partial?: { length: number } }

@@ -24,8 +24,8 @@ change what the previous one did.
   and every one of the 33 is in Change Language.
 - The other places of what is selected are marked in the text. Select Line, Join Lines, Duplicate
   Line Up, Insert Line Below, Split Line, Transpose Characters, Delete to Start and End of Line
-  and Fold All are commands, in the palette (`⌘I`, `⌃J`, `⌃⌥[` and `⌃⏎` are keys of four of
-  them); Next Tab and Previous Tab are also on `⌃⇥` and `⌃⇧⇥`, and Delete Line on `⌃⇧K`.
+  and Fold All are commands, in the palette (`⌘I`, `⌃J` and `⌃⌥[` are the keys of three of them);
+  Delete Line is also on `⌃⇧K`.
 - A box opened with something in it (the find bar on the words you selected, the palette on `>`
   and a query, the search, the dialog that renames a file) has that selected, so that what you
   type takes its place; renaming selects the file's name, not its folders or its extension.
@@ -37,8 +37,8 @@ change what the previous one did.
 - The unsaved changes an earlier run left say how long ago they were kept ("7 minutes ago"), and
   what is waited for turns.
 - The status line loses the branch when the repository is removed, where it kept the old one.
-- Shortcuts are written as the terminal's own system writes them (`⇧⌘K` on a Mac, `Super+Shift+K`
-  elsewhere), the palette's and the menus' included.
+- The shortcuts of the commands are written as the terminal's own system writes them (`⇧⌘K` on a
+  Mac, `Super+Shift+K` elsewhere), in the palette, the menus and the status line.
 - What is long — a text, a folder, the file index, a search — comes to the editor in pieces of a
   quarter of a message (256 KiB), which it reads in the time it has for one: a folder shows as many
   of its entries as fit in one, a few thousand, where it showed five thousand.
