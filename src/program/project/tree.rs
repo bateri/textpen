@@ -208,7 +208,8 @@ impl Tree {
     /// How a path travels: relative to the root inside it, absolute outside.
     pub fn name(&self, absolute: &str) -> String {
         let relative = paths::relative(&self.root, absolute);
-        if relative.starts_with("..") || paths::is_absolute(&relative) {
+        // A name that begins with two dots (`..hidden`) is in the project; `..` itself is not.
+        if relative == ".." || relative.starts_with("../") || paths::is_absolute(&relative) {
             absolute.to_owned()
         } else {
             relative
@@ -368,6 +369,25 @@ impl Tree {
         (files, truncated)
     }
 
+    /// Whether `absolute` is the project or a directory it is in, whatever links lie on the way: the
+    /// path is worked out by its text, but a link in a directory of it (`up -> ..`) leads elsewhere
+    /// when the disk is asked, so the directory it is in is looked at as the disk has it. The last
+    /// part is not followed: a link is moved or removed, not what it points to.
+    fn holds_project(&self, absolute: &str) -> bool {
+        if paths::is_within(&self.root, absolute) {
+            return true;
+        }
+        let real = |path: &str| {
+            fs::canonicalize(path)
+                .ok()
+                .and_then(|real| real.to_str().map(paths::normalize))
+        };
+        let (Some(root), Some(parent)) = (real(&self.root), real(&paths::dirname(absolute))) else {
+            return false;
+        };
+        paths::is_within(&root, &paths::join(&parent, paths::basename(absolute)))
+    }
+
     /// A file or a directory made where nothing is (not even a link to nothing). The name it has in
     /// the project.
     pub fn create(&self, path: &str, kind: Kind) -> Result<String, String> {
@@ -405,6 +425,12 @@ impl Tree {
     pub fn rename(&self, from: &str, to: &str) -> Result<Renamed, String> {
         let source = self.absolute(from);
         let target = self.absolute(to);
+        if self.holds_project(&source) {
+            return Err("The project itself is not moved".to_owned());
+        }
+        if source != target && paths::is_within(&target, &source) {
+            return Err(format!("{from} cannot be moved into itself"));
+        }
         if source == target {
             return Ok(Renamed {
                 from: self.name(&source),
@@ -434,7 +460,7 @@ impl Tree {
     /// project, and a directory it is in, are not.
     pub fn remove(&self, path: &str) -> Result<(), String> {
         let absolute = self.absolute(path);
-        if paths::is_within(&self.root, &absolute) {
+        if self.holds_project(&absolute) {
             return Err("The project itself is not removed".to_owned());
         }
         let fail = |why: io::Error| format!("{path} could not be removed: {}", said(&why));
@@ -488,5 +514,88 @@ mod tests {
                 "{path}"
             );
         }
+    }
+
+    /// A tree on `project` inside a directory of a disk, which is the name the disk gives it.
+    fn project_in(base: &tempfile::TempDir) -> (std::path::PathBuf, Tree) {
+        let base = fs::canonicalize(base.path()).unwrap();
+        let project = base.join("up/project");
+        fs::create_dir_all(&project).unwrap();
+        fs::write(project.join("a.txt"), "a").unwrap();
+        let tree = Tree::new(project.to_str().unwrap());
+        (base, tree)
+    }
+
+    #[test]
+    fn a_link_on_the_way_does_not_get_the_project_or_what_holds_it_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let (base, tree) = project_in(&dir);
+        let project = base.join("up/project");
+        // `down` leads to the directory the project is in, `top` to the one that holds that, and
+        // `home` to the project itself.
+        std::os::unix::fs::symlink(base.join("up"), project.join("down")).unwrap();
+        std::os::unix::fs::symlink(&base, project.join("top")).unwrap();
+        std::os::unix::fs::symlink(&project, base.join("home")).unwrap();
+        let refused = Err("The project itself is not removed".to_owned());
+        for path in [
+            "down/project",
+            "top/up",
+            "top/up/project",
+            &format!("{}/home/down/project", base.display()),
+            &format!("{}/home", base.display()),
+        ] {
+            let result = tree.remove(path);
+            // A link as the last part is only a link: it is removed, and nothing it leads to.
+            if path.ends_with("/home") {
+                assert_eq!(result, Ok(()), "{path}");
+            } else {
+                assert_eq!(result, refused, "{path}");
+            }
+        }
+        assert!(project.join("a.txt").exists());
+        assert!(!base.join("home").exists());
+        // A file in a directory a link leads to is removed as any is.
+        std::os::unix::fs::symlink(&project, base.join("again")).unwrap();
+        assert_eq!(
+            tree.remove(&format!("{}/again/a.txt", base.display())),
+            Ok(())
+        );
+        assert!(!project.join("a.txt").exists());
+    }
+
+    #[test]
+    fn the_project_is_not_moved_and_a_directory_is_not_moved_into_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let (base, tree) = project_in(&dir);
+        let project = base.join("up/project");
+        std::os::unix::fs::symlink(base.join("up"), project.join("down")).unwrap();
+        std::os::unix::fs::symlink(&base, project.join("top")).unwrap();
+        for (from, to) in [
+            (".", "../moved"),
+            ("top/up", "../x"),
+            ("down/project", "../x"),
+        ] {
+            assert_eq!(
+                tree.rename(from, to).err(),
+                Some("The project itself is not moved".to_owned()),
+                "{from}"
+            );
+        }
+        assert!(project.join("a.txt").exists());
+        fs::create_dir(project.join("d")).unwrap();
+        assert_eq!(
+            tree.rename("d", "d/e/f").err(),
+            Some("d cannot be moved into itself".to_owned())
+        );
+        assert!(!project.join("d/e").exists(), "nothing is made on the way");
+        assert!(tree.rename("d", "moved").is_ok());
+    }
+
+    #[test]
+    fn a_name_that_begins_with_two_dots_is_in_the_project() {
+        let tree = Tree::new("/root/project");
+        assert_eq!(tree.name("/root/project/..hidden"), "..hidden");
+        assert_eq!(tree.name("/root/project/..hidden/x"), "..hidden/x");
+        assert_eq!(tree.name("/root/other"), "/root/other");
     }
 }
