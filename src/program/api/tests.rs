@@ -170,3 +170,35 @@ fn a_shell_ended_by_a_signal_has_no_exit_code() {
     let returned = &answer(&mut conversation).1.unwrap()["returned"];
     assert_eq!(returned["exitCode"], Value::Null);
 }
+
+#[test]
+fn a_terminal_that_cannot_lend_its_pane_is_told_on_the_changes_and_not_asked_again() {
+    let (_dir, session) = session(&[]);
+    let mut conversation = conversation(&session);
+    let subscribe = json!({ "subscribe": { "id": 1, "topic": "changes" } });
+    assert!(conversation.send(&subscribe.to_string()));
+    let pushed = |conversation: &mut Conversation| {
+        let Said::Message(text) = heard(conversation) else {
+            panic!("a push");
+        };
+        let message: Value = serde_json::from_str(&text).unwrap();
+        message["push"]["value"].clone()
+    };
+    assert!(pushed(&mut conversation).get("handoffFailed").is_none());
+    // The terminal answers that it cannot close its view (a conversation always can).
+    session.desk.settled(&pencere::HandOffResult::Unsupported);
+    assert_eq!(
+        pushed(&mut conversation)["handoffFailed"],
+        json!("This terminal cannot hand its pane to a command and back.")
+    );
+    send(&mut conversation, 2, "handoff", json!({ "kind": "shell" }));
+    assert_eq!(
+        answer(&mut conversation),
+        (2, Ok(json!({ "state": "unavailable" })))
+    );
+    send(&mut conversation, 3, "boot", json!({}));
+    assert_eq!(
+        answer(&mut conversation).1.unwrap()["handoff"],
+        json!(false)
+    );
+}

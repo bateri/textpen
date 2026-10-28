@@ -65,8 +65,11 @@ pub enum Asked {
 struct Lending {
     /// A shell has the pane, or is about to.
     busy: bool,
-    /// The pane was lent once: a view that does not come back is not replaced with an editor.
+    /// The pane is being lent, or a command had it once: a view that does not come back is not
+    /// replaced with an editor.
     lent: bool,
+    /// A command had the pane once.
+    had_pane: bool,
     /// The terminal said it cannot lend its pane.
     unsupported: bool,
     returned: Option<Returned>,
@@ -135,13 +138,22 @@ fn settle(lending: &mut Lending, result: &HandOffResult, ms: u64, shell: &str) {
         | HandOffResult::NoView {
             status: Some(status),
             ..
-        } => lending.returned = Some(returned_of(status, ms, shell)),
-        HandOffResult::NoView { status: None, .. } => {}
+        } => {
+            lending.had_pane = true;
+            lending.returned = Some(returned_of(status, ms, shell));
+        }
+        // The view was closed for the shell, and did not come back.
+        HandOffResult::NoView { status: None, .. } => lending.had_pane = true,
+        // Nothing was lent: the view is as it was.
         HandOffResult::Unsupported => {
             lending.unsupported = true;
             lending.failed = Some(Failed::Unsupported);
+            lending.lent = lending.had_pane;
         }
-        _ => lending.failed = Some(Failed::Closing),
+        _ => {
+            lending.failed = Some(Failed::Closing);
+            lending.lent = lending.had_pane;
+        }
     }
     lending.busy = false;
 }
@@ -214,9 +226,17 @@ impl Desk {
         !self.shared.lock().unsupported
     }
 
-    /// Whether the pane was lent to a shell, once at least.
+    /// Whether the pane is being lent to a shell, or a shell had it once.
     pub fn lent(&self) -> bool {
         self.shared.lock().lent
+    }
+
+    /// The hand-off under way came to `result` (for the tests of what the terminal cannot show at
+    /// will: a terminal that cannot lend its pane).
+    #[cfg(test)]
+    pub fn settled(&self, result: &HandOffResult) {
+        settle(&mut self.shared.lock(), result, 0, "sh");
+        self.shared.settled.notify_all();
     }
 
     /// Lends the pane to the person's shell (`$SHELL`, or `/bin/sh`), in the project's directory,
@@ -393,8 +413,19 @@ mod tests {
             lending.returned.take().map(|returned| returned.status),
             Some(None)
         );
-        settle(&mut lending, &HandOffResult::Busy, 0, "sh");
-        assert_eq!(lending.failed.take(), Some(Failed::Closing));
+        assert!(lending.had_pane);
+        // A hand-off that lent nothing leaves the pane as lent as it was.
+        let mut fresh = Lending {
+            busy: true,
+            lent: true,
+            ..Lending::default()
+        };
+        settle(&mut fresh, &HandOffResult::Busy, 0, "sh");
+        assert_eq!(fresh.failed.take(), Some(Failed::Closing));
+        assert!(!fresh.lent && !fresh.busy);
+        lending.lent = true;
+        settle(&mut lending, &HandOffResult::Unavailable, 0, "sh");
+        assert!(lending.lent, "a shell had the pane before");
         settle(&mut lending, &HandOffResult::Unsupported, 0, "sh");
         assert_eq!(lending.failed, Some(Failed::Unsupported));
         assert!(lending.unsupported);
