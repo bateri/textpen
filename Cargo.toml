@@ -1,0 +1,41 @@
+[package]
+name = "textpen"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "GPL-3.0-or-later"
+description = "A code editor in the terminal pane: a file tree, tabs, search and the terminal's own colours, over plain ssh"
+repository = "https://github.com/bateri/textpen"
+
+[[bin]]
+name = "textpen"
+path = "src/program/main.rs"
+
+[dependencies]
+# The program's side of pencere, at the commit whose kit has the editor (crates.io's 0.3 has kit 1.0).
+# Every pencere crate here is at the same commit, written whole: Cargo.lock is where it is pinned.
+pencere = { git = "https://github.com/bateri/pencere", rev = "824f75acea0308a581b2a6c264d58db5ba9bd4c3" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# The project search: patterns a person types, searched in time linear in the text (no
+# back-references, no look-around).
+regex = "1"
+# The name of a draft and of a project's state is the start of the SHA-256 of its path, as the
+# textpen before this one named them, so that what it left is found.
+sha2 = "0.10"
+# The icons a terminal draws beside the program's name travel as `data:` URIs.
+base64 = "0.22"
+# What the standard library does not say: the machine's name, the user's, whether a file can be
+# written to.
+libc = "0.2"
+
+[build-dependencies]
+pencere = { git = "https://github.com/bateri/pencere", rev = "824f75acea0308a581b2a6c264d58db5ba9bd4c3" }
+
+[dev-dependencies]
+# Each test has a directory of its own as its home and its project.
+tempfile = "3"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "warn"

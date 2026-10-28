@@ -1,71 +1,61 @@
-# textpen is one native file: pencere's Lua runner with the program (src/program/, Lua), the
-# pictures it ships (src/assets/) and the editor (src/view/, built by vite into dist/view) inside
-# it. The gate and the steps of a release are here; RELEASING.md says in what order and why.
-.PHONY: setup view build check check-page test-binary dist release-prepare release publish
-
-# `pencere` is the command of a pencere checkout, built there (cargo build --release -p
-# pencere-cli); the stand-in terminal the end-to-end tests play textpen in is built there too
-# (cargo build -p pencere-fake-host). Until the checkout beside this one has the Lua runner, both
-# are in ../pencere-lua:
-#
-#   make check PENCERE=../pencere-lua/target/release/pencere \
-#              FAKE_HOST=../pencere-lua/target/debug/pencere-fake-host
-PENCERE ?= ../pencere/target/release/pencere
-FAKE_HOST ?= ../pencere/target/debug/pencere-fake-host
+# textpen is one native file: the program (src/program/, Rust, on the pencere crate) with the page
+# (src/view/) and the pictures (src/assets/) carried in it by build.rs. The gate and the steps of a
+# release are here; RELEASING.md says in what order and why.
+.PHONY: setup view check-page fmt lint test build check dist sums release-prepare release publish
 
 setup:
 	npm ci
 
-# view builds the editor, the page the program shows, into dist/view.
+# view builds the web editor of the earlier textpen into dist/view; the program does not carry it.
 view:
 	npm run build
 
-# build makes dist/textpen, the program for this machine, as one file: src/program/ and
-# src/assets/, with the view as vite built it (--web) in place of src/view/, which is its source.
-build: view
-	@test -x "$(PENCERE)" || { echo "build: the pencere command is not at $(PENCERE): build it in a pencere checkout (cargo build --release -p pencere-cli), then make build PENCERE=<it>"; exit 1; }
-	"$(PENCERE)" build --web dist/view --name textpen -o dist/textpen
-
-# check-page is the part of the gate that needs no pencere checkout: types, formatting and the
-# tests of the page's side (its end of the protocol, its edits, its quick open). CI runs this and
-# `make view`, and says that it does not run the rest.
+# check-page is the part of the gate that needs neither Rust nor a pencere checkout: the types,
+# formatting and tests of the page's side that are still in TypeScript. CI runs this.
 check-page:
 	npm run typecheck
 	npx prettier --check .
 	npm test
 
-# test-binary runs the program, dist/textpen, in a pane under the stand-in terminal: the calls
-# of the view, the drafts, the shell and the command line. Nothing in it is skipped; a program or
-# a stand-in that is not there stops the run.
-test-binary:
-	@test -x "$(FAKE_HOST)" || { echo "test-binary: pencere-fake-host is not at $(FAKE_HOST): build it in a pencere checkout (cargo build -p pencere-fake-host), then make check FAKE_HOST=<it>"; exit 1; }
-	PENCERE_FAKE_HOST="$(FAKE_HOST)" TEXTPEN_BIN=dist/textpen node --test test/e2e.test.ts test/calls.test.ts
+fmt:
+	cargo fmt
 
-# check is the gate: everything check-page does, then the program built and held to what the
-# view expects of it.
-check: check-page build test-binary
+lint:
+	cargo fmt -- --check
+	cargo clippy --locked --all-targets -- -D warnings
 
-# dist makes the program for the three targets textpen ships (Apple silicon Macs and both Linux
-# architectures; bateri, the terminal that shows the editor, runs on Apple silicon only) into
-# dist/release, with the
-# SHA256SUMS that names them. The runners come from a pencere checkout's `make dist`
-# (RUNNERS=<its dist/>), one for each target, of the version of the `pencere` command. When
-# pencere has a release, `pencere build --target T` fetches them itself and --runner goes away.
+# test runs the program's tests: its own, and the ones that run it in a pane under pencere's
+# stand-in terminal, which is built in a pencere checkout (cargo build -p pencere-fake-host). Nothing
+# in them is skipped; a stand-in that is not there stops the run.
+FAKE_HOST ?= ../pencere/target/debug/pencere-fake-host
+
+test:
+	FAKE_HOST="$(FAKE_HOST)" cargo test --locked
+
+# build makes target/release/textpen, the program for this machine, with the page in it.
+build:
+	cargo build --locked --release
+
+# check is the gate: the page's checks, then the program's lints and tests.
+check: check-page lint test
+
+# dist makes the program for one target (TARGET, a Rust target triple) into dist/release, as
+# textpen-<version>-<target>: Apple silicon Macs and both Linux architectures, the Linux ones linked
+# statically with musl (bateri, the terminal that shows the editor, runs on Apple silicon only).
+# Each is built on a machine of its own target; `make sums` then names the three where they are
+# together.
 TARGETS = aarch64-apple-darwin aarch64-unknown-linux-musl x86_64-unknown-linux-musl
-RUNNERS ?= ../pencere/dist
-PACKAGE_VERSION = $(shell node -p "require('./package.json').version")
-RUNNER_VERSION = $(shell "$(PENCERE)" --version | sed 's/^pencere //')
+PACKAGE_VERSION = $(shell sed -n 's/^version = "\(.*\)"$$/\1/p' Cargo.toml | head -n 1)
 
-dist: view
-	@test -x "$(PENCERE)" || { echo "dist: the pencere command is not at $(PENCERE): see PENCERE at the top of the Makefile"; exit 1; }
-	rm -rf dist/release
+dist:
+	@test -n "$(TARGET)" || { echo "usage: make dist TARGET=<one of: $(TARGETS)>"; exit 2; }
+	cargo build --locked --release --target $(TARGET)
 	mkdir -p dist/release
-	@for target in $(TARGETS); do \
-		runner="$(RUNNERS)/pencere-$(RUNNER_VERSION)-$$target"; \
-		test -f "$$runner" || { echo "dist: no runner for $$target at $$runner: make dist in a pencere checkout, then make dist RUNNERS=<its dist/>"; exit 1; }; \
-		"$(PENCERE)" build --web dist/view --name textpen --target $$target --runner "$$runner" -o dist/release/textpen-$(PACKAGE_VERSION)-$$target || exit 1; \
-	done
-	cd dist/release && shasum -a 256 textpen-* > SHA256SUMS
+	cp target/$(TARGET)/release/textpen dist/release/textpen-$(PACKAGE_VERSION)-$(TARGET)
+
+# sums writes the SHA256SUMS of the files of dist/release.
+sums:
+	cd dist/release && { sha256sum textpen-* 2>/dev/null || shasum -a 256 textpen-*; } > SHA256SUMS
 	@cat dist/release/SHA256SUMS
 
 # release-prepare sets the version and dates the changelog's Unreleased section.
