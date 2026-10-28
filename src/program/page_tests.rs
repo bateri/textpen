@@ -349,7 +349,7 @@ fn a_long_text_comes_in_pieces_and_is_edited_at_its_end() -> Result<(), Error> {
     Ok(())
 }
 
-/// A paste of 300 000 characters goes to the program in calls of at most 192 Ki characters each; and
+/// A paste of 300 000 characters goes to the program in calls of at most 64 Ki characters each; and
 /// where the program's text and the editor's part (a call lost), the page reads the program's and
 /// sends its own whole.
 #[test]
@@ -382,7 +382,7 @@ fn a_long_paste_goes_in_pieces_and_a_text_out_of_step_is_sent_again() -> Result<
                     .sum()
             })
             .unwrap_or(0);
-        assert!(inserted <= 192 * 1024, "an edit of {inserted} characters");
+        assert!(inserted <= 64 * 1024, "an edit of {inserted} characters");
     }
     // The program's text moves on without the page: its next edit is out of step.
     let version = version_of(&session, "src/server.ts");

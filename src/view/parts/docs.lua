@@ -10,7 +10,7 @@
 --
 -- The program holds the text as well, and is the one that reads and writes the file. The page
 -- tells it what the person changed (`edit`), as plain replacements made one after another, a moment
--- after the typing stops, cut so that no call carries more than 192 Ki characters; and every text
+-- after the typing stops, cut so that no call carries more than 64 Ki characters; and every text
 -- that comes from the program (a file opened, read again, a draft taken back) goes into the editor
 -- as a load, the one change the page does not send back. A file's calls go one at a time, each
 -- after the answer to the one before (`lane`): the program answers them in the page's order, and the
@@ -26,7 +26,7 @@ local layout = b.layout
 local docs = {}
 
 -- The most characters of inserted text one `edit` carries (docs/calls.md).
-local CALL_TEXT = 192 * 1024
+local CALL_TEXT = 64 * 1024
 -- How long after the last change the changes go to the program, seconds.
 local SEND_DELAY = 0.35
 -- What the page keeps its editors' documents under, bytes: the terminal's 64 MiB, less room for what
