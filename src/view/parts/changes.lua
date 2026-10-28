@@ -1,6 +1,6 @@
 -- The lines of the file shown that differ from what git keeps of it (its index), as VS Code marks
 -- them: in a column of the editor's gutter between the numbers and the buttons that fold, a bar along
--- the lines changed (blue) or added (green) and a triangle where lines were taken away (red), the
+-- the lines changed (blue) or added (green) and a triangle where lines were only taken away (red), the
 -- same in the overview ruler down the editor's edge; a press on one, or ⌥F5 and ⇧⌥F5, opens a peek
 -- under the change, in a gap the editor keeps open there: the lines as they were (on red) and as
 -- they are (on green), with Revert Change, the change before and after, and Esc to close it.
@@ -41,7 +41,7 @@ local function sync(doc)
 	changes.draw(doc)
 end
 
--- Whether a hunk of `doc` is lines changed, added or taken away, and how many lines of each.
+-- Whether a hunk is lines added, lines taken away, or lines taken away and put in their place.
 local function kind_of(hunk)
 	local old = #hunk.old
 	if hunk.count == 0 then
@@ -52,14 +52,30 @@ local function kind_of(hunk)
 	return "modified"
 end
 
+local function lines_of(count)
+	return count == 1 and "1 line" or (count .. " lines")
+end
+
+-- What a hunk is, in words: lines added, lines removed, or (where it is both) the lines that were
+-- there and the lines that are, so that "changed" is said only where the counts are the same.
 local function words_of(hunk)
 	local kind = kind_of(hunk)
-	if kind == "deleted" then
-		return (#hunk.old == 1 and "1 line" or (#hunk.old .. (hunk.cut and "+" or "") .. " lines")) .. " deleted"
-	elseif kind == "added" then
-		return (hunk.count == 1 and "1 line" or (hunk.count .. " lines")) .. " added"
+	local old = #hunk.old
+	local removed
+	if hunk.cut then
+		-- Some of the lines as they were are not here: what is said is at least how many.
+		removed = (old == 0 and "Some lines" or (old .. "+ lines")) .. " removed"
+	else
+		removed = lines_of(old) .. " removed"
 	end
-	return (hunk.count == 1 and "1 line" or (hunk.count .. " lines")) .. " changed"
+	if kind == "deleted" then
+		return removed
+	elseif kind == "added" then
+		return lines_of(hunk.count) .. " added"
+	elseif not hunk.cut and old == hunk.count then
+		return lines_of(hunk.count) .. " changed"
+	end
+	return removed .. ", " .. hunk.count .. " added"
 end
 
 -- The first and the last line of a hunk in the editor, where the lines taken away stand at the edge
@@ -94,10 +110,13 @@ local function marks_of(doc)
 		}
 		out[#out + 1] = { from = start_of(doc, line), to = start_of(doc, line), ruler = COLOR.deleted, lane = "left" }
 	end
+	-- VS Code's quick diff: lines only added are green, lines only taken away are a red triangle at
+	-- the edge where they were, and lines taken away and put in their place (whatever the counts) are
+	-- the lines now, blue, with no triangle.
 	for index, hunk in doc.hunks or {} do
 		local words = words_of(hunk) .. ": peek the lines as they were"
-		local old = #hunk.old
-		if hunk.count == 0 then
+		local kind = kind_of(hunk)
+		if kind == "deleted" then
 			-- Lines taken away stand at the edge above the line after them, or below the last line.
 			if hunk.line >= lines then
 				triangle(lines - 1, true, index, words)
@@ -105,18 +124,7 @@ local function marks_of(doc)
 				triangle(hunk.line, false, index, words)
 			end
 		else
-			local common = math.min(hunk.count, old)
-			if old == 0 then
-				bar(hunk.line, hunk.line + hunk.count, "added", index, words)
-			else
-				bar(hunk.line, hunk.line + common, "modified", index, words)
-				if hunk.count > old then
-					bar(hunk.line + common, hunk.line + hunk.count, "added", index, words)
-				elseif old > hunk.count then
-					-- The lines of the original that have no line of the buffer's left: taken away.
-					triangle(hunk.line + hunk.count - 1, true, index, words)
-				end
-			end
+			bar(hunk.line, hunk.line + hunk.count, kind, index, words)
 		end
 	end
 	return out

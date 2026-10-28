@@ -72,6 +72,20 @@ fn ruler(page: &Page) -> usize {
         .count()
 }
 
+/// The roles of the colours of the marks the editor shown has on the overview ruler.
+fn ruler_roles(page: &Page) -> Vec<Option<Role>> {
+    let name = shown(page).expect("an editor");
+    let buffer = page.editor(&name).expect("the editor");
+    buffer
+        .decorations_in(0, buffer.len_chars())
+        .into_iter()
+        .filter_map(|(_, decoration)| match &decoration.mark {
+            Mark::Ruler(mark) => Some(mark.color.role()),
+            _ => None,
+        })
+        .collect()
+}
+
 /// The character where `needle` is in the text of the editor shown.
 fn at(page: &Page, needle: &str) -> usize {
     let all = text(page);
@@ -138,6 +152,68 @@ fn the_lines_that_differ_from_the_index_are_marked_in_the_gutter_and_on_the_rule
     page.press("cmd+z")?;
     page.press("cmd+z")?;
     wait(&mut page, |page| marks(page).len() == 1)?;
+    Ok(())
+}
+
+/// A hunk is marked as VS Code's quick diff marks it, whatever the counts: lines only added are a
+/// green bar, lines only taken away one red triangle at the edge they were at, and lines taken
+/// away and put in their place a blue bar along the lines now, with no triangle. The ruler has the
+/// same colours, and the peek says what the hunk is in words that are true.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_hunk_is_green_when_it_only_adds_red_when_it_only_removes_and_blue_when_it_does_both()
+-> Result<(), Error> {
+    let project = lantern();
+    committed(&project);
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let editor = shown(&page).expect("an editor");
+    // Three lines (the import, a blank one and the port) put in place of one: a modification.
+    let from = at(&page, "import { formatPrice }");
+    let to = at(&page, PORT_LINE) + PORT_LINE.chars().count() + 1;
+    page.select(&editor, from, to)?;
+    page.type_text("const PORT = 3000;\n")?;
+    // One line only taken away: the one in `send`.
+    let line = "  res.end(JSON.stringify(body));\n";
+    let from = at(&page, line);
+    page.select(&editor, from, from + line.chars().count())?;
+    page.press("backspace")?;
+    // Two lines only added, before the last line.
+    let place = at(&page, "server.listen");
+    page.caret_to(&editor, place)?;
+    page.type_text("// note\n// more\n")?;
+    wait(&mut page, |page| marks(page).len() == 3)?;
+    page.advance(0.5)?;
+    assert_eq!(
+        marks(&page),
+        vec![
+            // The three lines taken away and the one put there: its bar only, no triangle.
+            (GutterShape::Bar, Some(Role::Blue), 2, 2),
+            (GutterShape::Above, Some(Role::Red), 6, 6),
+            (GutterShape::Bar, Some(Role::Green), 15, 16),
+        ]
+    );
+    let roles = ruler_roles(&page);
+    let count = |role| roles.iter().filter(|found| **found == Some(role)).count();
+    assert_eq!(roles.len(), 3, "{roles:?}");
+    assert_eq!(
+        (count(Role::Blue), count(Role::Green), count(Role::Red)),
+        (1, 1, 1),
+        "{roles:?}"
+    );
+    // What each is, said to the person.
+    page.click_gutter(&editor, "changes", 2, Button::Left)?;
+    assert!(
+        shows(&page, "3 lines removed, 1 added"),
+        "{:?}",
+        page_words(&page)
+    );
+    assert!(shows(&page, "1 of 3"));
+    assert!(!shows(&page, "1 line changed"));
+    page.press("alt+f5")?;
+    assert!(shows(&page, "1 line removed") && shows(&page, "2 of 3"));
+    page.press("alt+f5")?;
+    assert!(shows(&page, "2 lines added") && shows(&page, "3 of 3"));
     Ok(())
 }
 
