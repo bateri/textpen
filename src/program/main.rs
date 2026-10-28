@@ -18,6 +18,10 @@
 //!   terminal/  the command line, who and where, the pane lent to a shell or the person's editor; same
 
 mod api;
+#[cfg(test)]
+mod page_shots;
+#[cfg(test)]
+mod page_tests;
 mod project;
 mod state;
 mod terminal;

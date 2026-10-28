@@ -2,7 +2,7 @@
 # (src/view/, a page of pencere's kit) and the pictures (src/assets/) carried in it by build.rs. The
 # gate, `make dev` and the steps of a release are here; RELEASING.md says in what order and why.
 # Nothing here needs Node but the release steps, which run tools/release.mjs.
-.PHONY: pin fmt lint test check build pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
+.PHONY: pin fmt lint test test-page shots check build pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
 
 # pencere is pinned in one place, Cargo.lock (Cargo.toml names the commit): the crate the program is
 # built on is of it, and so are the `pencere` command `make dev` runs textpen under and the stand-in
@@ -46,11 +46,20 @@ lint:
 test:
 	FAKE_HOST="$(FAKE_HOST)" cargo test --locked
 
-# check is the gate: the pin of pencere, formatting, lints, the program's tests.
-#
-# test-page: the page's tests join the gate here (plan Phase 5), as cargo tests that run src/view/ on
-# pencere's headless page host. They are not written yet, and nothing stands in for them.
-check: pin lint test
+# The page's tests: src/view/ run as a terminal runs it, on pencere's host with no screen
+# (pencere-drive), with the program's own handlers in the same process (src/program/page_tests.rs).
+# Each compiles and runs the kit's interpreter, so they are `cargo test`'s ignored ones, run here; a
+# few at a time, for each call of the page is held to the kit's 250 ms as a terminal holds it.
+test-page:
+	cargo test --locked --bin textpen page_tests:: -- --ignored --test-threads=2
+
+# shots draws the pictures of docs/ from the page as it is, in the fonts of this machine (macOS: SF
+# Mono, or Menlo, and SF): not part of the gate, which needs no font of the system.
+shots:
+	cargo test --locked --bin textpen page_shots:: -- --ignored
+
+# check is the gate: the pin of pencere, formatting, lints, the program's tests, the page's tests.
+check: pin lint test test-page
 
 # build makes target/release/textpen, the program for this machine, with the page in it.
 build:
