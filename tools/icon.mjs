@@ -1,8 +1,7 @@
-// Draws textpen's icon, its mark (the Mark in src/view/components/Welcome.tsx: lines of text,
-// the last one being written, with the cursor at its end), as PNGs, and writes them to
-// src/assets/icon-<side>-<theme>.png. A terminal draws a program's icon only from the bytes it is
-// given, so the program carries them (src/program/app.lua names the files); run this again after
-// changing the shapes here and there.
+// Draws textpen's icon, its mark (lines of text, the last one being written, with the cursor at its
+// end), as PNGs, and writes them to src/assets/icon-<side>-<theme>.png. A terminal draws a
+// program's icon only from the bytes it is given, so the program carries them (src/program/main.rs
+// names the files); run this again after changing the shapes here.
 //
 //   node tools/icon.mjs
 //

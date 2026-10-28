@@ -18,35 +18,41 @@ release only moves that section under a version and a date; it does not write it
 
 ## What a release needs
 
-Each of the three files is the runner of pencere's Lua runner for one target, with textpen's
-program and the editor packed into it. So a release needs:
+Each of the three files is the Rust program with its page (`src/view/`) and pictures
+(`src/assets/`) carried in it, built by cargo for one target. So a release needs:
 
-- the `pencere` command and the runners of the three targets, of one version: `make dist` in a
-  pencere checkout makes them in its `dist/` (`pencere-<version>-<target>`). When pencere has a
-  release, `pencere build --target` fetches the runner of a target itself and `make dist` stops
-  asking for `RUNNERS`.
+- Rust 1.88, the toolchain the gate runs with, on a machine of each target: a Mac on Apple silicon,
+  and Linux on `arm64` and on `x86_64`, each with its target added (`rustup target add
+  aarch64-unknown-linux-musl`, and so on) and, on Linux, `musl-tools`. Each file is built where it
+  runs, as sqlpen's are: no emulation and no cross toolchain.
+- pencere as `Cargo.lock` takes it: cargo builds it into each file from that source, a commit of
+  `bateri/pencere` while textpen needs what no release of it has. Nothing of pencere's is
+  downloaded ready-made.
+- Node, for `tools/release.mjs`: it is the one step of a release that is not cargo's. (The other
+  Node file, `tools/icon.mjs`, draws the icons and is not part of a release.)
 - `gh`, logged in, to make the GitHub release.
 
-The files are built on the maintainer's machine and not by a workflow: an executable that a
-workflow built is one that a pushed tag changes without a maintainer's decision. CI runs the
-editor's checks only (`make check-page`); the program's end-to-end tests are `make check`, which
-needs the pencere checkout, so a release runs them here.
+The files are built on the maintainers' machines and not by a workflow: an executable that a
+workflow built is one that a pushed tag changes without a maintainer's decision. CI runs the gate
+(`make check`) on Linux and macOS on every push and pull request; a release runs it again here.
 
 ## A release
 
-From a clean `main`, with `PENCERE` and `FAKE_HOST` pointing at the pencere checkout's `pencere`
-command and `pencere-fake-host` if they are not where the Makefile looks:
+From a clean `main`:
 
-1. `make release-prepare VERSION=0.2.0` sets the version in `package.json`, the lockfile and
-   `src/program/version.lua` (the program is one file with no manifest beside it, so it carries its
-   version in its source), and turns `## [Unreleased]` into `## [0.2.0] - <today>` with a new,
-   empty `## [Unreleased]` above it. Read the diff, then commit it as `Release textpen 0.2.0`.
-2. `make dist RUNNERS=<the pencere checkout's dist/>`, from that commit, on a clean tree. The
-   file names carry the version, so a `dist/release` built before the version moved is refused;
-   nothing can tell which source a `dist/release` of the right version was built from, so build
-   it after the commit and not before.
-3. `make release` runs the gate (`make check`), then the release checks, then makes the
-   annotated tag `v0.2.0` with the changelog section as its message. Nothing is pushed.
+1. `make release-prepare VERSION=0.2.0` sets the version in `Cargo.toml` and `Cargo.lock` (the
+   program says that version: `textpen --version`), and turns `## [Unreleased]` into
+   `## [0.2.0] - <today>` with a new, empty `## [Unreleased]` above it. Read the diff, then commit it
+   as `Release textpen 0.2.0`.
+2. From that commit, on a clean tree, on a machine of each target: `make dist
+   TARGET=<target>`, which builds `dist/release/textpen-0.2.0-<target>`. Gather the three in
+   `dist/release` on the machine that releases, then `make sums` writes `SHA256SUMS`. The file names
+   carry the version, so a `dist/release` built before the version moved is refused; nothing can
+   tell which source a file of the right version was built from, so build them after the commit
+   and not before.
+3. `make release` runs the gate (`make check`, with `FAKE_HOST` naming pencere's stand-in terminal
+   if it is not where the Makefile looks: `make fake-host` builds it), then the release checks, then
+   makes the annotated tag `v0.2.0` with the changelog section as its message. Nothing is pushed.
 4. `make publish` pushes `main` and the tag in one atomic push, then makes the GitHub release
    with the changelog section as its notes, the three files and `SHA256SUMS`.
 5. Check it: `gh release view v0.2.0`.
@@ -59,8 +65,8 @@ tag is on `origin` and the release is not: make it by hand with `gh release crea
 
 ### What the release checks refuse
 
-- a version that is not after the last, a `package.json` that disagrees with the newest changelog
-  section, or a `src/program/version.lua` that disagrees with `package.json`;
+- a version that is not after the last, or a `Cargo.toml` that disagrees with the newest changelog
+  section;
 - an `## [Unreleased]` section that still holds changes, or an empty release section;
 - a branch other than `main`, a working tree that is not clean, a `main` that has diverged from
   `origin/main`;

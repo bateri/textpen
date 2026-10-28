@@ -6,8 +6,10 @@
 //   tag                 check, then create the annotated tag v<version>
 //   publish             push main and the tag, then make the GitHub release with the three files
 //   notes [<version>]   the CHANGELOG section of a version
+//   version             the version textpen says it is (Cargo.toml)
 //
-// It uses nothing but Node, git and gh.
+// It uses nothing but Node, git and gh. The program is built, run and tested with cargo; Node is
+// for this and for tools/icon.mjs, which draws the icons, alone.
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -18,7 +20,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const NAME = "textpen";
 
-/** The systems textpen is built for: the targets of pencere's runner (the Makefile's TARGETS). */
+/** The systems textpen is built for (the Makefile's TARGETS), each on a machine of its own. */
 const TARGETS = ["aarch64-apple-darwin", "aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"];
 
 /** Where `make dist` puts the files of a release. */
@@ -54,36 +56,28 @@ function succeeds(command, args, options = {}) {
 
 const tagOf = (version) => `v${version}`;
 
-// ---- the manifest's version ------------------------------------------------
+// ---- the version ---------------------------------------------------------------
+
+/**
+ * The version of textpen: the package's, in Cargo.toml, and the lockfile's entry for it. The
+ * program says the same one (`textpen --version` is Cargo's version of the package).
+ */
+const MANIFEST = join(root, "Cargo.toml");
+const LOCKFILE = join(root, "Cargo.lock");
+const PACKAGE_VERSION = /^(\[package\][^[]*?\nversion = ")([^"]+)(")/m;
+const LOCKED_VERSION = /(\[\[package\]\]\nname = "textpen"\nversion = ")([^"]+)(")/;
 
 function versionOf() {
-  return JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
+  const version = PACKAGE_VERSION.exec(readFileSync(MANIFEST, "utf8"))?.[2];
+  if (version === undefined) refuse("Cargo.toml does not say a version");
+  return version;
 }
 
 function setVersion(version) {
-  const path = join(root, "package.json");
-  const manifest = JSON.parse(readFileSync(path, "utf8"));
-  manifest.version = version;
-  writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
-  // The lockfile records the package's own version twice: at its top and as its root package.
-  const lockPath = join(root, "package-lock.json");
-  const lock = JSON.parse(readFileSync(lockPath, "utf8"));
-  lock.version = version;
-  if (lock.packages?.[""] === undefined) refuse("package-lock.json has no root package");
-  lock.packages[""].version = version;
-  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
-  // The program is one file with no manifest beside it: it carries its version in its own source.
-  writeFileSync(
-    LUA_VERSION,
-    `-- The version, as package.json has it. The program is one file with no manifest beside it,\n-- so a release changes it here too (tools/release.mjs keeps the two the same).\nreturn "${version}"\n`,
-  );
-}
-
-/** The version the program says of itself. */
-const LUA_VERSION = join(root, "src", "program", "version.lua");
-
-function programVersion() {
-  return /return "([^"]+)"/.exec(readFileSync(LUA_VERSION, "utf8"))?.[1];
+  writeFileSync(MANIFEST, readFileSync(MANIFEST, "utf8").replace(PACKAGE_VERSION, `$1${version}$3`));
+  const lock = readFileSync(LOCKFILE, "utf8");
+  if (!LOCKED_VERSION.test(lock)) refuse("Cargo.lock has no entry for textpen: run cargo build first");
+  writeFileSync(LOCKFILE, lock.replace(LOCKED_VERSION, `$1${version}$3`));
 }
 
 // ---- the changelog ---------------------------------------------------------
@@ -160,12 +154,7 @@ function check() {
   const tag = tagOf(version);
 
   if (!SEMVER.test(version ?? "") || version === "0.0.0") {
-    refuse(`package.json is at "${version}": run make release-prepare first`);
-  }
-  if (programVersion() !== version) {
-    refuse(
-      `src/program/version.lua says ${programVersion()}, package.json ${version}: the program would report the wrong one`,
-    );
+    refuse(`Cargo.toml is at "${version}": run make release-prepare first`);
   }
   if (unreleased().body !== "") {
     refuse("CHANGELOG.md: Unreleased is not empty; prepare moves it into the release");
@@ -310,7 +299,11 @@ function notes(version) {
   console.log(releasedSection(version ?? versionOf()).body);
 }
 
-const COMMANDS = { prepare, check, tag, publish, notes };
+function version() {
+  console.log(versionOf());
+}
+
+const COMMANDS = { prepare, check, tag, publish, notes, version };
 
 const [command, ...args] = process.argv.slice(2);
 const handler = COMMANDS[command];
