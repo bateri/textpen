@@ -336,6 +336,11 @@ impl Pane {
 
     /// The stand-in's record of a pane in which the page makes the calls of `script`.
     pub fn record(&self, script: &Script) -> String {
+        self.run(script).stderr
+    }
+
+    /// The stand-in, ready to run the pane of `script`.
+    pub fn host_command(&self, script: &Script) -> Command {
         let mut command = self.command(host());
         command.args(["--size", "100x30", "--limit", &script.limit.to_string()]);
         command.args(&script.host_args);
@@ -350,7 +355,17 @@ impl Pane {
         for (name, value) in &script.env {
             command.env(name, value);
         }
-        run(command, None, Duration::from_secs(script.limit + 15)).stderr
+        command
+    }
+
+    /// The pane of `script` run to its end: the record, and what the program wrote on the terminal
+    /// when the stand-in passes it through (`--passthrough`).
+    pub fn run(&self, script: &Script) -> Ran {
+        run(
+            self.host_command(script),
+            None,
+            Duration::from_secs(script.limit + 15),
+        )
     }
 
     /// The answers to the calls of `script`, one for each: the record's tail says why when not.

@@ -168,12 +168,21 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn new() -> Self {
+    /// The store where the XDG directories say.
+    pub fn from_env() -> Self {
+        Self::at(
+            directory("XDG_CONFIG_HOME", ".config"),
+            directory("XDG_STATE_HOME", ".local/state"),
+        )
+    }
+
+    /// The store whose settings are in `config` and whose drafts and projects are in `state`.
+    pub fn at(config: String, state: String) -> Self {
         let pending: Arc<Mutex<Option<Pending>>> = Arc::new(Mutex::new(None));
         let writer = Arc::clone(&pending);
         Self {
-            config: directory("XDG_CONFIG_HOME", ".config"),
-            state: directory("XDG_STATE_HOME", ".local/state"),
+            config,
+            state,
             later: Later::new("textpen-ui", move |()| write_pending(&writer)),
             pending,
         }

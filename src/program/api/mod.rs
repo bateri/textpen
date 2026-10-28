@@ -14,11 +14,14 @@ mod params;
 mod pieces;
 mod search;
 mod session;
+#[cfg(test)]
+mod tests;
 
 use std::sync::Arc;
 
-use pencere::{Options, ViewError};
+use pencere::{Call, Options, ViewError};
 use serde::Serialize;
+use serde_json::Value;
 
 use crate::state::buffers::Error as BufferError;
 use crate::state::session::Session;
@@ -62,19 +65,40 @@ type Gone<'a> = dyn Fn() -> bool + 'a;
 /// The work of a call: the session, the params it read, and whether the page gave it up.
 type Work<P, T> = fn(&Session, P, &Gone<'_>) -> Result<T, Failure>;
 
-/// Answers the calls of the page to `name` with `work`, given the params as `P` reads them.
+/// The handler of a call: its params read as `P`, then `work`.
+fn handler<P: Params + 'static, T: Serialize + 'static>(
+    session: &Arc<Session>,
+    work: Work<P, T>,
+) -> impl Fn(Value, &Call) -> Result<T, ViewError> + Send + Sync + 'static {
+    let session = Arc::clone(session);
+    move |params, call| {
+        let params = params::parse::<P>(&params)
+            .map_err(|why| ViewError::with_message("bad-params", why))?;
+        work(&session, params, &|| call.is_cancelled()).map_err(ViewError::from)
+    }
+}
+
+/// Answers the calls of the page to `name` with `work`, given the params as `P` reads them. Calls
+/// run at the same time as each other.
 fn call<P: Params + 'static, T: Serialize + 'static>(
     options: Options,
     session: &Arc<Session>,
     name: &'static str,
     work: Work<P, T>,
 ) -> Options {
-    let session = Arc::clone(session);
-    options.call(name, move |params, call| {
-        let params = params::parse::<P>(&params)
-            .map_err(|why| ViewError::with_message("bad-params", why))?;
-        work(&session, params, &|| call.is_cancelled()).map_err(ViewError::from)
-    })
+    options.call(name, handler(session, work))
+}
+
+/// The same, for a call in `lane`: the calls of one lane run one at a time, in the order the page
+/// sent them.
+fn call_in<P: Params + 'static, T: Serialize + 'static>(
+    options: Options,
+    session: &Arc<Session>,
+    lane: &'static str,
+    name: &'static str,
+    work: Work<P, T>,
+) -> Options {
+    options.call_in(lane, name, handler(session, work))
 }
 
 /// The calls and the topic the page may use, answered from `session`.

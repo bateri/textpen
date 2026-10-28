@@ -137,7 +137,6 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 [[package]]
 name = "pencere"
 version = "0.3.1"
-source = "git+https://github.com/bateri/pencere?rev=824f75acea0308a581b2a6c264d58db5ba9bd4c3#824f75acea0308a581b2a6c264d58db5ba9bd4c3"
 dependencies = [
  "libc",
  "pencere-wire",
@@ -148,7 +147,6 @@ dependencies = [
 [[package]]
 name = "pencere-wire"
 version = "0.3.1"
-source = "git+https://github.com/bateri/pencere?rev=824f75acea0308a581b2a6c264d58db5ba9bd4c3#824f75acea0308a581b2a6c264d58db5ba9bd4c3"
 dependencies = [
  "serde",
  "serde_json",

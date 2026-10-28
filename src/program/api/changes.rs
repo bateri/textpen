@@ -1,6 +1,7 @@
 //! The `changes` topic: the disk and git, as they change. The page is told one value at once and
 //! then one only when something differs from what it was told: the open files that changed on disk,
-//! the listed directories that did, and git's own state when it changed.
+//! the listed directories that did, git's own state when it changed, and a hand-off of the pane the
+//! terminal could not make.
 //!
 //! It looks every two seconds while it is subscribed, on a thread of its own. Looking is a `stat` of
 //! each listed directory and open file and, every few seconds, a `git status`: a watch of the
@@ -19,6 +20,7 @@ use serde::Serialize;
 use crate::project::git::GitInfo;
 use crate::state::buffers::Info;
 use crate::state::session::Session;
+use crate::terminal::handoff::Failed;
 
 /// How often the topic looks at the disk and at git.
 const EVERY: Duration = Duration::from_secs(2);
@@ -33,6 +35,16 @@ struct Changes<'a> {
     git: Option<&'a Option<GitInfo>>,
     buffers: Vec<Info>,
     dirs: Vec<String>,
+    #[serde(rename = "handoffFailed", skip_serializing_if = "Option::is_none")]
+    handoff_failed: Option<&'static str>,
+}
+
+/// What the person is told when the terminal could not lend its pane to a shell.
+fn words_of(failed: Failed) -> &'static str {
+    match failed {
+        Failed::Unsupported => "This terminal cannot hand its pane to a command and back.",
+        Failed::Closing => "The view could not be closed just now.",
+    }
 }
 
 /// Looks until the page stops listening, and tells it what changed.
@@ -44,12 +56,14 @@ fn watch(session: &Session, feed: &Subscription) {
         // A buffer whose file changed is read again, or marked as in conflict, as it is told.
         let buffers = session.buffers().changed_on_disk();
         let dirs = session.project.changed_dirs();
+        let handoff_failed = session.desk.take_failed().map(words_of);
         let new_git = told.as_ref() != Some(&git);
-        if new_git || !buffers.is_empty() || !dirs.is_empty() {
+        if new_git || !buffers.is_empty() || !dirs.is_empty() || handoff_failed.is_some() {
             let changes = Changes {
                 git: new_git.then_some(&git),
                 buffers,
                 dirs,
+                handoff_failed,
             };
             if let Ok(value) = serde_json::to_value(&changes) {
                 if feed.push(value) {

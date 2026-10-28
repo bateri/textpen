@@ -22,6 +22,7 @@ subscription, a push, a `code`. What the page is told is made in `api/` from wha
 | `api/search.rs`            | the call `search`                                                                                           |
 | `api/session.rs`           | the calls `boot`, `ui`, `settings`, `handoff`                                                               |
 | `api/changes.rs`           | the topic `changes`: the disk and git, as they change                                                       |
+| `api/tests.rs`             | the calls in a conversation in the same process: calls sent together, the pane lent and given back          |
 | `project/tree.rs`          | the project on disk: listing, the index of every file, create, rename, remove, the order of names           |
 | `project/git.rs`           | git with a time limit: the repository, its files, its branch and changes                                    |
 | `project/watch.rs`         | which of the listed directories changed                                                                     |
@@ -34,7 +35,7 @@ subscription, a push, a `code`. What the page is told is made in `api/` from wha
 | `state/later.rs`           | work done a moment after it was last asked for: a draft, the page's state                                   |
 | `terminal/command_line.rs` | what textpen was asked to open                                                                              |
 | `terminal/machine.rs`      | who runs textpen and where: the user, the machine, ssh                                                      |
-| `terminal/handoff.rs`      | the pane given to the person's own editor in a terminal that shows no views                                 |
+| `terminal/handoff.rs`      | the pane lent to a shell and taken back, and to the person's own editor where no views are shown            |
 
 The version is the package's (`Cargo.toml`).
 
@@ -45,12 +46,16 @@ that day. `textpen --version` takes under 10 ms.
 
 ## Its tests
 
-`cargo test` runs the program's own tests and the ones in `tests/`, which run the program Cargo
-built in a pane under `pencere-fake-host`, pencere's stand-in terminal, and read what the page was
-told off its record: the calls and their answers, `bad-params`, the order of a listing, an exclusive
-create, places in code points (with characters of two, three and four bytes), git and its time
-limit, a hangup, the drafts, a long text in pieces, a big directory, the limits of a search, the
-command line. The stand-in is the one `FAKE_HOST` names, or
+`cargo test` runs the program's own tests and the ones in `tests/`. Among its own, `api/tests.rs`
+makes the page's calls in a `pencere::Conversation`, which serves the handlers by `serve`'s code
+with no terminal: a hundred edits sent together and made in their order, the pane lent after the
+answer that asks for it, and the page shown again told how the shell ended. The ones in `tests/` run
+the program Cargo built in a pane under `pencere-fake-host`, pencere's stand-in terminal, and read
+what the page was told off its record: the calls and their answers, `bad-params`, the order of a
+listing, an exclusive create, places in code points (with characters of two, three and four bytes),
+git and its time limit, a hangup, the drafts, a long text in pieces, a big directory, the limits of
+a search, the command line, and the shell: its directory, its environment and its first line, the
+editor shown again and told how it ended, a shell that cannot start, a hangup while it has the pane. The stand-in is the one `FAKE_HOST` names, or
 `../pencere/target/debug/pencere-fake-host` (`cargo build -p pencere-fake-host` in a pencere
 checkout); `make fake-host` builds one of the pencere `Cargo.lock` takes, in `.cache/pencere`. One
 that is not there, or that cannot show a whole result (`PENCERE_FAKE_GIST`), fails the run.
@@ -60,9 +65,10 @@ Nothing is skipped.
 
 - **Places are code points**: an edit, a slice, a search match, a draft's length. The text is held
   as UTF-8; a place inside a character cannot be named.
-- **The buffer calls take one lock**, so that one runs at a time; the page waits for each answer
-  before it relies on the order. The order of calls sent together comes with the next pencere, whose
-  lanes run a program's calls in the order they were sent.
+- **The buffer calls are a lane**, `buffers`: they run one at a time in the order the page sent
+  them, so an `edit` and the `save` of the version it makes may go together. The other calls run
+  beside them, and beside each other; the open files are behind one lock all the same, which the
+  `changes` topic, `rename`, `boot` and the drafts take too.
 - **`null` and absent are different** in what the page sends: a field that may be left out is
   refused when it is `null`, and `active` is there, a path or `null`. A key of `places` is a key and
   nothing more, `__proto__` included.
@@ -93,8 +99,23 @@ Nothing is skipped.
   found.
 - **A settings file of an older textpen** is read: `vim` and `fontSize` are dropped, and
   `whitespace: true/false` is `"all"`/`"none"`.
-- **The pane is not handed to a shell** yet: `handoff` answers `unavailable` and `boot` says
-  `handoff: false` until pencere can close a view, give the terminal to a shell and take it back.
+- **The pane lent to a shell**: `handoff` writes the drafts, then asks pencere to lend the terminal
+  (`ViewControl::hand_off`) and answers `scheduled`; the library sends that answer before it closes
+  the view, so nothing waits for it to go. The shell (`$SHELL`, or `/bin/sh`) runs in the project's
+  directory as the terminal's foreground job, after a first line that says where it is, with
+  `TEXTPEN_SHELL=1` and the switches that keep iTerm2's and WezTerm's rc integrations quiet. When it
+  ends the view is shown again and the next `boot` tells `returned`, once; it waits up to five
+  seconds for it, since the view shown again can ask before the thread that waited for the shell
+  has kept it. A second `handoff` while the shell has the pane is `busy`. A terminal that cannot
+  close a view is told on `changes` (`handoffFailed`), and from then on `handoff` is `unavailable`
+  and `boot` says `handoff: false`.
+- **A hangup while the shell has the pane** is passed on to the shell by pencere, and `serve` ends
+  once it has: the drafts are written then, as for any hangup. A view that does not come back after
+  the shell for another reason (the terminal did not answer, or would not show it) is not replaced
+  with the person's own editor: textpen asks on the terminal whether to try again, keeping what is
+  not saved either way.
+- **The person's own editor**, in a terminal that shows no views, is lent the terminal the same
+  way: its own process group, the terminal's foreground, ⌃C and ⌃Z its own.
 - **The command line**: a file named after a directory is from the current directory, as a shell
   names it, not from the project. `problems` is always empty: what cannot be opened is told when the
   page opens it.

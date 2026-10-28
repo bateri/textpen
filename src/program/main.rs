@@ -3,16 +3,19 @@
 //!
 //! The program holds the project and the open files; the page (`src/view/`, in pencere's kit) is the
 //! editor, drawn by the terminal, and asks the program for what it needs with the calls of
-//! `docs/calls.md`. What is not saved lives in the program, so a ⌃C or a dropped connection leaves
-//! it as a draft for the next run.
+//! `docs/calls.md`. The page hands the pane to a shell when the person asks: the program lends the
+//! terminal to it and shows the page again where it was when the shell ends. What is not saved lives
+//! in the program, so it crosses that gap, and a ⌃C or a dropped connection leaves it as a draft for
+//! the next run.
 //!
 //! This file is the entry and nothing more: it reads the command line, makes the state, gives the
-//! calls and the topic of `api/` to `serve`, and ends with the status a shell gives the program.
+//! calls and the topic of `api/` to `serve` (again, when the person asks, if the page did not come
+//! back after the shell), and ends with the status a shell gives the program.
 //!
 //!   api/       everything the page talks to the program about; it knows the page
 //!   project/   the project on disk: the tree, git, the search; it knows nothing of the page
 //!   state/     what the program holds and remembers: open files, drafts, settings; same
-//!   terminal/  the command line, who and where, and the pane given to the person's own editor; same
+//!   terminal/  the command line, who and where, the pane lent to a shell or the person's editor; same
 
 mod api;
 mod project;
@@ -26,6 +29,7 @@ use base64::Engine;
 use pencere::{EndedBy, Icon, IconTheme, NoViewReason, Options, Outcome};
 
 use state::session::{Focus, Session};
+use state::store::Store;
 use terminal::command_line::{self, Asked};
 use terminal::handoff;
 
@@ -72,6 +76,33 @@ fn icon(png: &[u8], theme: IconTheme) -> Icon {
     icon
 }
 
+/// What `serve` is given: the app, its name and icons, the calls and the topic of `api/`, the hand
+/// that lends the pane, and the person's own editor for a terminal that shows no views, whose status
+/// goes to `fallen_back`.
+fn options(
+    session: &Arc<Session>,
+    files: &[String],
+    fallen_back: &Arc<Mutex<Option<u8>>>,
+) -> Options {
+    let mut options = Options::new()
+        .app(pencere::app!())
+        .program("textpen")
+        // What a terminal writes above the view.
+        .title("Editor")
+        .control(session.desk.control());
+    for (png, theme) in ICONS {
+        options = options.icon(icon(png, theme));
+    }
+    let options = api::serve(options, session);
+    let (session, files, status) = (Arc::clone(session), files.to_vec(), Arc::clone(fallen_back));
+    options.fallback(move |why| {
+        let ended = session
+            .desk
+            .fallback(why.reason == NoViewReason::NoTty, &files);
+        *status.lock().unwrap_or_else(PoisonError::into_inner) = ended;
+    })
+}
+
 fn main() -> ExitCode {
     let cwd = match std::env::current_dir() {
         Ok(dir) => dir.to_string_lossy().into_owned(),
@@ -92,29 +123,26 @@ fn main() -> ExitCode {
         line: place.line,
         column: place.column,
     });
-    let session = Arc::new(Session::new(&line.root, &line.files, focus));
-
-    let mut options = Options::new()
-        .app(pencere::app!())
-        .program("textpen")
-        // What a terminal writes above the view.
-        .title("Editor");
-    for (png, theme) in ICONS {
-        options = options.icon(icon(png, theme));
-    }
-    let options = api::serve(options, &session);
-    // The person's own editor stands in for a terminal that shows no views.
+    let session = Arc::new(Session::new(
+        &line.root,
+        &line.files,
+        focus,
+        Store::from_env(),
+    ));
     let fallen_back = Arc::new(Mutex::new(None));
-    let options = {
-        let status = Arc::clone(&fallen_back);
-        let (root, files) = (line.root.clone(), line.files.clone());
-        options.fallback(move |why| {
-            let ended = handoff::fallback(why.reason == NoViewReason::NoTty, &root, &files);
-            *status.lock().unwrap_or_else(PoisonError::into_inner) = Some(ended);
-        })
+    let outcome = loop {
+        let outcome = pencere::serve(options(&session, &line.files, &fallen_back));
+        // The view did not come back after the shell had the pane: the person may try again.
+        if let Ok(Outcome::NoView(no_view)) = &outcome {
+            if session.desk.lent()
+                && !matches!(no_view.reason, NoViewReason::Interrupted(_))
+                && handoff::try_again(no_view)
+            {
+                continue;
+            }
+        }
+        break outcome;
     };
-
-    let outcome = pencere::serve(options);
     // However it ended: what is not saved is kept as drafts, and the page's state for next time.
     session.ending();
     let status = match outcome {

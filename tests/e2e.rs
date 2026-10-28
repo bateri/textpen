@@ -7,9 +7,11 @@
 
 mod common;
 
+use std::os::unix::fs::PermissionsExt;
+use std::time::{Duration, Instant};
+
 use common::{Pane, Script, answers, count, host, program, run};
 use serde_json::json;
-use std::time::Duration;
 
 /// How many answers the page heard, and how many of them were errors.
 fn tally(log: &str) -> (usize, usize) {
@@ -115,21 +117,156 @@ fn ctrl_c_keeps_what_is_not_saved_as_a_draft_and_the_next_run_offers_it() {
     assert_eq!(pane.read("a.txt"), "world!\n");
 }
 
+/// A shell for the pane: a script that runs `body` and ends with `status`.
+fn shell(pane: &Pane, body: &str, status: i32) -> String {
+    pane.write("shell", format!("#!/bin/sh\n{body}\nexit {status}\n"));
+    let path = pane.path("shell");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path.to_str().unwrap().to_owned()
+}
+
 #[test]
-fn the_pane_is_not_handed_to_a_shell_until_pencere_can_take_the_view_back() {
-    // (The shell, its directory, its environment and the view shown again come with the next
-    // pencere, which hands a view over and takes it back.)
+fn the_pane_goes_to_a_shell_in_the_project_and_the_editor_comes_back_told_how_it_ended() {
     let pane = pane();
-    let log = pane.record(
-        &on_a_txt()
-            .call("boot", json!({}))
-            .call("handoff", json!({ "kind": "shell" })),
+    std::fs::create_dir(pane.path("proj")).unwrap();
+    // What the shell is given: its directory, and the switches of the rc files' integrations.
+    let out = pane.path("where.out");
+    let shell = shell(
+        &pane,
+        &format!(
+            "echo \"$PWD $TEXTPEN_SHELL $ITERM_SHELL_INTEGRATION_INSTALLED $WEZTERM_SHELL_SKIP_ALL\" >> '{}'",
+            out.display()
+        ),
+        3,
     );
-    let heard = answers(&log);
-    assert_eq!(heard[0].result()["handoff"], json!(false));
-    assert_eq!(heard[1].result(), &json!({ "state": "unavailable" }));
-    assert_eq!(count(&log, "view: started from the bundle"), 1);
-    assert!(!log.contains("program: dismiss"), "{log}");
+    // Each view the terminal shows runs the page's calls: the second view is told how the shell
+    // ended, asks for it again, and ⌃C ends textpen before the second shell has the pane.
+    let ran = pane.run(
+        &Script::new()
+            .call("boot", json!({}))
+            .call("handoff", json!({ "kind": "shell" }))
+            .then(&["--on-view", "2", "--then", "interrupt"])
+            .host_args(&["--passthrough"])
+            .args(&["proj"])
+            .env("SHELL", &shell),
+    );
+    let log = &ran.stderr;
+    assert!(log.contains("program: dismiss"), "{log}");
+    assert!(log.contains("reason=program"), "{log}");
+    assert_eq!(count(log, "view: started from the bundle"), 2, "{log}");
+    // The second view is served from what the terminal kept of the first.
+    assert!(
+        log.lines()
+            .filter(|line| line.starts_with("host: need id="))
+            .nth(1)
+            .is_some_and(|line| line.ends_with("missing=0")),
+        "{log}"
+    );
+    let heard = answers(log);
+    assert_eq!(heard.len(), 4, "{log}");
+    assert_eq!(heard[0].result()["handoff"], json!(true));
+    assert!(heard[0].result().get("returned").is_none());
+    assert_eq!(heard[1].result(), &json!({ "state": "scheduled" }));
+    let returned = &heard[2].result()["returned"];
+    assert_eq!(returned["exitCode"], json!(3), "{log}");
+    assert!(returned["duration"].is_u64() && returned.get("error").is_none());
+    // (/tmp is a link on a Mac: the shell is in the same directory by whichever name.)
+    let said = std::fs::read_to_string(&out).unwrap();
+    assert!(
+        said.starts_with(&format!("{}/proj 1 Yes 1\n", pane.root())),
+        "{said}"
+    );
+    // Its first line says where it is and how to come back.
+    assert!(
+        ran.stdout
+            .contains(&format!("shell in \u{1b}[1m{}/proj", pane.root())),
+        "{}",
+        ran.stdout
+    );
+    assert!(ran.stdout.contains("exit or ⌃D goes back to the editor"));
+    assert!(log.contains("program: exited with status 130"), "{log}");
+}
+
+#[test]
+fn a_shell_that_cannot_start_is_told_to_the_editor_that_comes_back() {
+    let pane = pane();
+    let ran = pane.run(
+        &Script::new()
+            .call("boot", json!({}))
+            .call("handoff", json!({ "kind": "shell" }))
+            .then(&["--on-view", "2", "--then", "interrupt"])
+            .env("SHELL", "/no/such/shell"),
+    );
+    let heard = answers(&ran.stderr);
+    assert_eq!(heard.len(), 4, "{}", ran.stderr);
+    let returned = &heard[2].result()["returned"];
+    // The shell's word for a command it could not run: 127 (not found), or 126 where `exec` says it
+    // could not run it (macOS's sh).
+    assert!(
+        [json!(126), json!(127)].contains(&returned["exitCode"]),
+        "{returned}"
+    );
+    assert_eq!(returned["error"], json!("could not start /no/such/shell"));
+}
+
+#[test]
+fn a_hangup_while_the_shell_has_the_pane_ends_textpen_and_keeps_what_is_not_saved() {
+    let pane = pane();
+    let (started, hup) = (pane.path("started"), pane.path("hup.out"));
+    // The shell takes away the drafts written as it started, so that the ones there after the
+    // hangup are the ones textpen wrote on its way out; it says it heard the hangup.
+    let shell = shell(
+        &pane,
+        &format!(
+            "trap \"echo hup > '{}'; exit 129\" HUP\nrm -rf \"$XDG_STATE_HOME/textpen/drafts\"\ntouch '{}'\nsleep 30 &\nwait $!",
+            hup.display(),
+            started.display()
+        ),
+        0,
+    );
+    let script = Script::new()
+        .call("open", json!({ "path": "a.txt" }))
+        .call(
+            "edit",
+            json!({ "path": "a.txt", "base": 1, "edits": [[5, 5, "😀"]] }),
+        )
+        .call("handoff", json!({ "kind": "shell" }))
+        .then(&["--on-view", "2", "--then", "interrupt"])
+        .args(&["a.txt"])
+        .limit(40)
+        .env("SHELL", &shell);
+    let log = pane.path("log");
+    let mut command = pane.host_command(&script);
+    command.stderr(std::fs::File::create(&log).unwrap());
+    let mut host = command.spawn().unwrap();
+    let waited = |what: &str, done: &dyn Fn() -> bool| {
+        let until = Instant::now() + Duration::from_secs(20);
+        while !done() {
+            assert!(Instant::now() < until, "waited for {what}");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    };
+    waited("the shell to start", &|| started.exists());
+    assert!(pane.drafts().is_empty());
+    // The terminal goes away, as when an ssh connection drops.
+    host.kill().unwrap();
+    host.wait().unwrap();
+    let record = std::fs::read_to_string(&log).unwrap();
+    let pid: i32 = record
+        .split("(pid ")
+        .nth(1)
+        .and_then(|rest| rest.split(')').next())
+        .and_then(|pid| pid.parse().ok())
+        .expect("the record names textpen's pid");
+    // SAFETY: a signal of nothing asks only whether the process is there.
+    waited("textpen to end", &|| unsafe { libc::kill(pid, 0) } != 0);
+    assert_eq!(std::fs::read_to_string(&hup).unwrap(), "hup\n");
+    let drafts = pane.drafts();
+    assert_eq!(drafts.len(), 1, "the drafts are written on the way out");
+    let draft: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&drafts[0]).unwrap()).unwrap();
+    assert_eq!(draft["text"], json!("world😀\n"));
+    assert_eq!(pane.read("a.txt"), "world\n");
 }
 
 // The view is closed by the person (`--then close`): the stand-in of this pencere passes a page of

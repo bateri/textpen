@@ -350,7 +350,7 @@ fn boot_tells_what_the_page_starts_from_with_null_where_there_is_nothing() {
             "sidebarWidth": 240,
         })
     );
-    assert_eq!(boot["handoff"], json!(false));
+    assert_eq!(boot["handoff"], json!(true));
     assert_eq!(boot["closeQuits"], json!(false));
     assert_eq!(boot["remote"], json!(false));
     assert_eq!(boot["home"], json!(pane.dir.path().to_str().unwrap()));

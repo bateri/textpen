@@ -10,6 +10,7 @@ use super::buffers::{self, Buffers};
 use super::defaults::{Settings, UiState};
 use super::store::Store;
 use crate::project::tree::Tree;
+use crate::terminal::handoff::Desk;
 
 /// Where the command line asked the cursor to go: a file, a line (from 1) and a column (from 1, in
 /// code points).
@@ -26,6 +27,8 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 pub struct Session {
     pub project: Arc<Tree>,
+    /// Who lends the pane to a shell, and takes it back.
+    pub desk: Desk,
     buffers: Arc<Mutex<Buffers>>,
     store: Store,
     settings: Mutex<Settings>,
@@ -39,12 +42,11 @@ pub struct Session {
 }
 
 impl Session {
-    /// The session of the project at `root` (absolute). When the command line named `files`
-    /// (absolute), they are the tabs in place of the last run's, and `focus` (absolute) is where the
-    /// cursor goes.
-    pub fn new(root: &str, files: &[String], focus: Option<Focus>) -> Self {
+    /// The session of the project at `root` (absolute), which remembers in `store`. When the command
+    /// line named `files` (absolute), they are the tabs in place of the last run's, and `focus`
+    /// (absolute) is where the cursor goes.
+    pub fn new(root: &str, files: &[String], focus: Option<Focus>, store: Store) -> Self {
         let project = Arc::new(Tree::new(root));
-        let store = Store::new();
         let buffers = buffers::shared(Arc::clone(&project), &store.state);
         let settings = store.settings();
         let mut ui = store.ui(&project.root);
@@ -63,6 +65,7 @@ impl Session {
             });
         }
         Self {
+            desk: Desk::new(&project.root),
             project,
             buffers,
             store,

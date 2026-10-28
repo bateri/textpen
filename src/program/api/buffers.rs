@@ -2,9 +2,9 @@
 //! program holds each file's text (state/buffers); what the page is sent of it is cut to fit one
 //! message: a text too long for one is announced (`partial`) and read in pieces with `slice`.
 //!
-//! The buffer calls take one lock, so that one runs at a time. (They are answered in the order they
-//! were sent when the page waits for each answer; a lane of their own, which keeps the order of calls
-//! sent together, comes with the next pencere.)
+//! The buffer calls run in a lane of their own, `buffers`: one at a time, in the order the page sent
+//! them, so that the page may send an edit and then the save of the version it makes without
+//! waiting for the edit's answer. Other calls go on meanwhile.
 //!
 //! This is api/'s: the files of api/ know the page, and project/, state/ and terminal/ do not.
 
@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 
 use super::params::{Checked, Fields, OnePath, Params};
 use super::pieces::WIRE_BUDGET;
-use super::{Failure, Gone, call};
+use super::{Failure, Gone, call_in};
 use crate::state::buffers::{Eol, Info, Opened, Opening, Saved, Slice, Unopenable};
 use crate::state::session::Session;
 
@@ -219,11 +219,14 @@ fn discard(session: &Session, (): (), _: &Gone<'_>) -> Result<Value, Failure> {
     Ok(json!({}))
 }
 
+/// The lane of the buffer calls.
+const LANE: &str = "buffers";
+
 pub fn calls(options: Options, session: &Arc<Session>) -> Options {
-    let options = call(options, session, "open", open);
-    let options = call(options, session, "edit", edit);
-    let options = call(options, session, "slice", slice);
-    let options = call(options, session, "save", save);
-    let options = call(options, session, "buffer", buffer);
-    call(options, session, "discard", discard)
+    let options = call_in(options, session, LANE, "open", open);
+    let options = call_in(options, session, LANE, "edit", edit);
+    let options = call_in(options, session, LANE, "slice", slice);
+    let options = call_in(options, session, LANE, "save", save);
+    let options = call_in(options, session, LANE, "buffer", buffer);
+    call_in(options, session, LANE, "discard", discard)
 }

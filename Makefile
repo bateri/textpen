@@ -2,7 +2,7 @@
 # (src/view/, a page of pencere's kit) and the pictures (src/assets/) carried in it by build.rs. The
 # gate, `make dev` and the steps of a release are here; RELEASING.md says in what order and why.
 # Nothing here needs Node but the release steps, which run tools/release.mjs.
-.PHONY: fmt lint test check build pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
+.PHONY: pin fmt lint test check build pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
 
 # pencere is pinned in one place, Cargo.lock (Cargo.toml names the commit): the crate the program is
 # built on is of it, and so are the `pencere` command `make dev` runs textpen under and the stand-in
@@ -22,6 +22,18 @@ PENCERE_GIT = https://github.com/bateri/pencere
 #   make fake-host && make check FAKE_HOST=.cache/pencere/target/debug/pencere-fake-host
 FAKE_HOST ?= ../pencere/target/debug/pencere-fake-host
 
+# pin: main is built on a pencere anyone can fetch, the commit Cargo.lock names. A branch that waits
+# for a pencere not pushed yet takes it from a checkout on this machine with a [patch] of Cargo.toml;
+# that section is refused on main and on what is to be merged into it.
+pin:
+	@if grep -q '^\[patch' Cargo.toml; then \
+		branch="$$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"; \
+		if [ "$$branch" = main ] || [ "$${GITHUB_REF:-}" = refs/heads/main ] || [ "$${GITHUB_BASE_REF:-}" = main ]; then \
+			echo "pin: Cargo.toml takes pencere from a [patch]: main is built on a pushed pencere (move the rev in Cargo.toml, drop the patch)"; exit 1; \
+		fi; \
+		echo "pin: Cargo.toml takes pencere from a [patch] ($$branch): main will refuse it"; \
+	fi
+
 fmt:
 	cargo fmt
 
@@ -34,11 +46,11 @@ lint:
 test:
 	FAKE_HOST="$(FAKE_HOST)" cargo test --locked
 
-# check is the gate: formatting, lints, the program's tests.
+# check is the gate: the pin of pencere, formatting, lints, the program's tests.
 #
 # test-page: the page's tests join the gate here (plan Phase 5), as cargo tests that run src/view/ on
 # pencere's headless page host. They are not written yet, and nothing stands in for them.
-check: lint test
+check: pin lint test
 
 # build makes target/release/textpen, the program for this machine, with the page in it.
 build:

@@ -39,3 +39,11 @@ tempfile = "3"
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "warn"
+
+# Only until pencere's d9b52bb (or a later commit) is pushed and the `rev`s above move to it: the
+# lending of the terminal to a shell (`ViewControl::hand_off`) and the lanes of calls are in that
+# commit of the pencere checkout beside this one, which is not pushed yet. Every pencere crate textpen
+# takes comes from that checkout, so that they stay one pencere. The gate refuses this section on
+# textpen's main (`make pin`): main is built on a pencere anyone can fetch.
+[patch."https://github.com/bateri/pencere"]
+pencere = { path = "../pencere/program" }
