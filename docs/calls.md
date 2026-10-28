@@ -107,7 +107,7 @@ SearchMatch = { line: number, start: number, end: number, text: string, offset: 
               -- around the match when long; offset where text begins in the line, code points
 SearchFile  = { path: string, matches: SearchMatch[] }
 SearchResult= { files: SearchFile[], matches: number, searched: number, truncated: boolean, ms: number }
-FilesPage   = { files: string[], truncated: boolean, next: number | null }
+FilesPage   = { files: string[], truncated: boolean, next: number | null, generation: number }
 ```
 
 ## Calls
@@ -119,7 +119,7 @@ FilesPage   = { files: string[], truncated: boolean, next: number | null }
 | `settings` | `{ settings: Settings }`                                                                 | `{ settings: Settings }` as kept.                                                                                                                                                                                              |
 | `handoff`  | `{ kind: "shell" }`                                                                      | `{ state: "scheduled" \| "busy" \| "unavailable" }`. When scheduled, the answer reaches the page before the view closes; the page is shown again where it was when the shell ends, and `boot` tells `returned`.                |
 | `list`     | `{ dir: string }`                                                                        | `Listing`, cut to fit one message.                                                                                                                                                                                             |
-| `files`    | `{ from?: integer ≥ 0 }`                                                                 | `FilesPage`: the file index for the quick open, a message's worth from `from`.                                                                                                                                                 |
+| `files`    | `{ from?: integer ≥ 0, generation?: integer }`                                           | `FilesPage`: the file index for the quick open, a message's worth from `from`. The pages of one listing are of the index its first page (no `from`) was taken from: each after it names that page's `generation`, and is `out-of-sync` where another listing was begun since (the page reads the files again from the start).|
 | `create`   | `{ path: string, kind: "file" \| "dir" }`                                                | `{ path }`. Exclusive: an existing path is `failed`.                                                                                                                                                                           |
 | `rename`   | `{ from: string, to: string }`                                                           | `{ path, buffers: BufferInfo[] }`. Open buffers under `from` follow. A rename by case alone is allowed for any letter.                                                                                                         |
 | `delete`   | `{ path: string }`                                                                       | `{ path }`.                                                                                                                                                                                                                    |
