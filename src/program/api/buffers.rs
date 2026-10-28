@@ -1,4 +1,5 @@
-//! The calls about the open files: `open`, `edit`, `slice`, `save`, `buffer` and `discard`. The
+//! The calls about the open files: `open`, `edit`, `slice`, `save`, `buffer` and `discard`, and
+//! `quit`, which ends textpen once they are done. The
 //! program holds each file's text (state/buffers); what the page is sent of it is cut to fit one
 //! message: a text too long for one is announced (`partial`) and read in pieces with `slice`.
 //!
@@ -10,7 +11,7 @@
 
 use std::sync::Arc;
 
-use pencere::Options;
+use pencere::{CloseResult, Options};
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -219,6 +220,22 @@ fn discard(session: &Session, (): (), _: &Gone<'_>) -> Result<Value, Failure> {
     Ok(json!({}))
 }
 
+/// The page asks textpen to end: the view is closed, and `serve` returns (main keeps what is not saved
+/// as drafts, unless `discard` dropped it). A kit view has no close of its own (the protocol, Section
+/// 10.6): the program ends it. In the lane of the buffers, after what the page sent before it.
+fn quit(session: &Session, (): (), _: &Gone<'_>) -> Result<Value, Failure> {
+    match session.desk.control().close() {
+        // Closed, the answer has no view to go to; with no view to close, there is nothing to do.
+        CloseResult::Closed | CloseResult::Unavailable => Ok(json!({})),
+        CloseResult::Unsupported => Err(Failure::Failed(
+            "This terminal cannot close the editor's view: ⌃C ends textpen, keeping what is not saved."
+                .to_owned(),
+        )),
+        // What a later version of the library says, which this one does not know.
+        _ => Ok(json!({})),
+    }
+}
+
 /// The lane of the buffer calls.
 const LANE: &str = "buffers";
 
@@ -228,5 +245,6 @@ pub fn calls(options: Options, session: &Arc<Session>) -> Options {
     let options = call_in(options, session, LANE, "slice", slice);
     let options = call_in(options, session, LANE, "save", save);
     let options = call_in(options, session, LANE, "buffer", buffer);
-    call_in(options, session, LANE, "discard", discard)
+    let options = call_in(options, session, LANE, "discard", discard);
+    call_in(options, session, LANE, "quit", quit)
 }

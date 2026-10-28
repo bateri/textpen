@@ -660,27 +660,35 @@ end
 
 -- --- The pane -----------------------------------------------------------------------------------------------
 
--- Asks the host to close the view: the program ends with it, keeping what is not saved as drafts,
--- or dropping it first when the person asked to quit without saving.
+-- Ends textpen: the page's state kept, what is not saved dropped first where the person asked to
+-- quit without saving (else the program keeps it as drafts), then the program asked to end (`quit`):
+-- a page of the kit has no close of its own, its view is the program's to end (docs/calls.md).
 function act.end_view(discard)
+	local function quit()
+		kit.call("quit", {}, function(_, err)
+			if err then
+				S.handing_off = nil
+				kit.toast(err.message, "bad", 8)
+			end
+			return nil
+		end)
+	end
 	act.keep_ui(function()
-		local function close()
-			S.handing_off = "quit"
-			S.overlay = nil
-			kit.gather({ close = true })
+		S.handing_off = "quit"
+		S.overlay = nil
+		if not discard then
+			quit()
+			return
 		end
-		if discard then
-			kit.call("discard", {}, function(_, err)
-				if err then
-					kit.toast(err.message, "bad")
-				else
-					close()
-				end
-				return nil
-			end)
-		else
-			close()
-		end
+		kit.call("discard", {}, function(_, err)
+			if err then
+				S.handing_off = nil
+				kit.toast(err.message, "bad")
+			else
+				quit()
+			end
+			return nil
+		end)
 	end)
 end
 

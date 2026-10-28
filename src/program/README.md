@@ -18,7 +18,7 @@ subscription, a push, a `code`. What the page is told is made in `api/` from wha
 | `api/params.rs`            | each call reads what it asks: what does not fit is answered `bad-params`, with where, and never run         |
 | `api/pieces.rs`            | what one message to the page may carry                                                                      |
 | `api/files.rs`             | the calls `list`, `files`, `create`, `rename`, `delete`; a listing is cut to fit one message                |
-| `api/buffers.rs`           | the calls `open`, `edit`, `slice`, `save`, `buffer`, `discard`; a long text is announced and read in pieces |
+| `api/buffers.rs`           | the calls `open`, `edit`, `slice`, `save`, `buffer`, `discard`, `quit`; a long text read in pieces          |
 | `api/search.rs`            | the call `search`                                                                                           |
 | `api/session.rs`           | the calls `boot`, `ui`, `settings`, `handoff`                                                               |
 | `api/changes.rs`           | the topic `changes`: the disk and git, as they change                                                       |

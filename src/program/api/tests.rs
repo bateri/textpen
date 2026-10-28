@@ -202,3 +202,40 @@ fn a_terminal_that_cannot_lend_its_pane_is_told_on_the_changes_and_not_asked_aga
         json!(false)
     );
 }
+
+#[test]
+fn quitting_closes_the_view_after_the_buffer_calls_sent_before_it() {
+    let (dir, session) = session(&[("a.txt", "world\n")]);
+    let mut conversation = conversation(&session);
+    send(&mut conversation, 1, "open", json!({ "path": "a.txt" }));
+    send(
+        &mut conversation,
+        2,
+        "edit",
+        json!({ "path": "a.txt", "base": 1, "edits": [[5, 5, "!"]] }),
+    );
+    send(
+        &mut conversation,
+        3,
+        "save",
+        json!({ "path": "a.txt", "version": 2 }),
+    );
+    send(&mut conversation, 4, "quit", json!({}));
+    for id in 1..=3 {
+        let (heard_id, result) = answer(&mut conversation);
+        assert_eq!(heard_id, id);
+        result.unwrap_or_else(|error| panic!("call {id}: {error}"));
+    }
+    let closed = loop {
+        match heard(&mut conversation) {
+            Said::Closed => break true,
+            Said::Message(_) => {}
+            _ => break false,
+        }
+    };
+    assert!(closed, "the program closed its view");
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("project/a.txt")).unwrap(),
+        "world!\n"
+    );
+}
