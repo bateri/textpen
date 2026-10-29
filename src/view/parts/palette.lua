@@ -17,9 +17,13 @@ local palette = {}
 
 local FIELD = "palette-query"
 local LIST = "palette-list"
+-- The sizes are the React palette's (its styles.css, 737f781): a row 30 points, the card 620 wide and
+-- 480 high at the most, a field line 44, a foot line 30.
 local ROW = 30
-local SHOWN = 10
+local MOST_ROWS = 13
 local LIMIT = 120
+-- How many rows the list shows as it was last drawn (what a page up or down goes by).
+local shown_rows = MOST_ROWS
 
 local MODES = {
 	files = { label = "Files", icon = "file-search", hint = "Go to file…  (> commands, : line)" },
@@ -142,7 +146,6 @@ local function file_item(path, positions, pool, place)
 		icon = { kind.icon, kind.color },
 		title = marked(path, positions, name_start, total),
 		detail = name_start > 1 and marked(path, positions, 1, name_start - 2) or nil,
-		badge = pool.open[path] and "open" or nil,
 		git = state,
 		run = function()
 			act.open_file(path, { focus = true, line = place.line, column = place.column })
@@ -244,7 +247,7 @@ local function command_items(query)
 		local split = text.len(command.category) + 2
 		out[#out + 1] = {
 			id = command.id,
-			lead = marked(words, hit.positions, 1, split),
+			lead = marked(words, hit.positions, 1, split - 1),
 			title = marked(words, hit.positions, split + 1, text.len(words)),
 			keys = command.keys or command.shown,
 			run = function()
@@ -466,8 +469,8 @@ function palette.reveal()
 	end
 end
 
-local function title_view(spans, current)
-	return b.rich(spans):truncate():min_w(0):weight(current and 600 or 400)
+local function title_view(spans)
+	return b.rich(spans):truncate():min_w(0)
 end
 
 local function item_view(item, index, chosen)
@@ -478,92 +481,104 @@ local function item_view(item, index, chosen)
 		:items_center()
 		:gap(9)
 		:h(ROW)
-		:px(10)
-		:rounded(6)
-		:bg(index == chosen and b.alpha("accent", 0.2) or (kit.hovered(id) and b.alpha("foreground", 0.05) or nil))
+		:no_shrink()
+		:px(9)
+		:rounded(7)
+		:bg(index == chosen and b.alpha("accent", 0.22) or (kit.hovered(id) and b.alpha("foreground", 0.05) or nil))
 		:role("menu_item")
 		:selected(index == chosen)
 	if item.icon then
-		row:child(kit.icon(item.icon[1], 15, item.icon[2]))
+		row:child(b.div():w(16):row():items_center():justify_center():no_shrink():child(kit.icon(item.icon[1], 16, item.icon[2])))
 	end
-	local words = b.div():row():items_center():gap(8):grow(1):min_w(0)
+	local words = b.div():row():items_center():gap(10):grow(1):min_w(0)
 	if item.lead then
 		-- The category of a command, before its title.
-		words:child(b.div():row():items_center():min_w(0)
+		words:child(b.div():row():items_center():gap(6):min_w(0)
 			:child(b.rich(item.lead):color("dim"):no_shrink())
-			:child(title_view(item.title, item.current)))
+			:child(title_view(item.title)))
 	else
-		words:child(title_view(item.title, item.current))
+		words:child(title_view(item.title))
 	end
 	if item.detail then
-		words:child(b.rich(item.detail):color("quiet"):truncate():min_w(0):text_size(11.5))
+		words:child(b.rich(item.detail):color("quiet"):truncate():min_w(0):text_size(11))
 	end
 	row:child(words)
-	if item.badge then
-		row:child(b.div():px(6):h(17):rounded(4):bg("raised3"):row():items_center()
-			:child(b.text(item.badge):text_size(10.5):color("dim")))
-	end
 	if item.git then
-		row:child(b.text(files.GIT_LETTER[item.git] or ""):weight(700):color(files.GIT_COLOR[item.git] or "dim"))
+		-- A column of its own, so that the letters stand under one another.
+		row:child(b.div():w(12):row():items_center():justify_center():no_shrink()
+			:child(b.text(files.GIT_LETTER[item.git] or ""):text_size(10.5):weight(700):color(files.GIT_COLOR[item.git] or "quiet")))
 	end
 	if item.dirty then
-		row:child(b.div():size(7, 7):rounded(4):bg("foreground"))
+		row:child(b.div():size(7, 7):rounded(4):bg("foreground"):no_shrink())
 	end
 	if item.current then
 		row:child(kit.icon("check", 14, "accent"))
 	end
 	if item.keys then
-		row:child(b.text(kit.keys_of(item.keys)):color("quiet"):text_size(11.5))
+		row:child(kit.kbd(item.keys, true))
 	end
 	return row
+end
+
+-- One key of the foot and what it does: the key as a cap (or caps), then the words.
+local function hint(keys, words)
+	local caps = b.div():row():items_center():gap(2):no_shrink()
+	for _, spec in keys do
+		caps:child(kit.kbd(spec))
+	end
+	return b.div():row():items_center():gap(4):no_shrink():child(caps):child(b.text(words))
 end
 
 function palette.view(size)
 	local overlay = S.overlay
 	local mode = MODES[overlay.mode]
-	local width = math.min(720, size.w - 24)
+	local width = math.min(620, size.w - 24)
+	-- A narrow or a short pane has no foot (the keys are in the status line and the tooltips).
+	local roomy = size.w > 520 and size.h > 340
+	local truncated = S.file_index and S.file_index.truncated and overlay.mode == "files"
+	local top = size.h <= 340 and 8 or math.max(math.min(math.floor(size.h * 0.12), 72), 8)
+	local high = math.min(480, size.h - top - 12)
+	-- Whole rows only: the list is as high as the rows that go into what the card has left.
+	local left = high - 44 - 1 - (roomy and 30 or 0) - 10 - 2
+	shown_rows = math.clamp(math.floor(left / ROW), 3, MOST_ROWS)
 	local field = b.div()
 		:row()
 		:items_center()
-		:gap(10)
+		:gap(8)
 		:h(44)
-		:px(10)
-		:child(b.div():row():items_center():gap(6):h(26):px(8):rounded(6):bg(b.alpha("accent", 0.14)):no_shrink()
+		:pl(8)
+		:pr(12)
+		:no_shrink()
+		:child(b.div():row():items_center():gap(5):h(22):px(7):rounded(5):bg(b.alpha("accent", 0.14)):no_shrink()
 			:child(kit.icon(mode.icon, 14, "accent"))
-			:child(b.text(mode.label):weight(650):color("accent")))
-		:child(b.div():text_field(FIELD):label(mode.label):grow(1):h(30):child(b.text(mode.hint)))
-	local list = b.div():id(LIST):col():p(4):max_h(math.min(SHOWN * ROW + 8, math.max(size.h * 0.5, ROW * 3))):scroll()
+			:child(b.text(mode.label):text_size(11):weight(650):color("accent")))
+		:child(b.div():text_field(FIELD):label(mode.label):grow(1):h_full():text_size(13.5)
+			:child(b.text(mode.hint):color("quiet")))
+	local list = b.div():id(LIST):col():max_h(shown_rows * ROW):scroll()
 	if #overlay.items == 0 then
 		local words = "Nothing matches"
+		local waiting = false
 		if overlay.mode == "files" and S.file_index == nil then
 			words = "Listing the project…"
+			waiting = true
 		elseif overlay.mode == "line" then
 			words = "Type a line number"
 		end
-		list:child(b.div():h(ROW):px(10):row():items_center():child(b.text(words):color("dim")))
+		local empty = b.div():h(44):no_shrink():px(7):row():items_center():gap(8):color("quiet")
+		if waiting then
+			empty:child(kit.spinner(12, "quiet"))
+		end
+		list:child(empty:child(b.text(words)))
 	else
 		for index, item in overlay.items do
 			list:child(item_view(item, index, overlay.chosen))
 		end
 	end
-	local foot = b.div():row():items_center():gap(14):h(30):px(12):color("quiet"):text_size(11.5)
-	local function hint(keys, words)
-		return b.div():row():items_center():gap(5):child(b.text(keys):color("dim")):child(b.text(words))
-	end
-	foot:child(hint("↑ ↓", "choose"))
-	foot:child(hint("⏎", overlay.mode == "commands" and "run" or "go"))
-	if overlay.mode == "files" or overlay.mode == "commands" then
-		foot:child(hint(kit.keys_of("cmd+k"), overlay.mode == "files" and "commands" or "files"))
-	end
-	foot:child(hint("Esc", "close"))
-	if S.file_index and S.file_index.truncated and overlay.mode == "files" then
-		foot:child(b.spacer()):child(b.text("only part of the project is listed"):color("warning"))
-	end
 	local box = b.div()
 		:press("palette")
 		:col()
 		:w(width)
-		:rounded(10)
+		:rounded(11)
 		:bg("raised2")
 		:border(1, "border")
 		:shadow(0, 18, 48, b.alpha("shadow", 0.5))
@@ -571,10 +586,23 @@ function palette.view(size)
 		:motion({ enter = { opacity = 0, dy = -6, seconds = 0.12 } })
 		:id("palette-box")
 		:child(field)
-		:child(kit.rule_x())
-		:child(list)
-		:child(kit.rule_x())
-		:child(foot)
+		:child(kit.rule_x(b.alpha("border", 0.6)))
+		:child(b.div():col():p(5):child(list))
+	if roomy or truncated then
+		local foot = b.div():row():items_center():gap(14):h(29):px(12):no_shrink():color("quiet"):text_size(10.5)
+		if roomy then
+			foot:child(hint({ "up", "down" }, "choose"))
+			foot:child(hint({ "enter" }, overlay.mode == "commands" and "run" or "go"))
+			if overlay.mode == "files" or overlay.mode == "commands" then
+				foot:child(hint({ "cmd+k" }, overlay.mode == "files" and "commands" or "files"))
+			end
+			foot:child(hint({ "escape" }, "close"))
+		end
+		if truncated then
+			foot:child(b.spacer()):child(b.text("only part of the project is listed"):color("warning"))
+		end
+		box:child(kit.rule_x(b.alpha("border", 0.6))):child(foot)
+	end
 	return b.div()
 		:press("palette-scrim")
 		:overlay()
@@ -582,7 +610,7 @@ function palette.view(size)
 		:bg(b.alpha("shadow", 0.18))
 		:col()
 		:items_center()
-		:pt(math.max(math.floor(size.h * 0.1), 8))
+		:pt(top)
 		:child(box)
 end
 
@@ -636,9 +664,9 @@ function palette.key(key, mods)
 	elseif key == "up" or (mods.control and key == "p") then
 		step = -1
 	elseif key == "page_down" then
-		step = SHOWN - 1
+		step = shown_rows - 1
 	elseif key == "page_up" then
-		step = -(SHOWN - 1)
+		step = -(shown_rows - 1)
 	end
 	if step and count > 0 then
 		overlay.chosen = math.clamp(overlay.chosen + step, 1, count)

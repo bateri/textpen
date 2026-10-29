@@ -135,10 +135,14 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     save(&page, &fonts, Palette::Dark, "changes.png");
     page.press("escape")?;
 
-    // The palette: the project's files, those seen last first (what is typed into its field is the
-    // host's to draw, and is not in the picture).
+    // The palette: the project's files, those seen last first, then those that go with "ord" (what
+    // is typed into its field, and its placeholder, are the host's to draw, and are not in the
+    // pictures).
     go_to(&mut page, "src/lib/format.ts")?;
     page.press("cmd+k")?;
+    page.advance(0.5)?;
+    save(&page, &fonts, Palette::Dark, "palette-empty.png");
+    page.type_text("ord")?;
     page.advance(0.5)?;
     save(&page, &fonts, Palette::Dark, "palette.png");
     page.press("escape")?;

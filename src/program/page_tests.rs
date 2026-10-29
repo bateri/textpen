@@ -1337,6 +1337,42 @@ fn backspace_in_an_empty_palette_goes_back_to_the_files() -> Result<(), Error> {
     Ok(())
 }
 
+/// The palette's rows stay 30 points however long the list is (the list is as high as whole rows),
+/// the files carry no "open" word for the tabs that are, the foot writes its keys as caps (Enter is a
+/// word) and a short pane has no foot.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_palette_keeps_its_rows_whole_and_says_its_keys_as_words() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["src/server.ts", "src/lib/orders.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+k")?;
+    let words = page_words(&page);
+    assert!(!words.iter().any(|word| word == "open"), "{words:?}");
+    assert!(
+        words.iter().any(|word| word == "Enter") && !words.iter().any(|word| word.contains('⏎')),
+        "{words:?}"
+    );
+    let first = page.bounds("palette-item:1").expect("a row");
+    let second = page.bounds("palette-item:2").expect("a second row");
+    assert_eq!((first.h, second.h), (30.0, 30.0));
+    // A long list (every command) is cut between rows, not through one.
+    page.type_text(">")?;
+    let list = page.bounds("palette-list").expect("the list");
+    assert_eq!(list.h % 30.0, 0.0, "{list:?}");
+    assert_eq!(page.bounds("palette-item:9").expect("a row").h, 30.0);
+    page.press("escape")?;
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, PANE)?;
+    page.press("cmd+k")?;
+    let words = page_words(&page);
+    assert!(
+        shows(&page, "server.ts") && !words.iter().any(|word| word == "Enter"),
+        "{words:?}"
+    );
+    Ok(())
+}
+
 /// A command with several keys is done by each of them; a menu's entries show their keys as a
 /// command's are written.
 #[test]
