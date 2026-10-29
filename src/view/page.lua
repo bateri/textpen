@@ -189,26 +189,31 @@ local function released(event)
 	return true
 end
 
+-- The pointer's shape where it is. Every reply to the pointer says it: one that says none is the
+-- arrow, so a press or a release would otherwise turn the hand over a row into the arrow.
+local function cursor_at(event)
+	local over = ui.hover
+	if event.place then
+		return "text"
+	elseif over == "resizer" then
+		return "resize_horizontal"
+	elseif ui:dragging() then
+		return "grabbing"
+	elseif over then
+		return "pointer"
+	end
+	return "arrow"
+end
+
 local function moved(event)
 	if sidebar.dragged(event) then
 		return true
 	end
 	local changed = ui:point(layout, { x = event.x, y = event.y })
-	local over = ui.hover
-	if S.overlay and S.overlay.kind == "palette" and palette.hover(over) then
+	if S.overlay and S.overlay.kind == "palette" and palette.hover(ui.hover) then
 		changed = true
 	end
-	local cursor = "arrow"
-	if event.place then
-		cursor = "text"
-	elseif over == "resizer" then
-		cursor = "resize_horizontal"
-	elseif ui:dragging() then
-		cursor = "grabbing"
-	elseif over then
-		cursor = "pointer"
-	end
-	return { redraw = changed, cursor = cursor }
+	return { redraw = changed, cursor = cursor_at(event) }
 end
 
 local function key(event)
@@ -245,9 +250,9 @@ local function handle(event)
 	elseif kind == "leave" then
 		reply = ui:point(layout, nil)
 	elseif kind == "press" then
-		reply = b.merge(pressed(event), preview.handle(event))
+		reply = b.merge(pressed(event), preview.handle(event), { cursor = cursor_at(event) })
 	elseif kind == "release" then
-		reply = b.merge(released(event), preview.handle(event))
+		reply = b.merge(released(event), preview.handle(event), { cursor = cursor_at(event) })
 	elseif kind == "key" then
 		reply = key(event)
 	elseif kind == "command" then

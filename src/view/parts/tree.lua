@@ -118,14 +118,14 @@ local function row_view(row, index, ctx)
 		:expanded(is_dir and row.open)
 		:selected(selected)
 		:tip(path)
+	-- A guide under the middle of each ancestor's icon.
 	for depth = 0, row.depth - 1 do
-		element:child(b.div():absolute():inset(0, nil, 0, 14 + depth * INDENT):w(1):bg(b.alpha("border", 0.7)))
+		element:child(b.div():absolute():inset(0, nil, 0, 15 + depth * INDENT):w(1):bg(b.alpha("border", 0.7)))
 	end
+	-- A folder says whether it is open by its icon alone: no arrow beside it.
 	if is_dir then
-		element:child(kit.icon(row.open and "chevron-down" or "chevron-right", 13, "quiet"))
 		element:child(kit.icon(row.open and "folder-open" or "folder", 15, "accent"))
 	else
-		element:child(b.div():w(13):no_shrink())
 		local kind = files.kind(path)
 		element:child(kit.icon(kind.icon, 15, kind.color))
 	end

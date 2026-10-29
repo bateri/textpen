@@ -561,6 +561,24 @@ fn closing_and_quitting_ask_about_changes_and_quitting_ends_the_view() -> Result
 
 // --- The tree, the palette, finding ---------------------------------------------------------------------
 
+/// Over a row of the tree the pointer is the hand, and it stays the hand when the row is pressed
+/// and let go, as it is when the pointer only moves.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_pointer_is_the_hand_over_the_trees_rows_before_and_after_a_click() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&[]);
+    let mut page = project.open(&session, WIDE)?;
+    page.hover("row:src")?;
+    assert_eq!(page.cursor(), Some(pencere_view::Cursor::Pointer));
+    page.click("row:src")?;
+    wait(&mut page, |page| page.bounds("row:src/lib").is_some())?;
+    assert_eq!(page.cursor(), Some(pencere_view::Cursor::Pointer));
+    page.click("row:README.md")?;
+    assert_eq!(page.cursor(), Some(pencere_view::Cursor::Pointer));
+    Ok(())
+}
+
 /// The tree opens a folder and a file; a file is made, renamed (its tab and its editor follow) and
 /// deleted from its row's menu.
 #[test]

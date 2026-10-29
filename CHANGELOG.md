@@ -24,6 +24,8 @@ change what the previous one did.
 
 ### Changed
 
+- The tree shows whether a folder is open by its icon alone, with no arrow beside it, and the
+  pointer stays a hand over its rows when one is clicked.
 - The editor is a page of pencere's kit, in Lua, and the text is in the terminal's own editor, drawn
   in its font, in place of a web page with CodeMirror. It reads 33 languages in place of well over
   a hundred: JavaScript, TypeScript, JSX, TSX, Rust, Go, C, C++, C#, Java, Kotlin, Swift, PHP,
