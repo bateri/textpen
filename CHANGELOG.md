@@ -9,6 +9,10 @@ change what the previous one did.
 
 ### Added
 
+- **The editor has a right-click menu**, as VS Code's: Cut, Copy, Paste, Select All, Toggle Line
+  Comment and Select All Occurrences, each with its keys, then Find in Project (the selection, or
+  the word at the caret), Revert Change (on a line git has changed) and Command Palette. A right
+  click outside the selection puts the caret there; `⇧F10` opens the same menu at the caret.
 - **The lines that differ from git's index are marked in the editor**, as VS Code marks them: a bar
   down the gutter (between the numbers and the buttons that fold) along the lines changed (blue)
   and added (green), a small red triangle where lines were taken away, and the same marks on the

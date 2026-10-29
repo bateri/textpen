@@ -422,6 +422,9 @@ local menu_items = nil
 
 function act.menu(items, at)
 	menu_items = items
+	if act.menu_opened then
+		act.menu_opened()
+	end
 	local entries = {}
 	for _, item in items do
 		if item == "-" then

@@ -153,8 +153,22 @@ function act.focus_search(results)
 	end
 end
 
--- ⇧⌘F: the words chosen in the editor are what is looked for.
-function act.search_selection()
+-- The word at the caret, as a word: letters, digits, underscores (and any letter that is not ASCII).
+local function word_at_caret(doc, range)
+	local from, to = layout.word_at(doc.id, range.head)
+	if not from or to <= from or to - from > 200 then
+		return nil
+	end
+	local word = layout.editor_text(doc.id, from, to) or ""
+	if word == "" or string.find(word, "[^%w_\128-\255]") then
+		return nil
+	end
+	return word
+end
+
+-- ⇧⌘F: the words chosen in the editor are what is looked for; with `or_word`, the word at the
+-- caret where nothing is chosen.
+function act.search_selection(or_word)
 	local doc = docs.active()
 	if doc then
 		local range = doc.ranges[doc.main]
@@ -162,6 +176,12 @@ function act.search_selection()
 			local words = layout.editor_text(doc.id, math.min(range.anchor, range.head), math.max(range.anchor, range.head)) or ""
 			if words ~= "" and not string.find(words, "\n", 1, true) then
 				Q.query = words
+				schedule()
+			end
+		elseif range and or_word then
+			local word = word_at_caret(doc, range)
+			if word then
+				Q.query = word
 				schedule()
 			end
 		end

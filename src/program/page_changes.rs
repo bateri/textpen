@@ -16,7 +16,7 @@ use pencere_view::{Button, Role};
 use crate::page_tests::{Page, Project, WIDE, lantern, page_words, shown, shows, text, wait};
 
 /// The project made a repository, with everything as it is committed.
-fn committed(project: &Project) {
+pub(crate) fn committed(project: &Project) {
     let git = |args: &[&str]| {
         let status = Command::new("git")
             .args(args)
@@ -38,7 +38,7 @@ fn committed(project: &Project) {
 
 /// What the editor shown marks in the column of changes: the shape, the role of its colour and the
 /// lines it is by.
-fn marks(page: &Page) -> Vec<(GutterShape, Option<Role>, usize, usize)> {
+pub(crate) fn marks(page: &Page) -> Vec<(GutterShape, Option<Role>, usize, usize)> {
     let name = shown(page).expect("an editor");
     let buffer = page.editor(&name).expect("the editor");
     let mut found: Vec<_> = buffer

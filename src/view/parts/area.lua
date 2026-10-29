@@ -36,6 +36,8 @@ function area.options(tab, doc)
 		indent = config.indent,
 		folds = config.folds or "page",
 		pairs = config.pairs,
+		-- The right button puts the caret as a text view does and the page opens the editor's menu.
+		gestures = { ["right+press"] = "context" },
 		line_height = 1.6,
 		padding = 6,
 		scroll_margin = 3,

@@ -12,6 +12,7 @@ local kit = require("../lib/kit")
 local text = require("../lib/text")
 local docs = require("./docs")
 local changes = require("./changes")
+local editor_menu = require("./editor_menu")
 
 local S, act = kit.S, kit.act
 
@@ -77,6 +78,9 @@ add({ id = "revert-change", title = "Revert Change", category = "Edit", keys = "
 	end })
 add({ id = "close-peek", title = "Close the Peek of a Change", category = "Go", keys = "escape", when = changes.peeking,
 	hidden = true, run = function() changes.close() end })
+
+add({ id = "editor-menu", title = editor_menu.COMMAND.title, category = "Edit", keys = editor_menu.COMMAND.keys,
+	when = has_file, run = function() editor_menu.at_caret() end })
 
 -- --- Files ----------------------------------------------------------------------------------------------
 

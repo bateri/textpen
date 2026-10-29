@@ -96,6 +96,7 @@ type `@`, `#`, `[` or `{`.
 | `⌘/`, `⌥↑` `⌥↓`, `⇧⌘K`     | comment, move the line, delete it (`⌃⇧K` too)                             |
 | `⌘I`, `⌃J`, `⌃⌥[`          | select the line, join lines, fold all                                     |
 | `⌥F5`, `⇧⌥F5`              | the next and the previous change against git, with its peek (`⌃⇧⌫` reverts it) |
+| `⇧F10`                     | the editor's right-click menu, at the caret                               |
 | `⇧⌘V`                      | the preview of a Markdown file                                            |
 | `⌘,`, `⇧⌘/`                | the settings, every key                                                   |
 | `⌘J`                       | a shell in the project, in this pane                                      |

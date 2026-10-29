@@ -23,6 +23,7 @@ local preview = require("./parts/preview")
 local welcome = require("./parts/welcome")
 local sheets = require("./parts/sheets")
 local changes = require("./parts/changes")
+local editor_menu = require("./parts/editor_menu")
 
 local b, ui, S, SIZE, act = kit.b, kit.ui, kit.S, kit.SIZE, kit.act
 local layout = b.layout
@@ -158,6 +159,9 @@ local function pressed(event)
 	local at = { x = event.x, y = event.y }
 	local hit = ui:press(layout, at)
 	press_event = event
+	if event.button == "right" and not S.overlay and editor_menu.pressed(event) then
+		return true
+	end
 	if hit and (event.button == "right" or event.button == "middle") then
 		-- The right button opens a row's menu, the middle one closes a tab: at once, no click.
 		if event.button == "middle" or not sidebar.context(hit, event) then
@@ -288,7 +292,9 @@ local function handle(event)
 		end
 		reply = true
 	elseif kind == "menu" then
-		act.menu_pick(event.index)
+		if not editor_menu.pick(event) then
+			act.menu_pick(event.index)
+		end
 		reply = true
 	elseif kind == "terminal_look" then
 		-- The person changed how their terminal draws its cursor or its selection: the editors are

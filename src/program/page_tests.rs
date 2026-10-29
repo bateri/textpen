@@ -1647,3 +1647,204 @@ fn the_branch_leaves_the_status_line_when_the_repository_goes() -> Result<(), Er
     wait(&mut page, |page| !branch(page))?;
     Ok(())
 }
+
+// --- The editor's menu ------------------------------------------------------------------------------
+
+/// The first line of `SERVER`, and where its other lines are: the menu is pressed at the end of one.
+const IMPORT_LINE: &str = "import { createServer } from \"node:http\";";
+
+/// The person presses the right button at the end of line `line` of the editor `name`, the line's
+/// row found by the column of changes (a project that is a repository has it).
+fn right_press_at_line(page: &mut Page, name: &str, line: usize) -> Result<(), Error> {
+    use pencere_view::{Button, Input, Mods};
+    // A menu still open is closed by the person's next press, which is not the page's.
+    if page.menu().is_some() {
+        page.press("escape")?;
+    }
+    let room = page
+        .bounds(name)
+        .ok_or_else(|| Error::NoSuch(name.to_owned()))?;
+    let cell = page
+        .gutter_cell(name, "changes", line)
+        .ok_or_else(|| Error::NoSuch(format!("line {line}")))?;
+    let at = Point::new(room.x + room.w - 60.0, cell.y + cell.h / 2.0);
+    page.pointer(Input::Press {
+        at,
+        button: Button::Right,
+        mods: Mods::default(),
+        count: 1,
+    })?;
+    page.pointer(Input::Release {
+        at,
+        button: Button::Right,
+    })
+}
+
+/// The titles of the menu open, a rule as `-`.
+fn menu_titles(page: &Page) -> Vec<String> {
+    page.menu()
+        .expect("a menu")
+        .entries
+        .iter()
+        .map(|entry| match entry {
+            MenuEntry::Item { title, .. } | MenuEntry::Paste { title, .. } => title.clone(),
+            MenuEntry::Separator => "-".to_owned(),
+        })
+        .collect()
+}
+
+/// A right press outside the selection puts the caret there and opens the editor's menu: the
+/// library's lines with their keys and textpen's own after them; inside the selection it stays.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_editors_menu_has_the_standard_lines_and_textpens_own_and_the_press_puts_the_caret()
+-> Result<(), Error> {
+    let project = lantern();
+    crate::page_changes::committed(&project);
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let editor = shown(&page).expect("an editor");
+    let ranges = |page: &Page| {
+        page.editor(&editor)
+            .map(|buffer| {
+                buffer
+                    .ranges()
+                    .iter()
+                    .map(|range| (range.anchor, range.head))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    };
+    // Outside the selection: one caret at the press, and the menu.
+    page.select(&editor, 0, 6)?;
+    right_press_at_line(&mut page, &editor, 2)?;
+    let end_of_line_2 = IMPORT_LINE.chars().count()
+        + 2
+        + "import { formatPrice } from \"./lib/format.ts\";"
+            .chars()
+            .count();
+    assert_eq!(ranges(&page), vec![(end_of_line_2, end_of_line_2)]);
+    assert_eq!(
+        menu_titles(&page),
+        [
+            "Cut",
+            "Copy",
+            "Paste",
+            "-",
+            "Select All",
+            "-",
+            "Toggle Line Comment",
+            "Select All Occurrences",
+            "-",
+            "Find in Project",
+            "Command Palette"
+        ]
+    );
+    let menu = page.menu().expect("a menu");
+    let keys_of = |title: &str| {
+        menu.entries.iter().find_map(|entry| match entry {
+            MenuEntry::Item {
+                title: named, keys, ..
+            }
+            | MenuEntry::Paste {
+                title: named, keys, ..
+            } if named == title => Some(*keys),
+            _ => None,
+        })
+    };
+    assert_eq!(keys_of("Copy"), Some(Shortcut::parse("cmd+c")));
+    assert_eq!(keys_of("Select All"), Some(Shortcut::parse("cmd+a")));
+    assert_eq!(
+        keys_of("Find in Project"),
+        Some(Shortcut::parse("cmd+shift+f"))
+    );
+    assert_eq!(keys_of("Command Palette"), Some(Shortcut::parse("f1")));
+    // No change on that line: no Revert Change.
+    assert!(!menu_titles(&page).contains(&"Revert Change".to_owned()));
+    // Inside the selection (its end counts): the selection stays.
+    let line_end = IMPORT_LINE.chars().count();
+    page.select(&editor, 0, line_end)?;
+    right_press_at_line(&mut page, &editor, 0)?;
+    assert_eq!(ranges(&page), vec![(0, line_end)]);
+    assert!(page.menu().is_some());
+    Ok(())
+}
+
+/// Copy puts the selection on the pasteboard, and Paste (the host's own line) puts the pasteboard in
+/// where the press put the caret.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_menus_copy_and_paste_go_by_the_pasteboard() -> Result<(), Error> {
+    let project = lantern();
+    crate::page_changes::committed(&project);
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let editor = shown(&page).expect("an editor");
+    let line_end = IMPORT_LINE.chars().count();
+    page.select(&editor, 0, line_end)?;
+    right_press_at_line(&mut page, &editor, 0)?;
+    page.pick_titled("Copy")?;
+    assert_eq!(page.pasteboard(), Some(IMPORT_LINE));
+    right_press_at_line(&mut page, &editor, 4)?;
+    page.pick_titled("Paste")?;
+    wait(&mut page, |page| {
+        text(page).contains(&format!("?? 8080);{IMPORT_LINE}"))
+    })?;
+    Ok(())
+}
+
+/// Revert Change is a line of the menu only where the line is in a change git has, and takes it back.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_menus_revert_change_is_on_a_changed_line_only() -> Result<(), Error> {
+    let project = lantern();
+    crate::page_changes::committed(&project);
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let editor = shown(&page).expect("an editor");
+    let place = SERVER.find("8080").expect("the port") + 4;
+    page.caret_to(&editor, place)?;
+    page.type_text("1")?;
+    wait(&mut page, |page| {
+        !crate::page_changes::marks(page).is_empty()
+    })?;
+    right_press_at_line(&mut page, &editor, 2)?;
+    assert!(!menu_titles(&page).contains(&"Revert Change".to_owned()));
+    right_press_at_line(&mut page, &editor, 4)?;
+    let titles = menu_titles(&page);
+    assert!(titles.contains(&"Revert Change".to_owned()), "{titles:?}");
+    assert_eq!(
+        titles[titles.len() - 3..],
+        ["Find in Project", "Revert Change", "Command Palette"]
+    );
+    page.pick_titled("Revert Change")?;
+    wait(&mut page, |page| text(page) == SERVER)?;
+    Ok(())
+}
+
+/// Find in Project seeds the search with the word at the caret; Command Palette opens the palette
+/// of commands; Shift+F10 opens the menu at the caret, and the command is listed.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_menus_own_lines_search_and_list_commands_and_the_keyboard_opens_it() -> Result<(), Error> {
+    let project = lantern();
+    crate::page_changes::committed(&project);
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let editor = shown(&page).expect("an editor");
+    let in_port = SERVER.find("PORT").expect("a word") + 2;
+    page.caret_to(&editor, in_port)?;
+    page.press("shift+f10")?;
+    let menu = page.menu().expect("a menu at the caret");
+    assert!(menu.at.x.is_finite() && menu.at.y > 0.0, "{:?}", menu.at);
+    assert!(menu_titles(&page).contains(&"Cut".to_owned()));
+    page.pick_titled("Find in Project")?;
+    wait(&mut page, |page| shows(page, "const PORT = Number"))?;
+    assert_eq!(page.field("search-query"), Some("PORT"));
+    page.caret_to(&editor, in_port)?;
+    page.press("shift+f10")?;
+    page.pick_titled("Command Palette")?;
+    page.type_text("editor menu")?;
+    wait(&mut page, |page| shows(page, "Show Editor Menu"))?;
+    Ok(())
+}

@@ -353,19 +353,27 @@ local function caret_line(doc)
 	return layout.line_of(doc.id, range and range.head or 0) or 0
 end
 
--- The hunk the caret is in (the lines of it, or the edge a deletion is at): its index.
+-- The hunk the line `line` of `doc` is in (the lines of it, or the edge a deletion is at): its index.
+function changes.hunk_of_line(doc, line)
+	for index, hunk in doc.hunks or {} do
+		if hunk.count > 0 and line >= hunk.line and line < hunk.line + hunk.count then
+			return index
+		elseif hunk.count == 0 and (line == hunk.line or line == hunk.line - 1) then
+			return index
+		end
+	end
+	return nil
+end
+
+-- The hunk the caret is in: its file and index.
 function changes.at_caret()
 	local doc = docs.active()
 	if not (doc and doc.hunks) then
 		return nil
 	end
-	local line = caret_line(doc)
-	for index, hunk in doc.hunks do
-		if hunk.count > 0 and line >= hunk.line and line < hunk.line + hunk.count then
-			return doc, index
-		elseif hunk.count == 0 and (line == hunk.line or line == hunk.line - 1) then
-			return doc, index
-		end
+	local index = changes.hunk_of_line(doc, caret_line(doc))
+	if index then
+		return doc, index
 	end
 	return nil
 end
