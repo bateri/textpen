@@ -24,6 +24,10 @@ change what the previous one did.
 
 ### Changed
 
+- The editor's cursor and selection are drawn as your terminal draws its own (in bateri: the
+  cursor's shape, its rounding and glow, how it blinks and glides, the rounded selection), and
+  follow it when you change those settings; a terminal that does not say how leaves the editor's
+  own look.
 - The tree shows whether a folder is open by its icon alone, with no arrow beside it, and the
   pointer stays a hand over its rows when one is clicked.
 - The editor is a page of pencere's kit, in Lua, and the text is in the terminal's own editor, drawn

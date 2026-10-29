@@ -290,6 +290,10 @@ local function handle(event)
 	elseif kind == "menu" then
 		act.menu_pick(event.index)
 		reply = true
+	elseif kind == "terminal_look" then
+		-- The person changed how their terminal draws its cursor or its selection: the editors are
+		-- drawn again with it (`area.options` reads it).
+		reply = true
 	elseif kind == "files" then
 		for _, path in event.paths or {} do
 			act.open_file(path, { focus = true })

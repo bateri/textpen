@@ -6,12 +6,14 @@ local kit = require("../lib/kit")
 local text = require("../lib/text")
 local docs = require("./docs")
 local changes = require("./changes")
+local terminal = require("@pencere/terminal")
 
 local b, S, act = kit.b, kit.S, kit.act
 
 local area = {}
 
--- What the editor is told, from the settings and the file's language.
+-- What the editor is told, from the settings and the file's language; its caret and its selection
+-- as the person's terminal draws them, where the terminal says how (textpen writes none of them).
 function area.options(tab, doc)
 	local settings = S.settings
 	local config = doc.lang.config
@@ -21,7 +23,7 @@ function area.options(tab, doc)
 	elseif settings.lineNumbers == "off" then
 		numbers = "hidden"
 	end
-	return {
+	return terminal.editor({
 		wrap = settings.wrap,
 		tab_width = math.clamp(settings.tabSize, 1, 16),
 		hard_tabs = config.hard_tabs == true or not settings.insertSpaces,
@@ -50,7 +52,7 @@ function area.options(tab, doc)
 			current_number = "foreground",
 			whitespace = b.alpha("foreground", 0.24),
 		},
-	}
+	})
 end
 
 local function banner(tone, icon_name, words, buttons)

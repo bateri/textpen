@@ -561,6 +561,44 @@ fn closing_and_quitting_ask_about_changes_and_quitting_ends_the_view() -> Result
 
 // --- The tree, the palette, finding ---------------------------------------------------------------------
 
+/// The editor's caret and selection are what the person's terminal says it draws, and change when
+/// the terminal says they changed; a terminal that says nothing leaves the editor's own look.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_editor_looks_as_the_terminal_says_it_draws_its_cursor() -> Result<(), Error> {
+    use pencere_view::edit::CaretShape;
+    use pencere_view::{TerminalCaret, TerminalLook, TerminalSelection};
+    let project = lantern();
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let editor = shown(&page).expect("an editor");
+    let caret = page.editor(&editor).expect("its buffer").options().caret;
+    assert_eq!(
+        (caret.shape, caret.radius, caret.glow),
+        (CaretShape::Bar, 0.0, 0.0)
+    );
+    page.set_terminal_look(TerminalLook {
+        caret: TerminalCaret {
+            shape: Some(CaretShape::Block),
+            radius: Some(0.1),
+            glow: Some(1.0),
+            ..TerminalCaret::default()
+        },
+        selection: TerminalSelection { radius: Some(0.22) },
+    })?;
+    let options = page.editor(&editor).expect("its buffer").options();
+    assert_eq!(
+        (
+            options.caret.shape,
+            options.caret.radius,
+            options.caret.glow
+        ),
+        (CaretShape::Block, 0.1, 1.0)
+    );
+    assert_eq!(options.selection.radius, 0.22);
+    Ok(())
+}
+
 /// Over a row of the tree the pointer is the hand, and it stays the hand when the row is pressed
 /// and let go, as it is when the pointer only moves.
 #[test]
