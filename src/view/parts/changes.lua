@@ -237,12 +237,15 @@ end
 -- --- What the editor is told -----------------------------------------------------------------------------
 
 -- The editor's gutter: the numbers, a column for the changes, the buttons that fold. A file that is
--- not marked has no column.
+-- not marked has no column. The numbers keep 14 points to their left, more than the editor's padding,
+-- so that they do not stand against the tree.
+local NUMBERS = { name = "numbers", pad = 14 }
+
 function changes.gutters()
 	if not enabled() then
-		return { "numbers", "folds" }
+		return { NUMBERS, "folds" }
 	end
-	return { "numbers", { name = COLUMN, width = 8 }, "folds" }
+	return { NUMBERS, { name = COLUMN, width = 8 }, "folds" }
 end
 
 -- --- The peek --------------------------------------------------------------------------------------------
