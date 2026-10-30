@@ -65,7 +65,7 @@ end
 function sidebar.view(width, drawer)
 	local panel = b.div():col():w(width):h_full():no_shrink():bg("raised1"):child(head(drawer))
 	if S.sidebar == "files" then
-		panel:child(project_line()):child(tree.view())
+		panel:child(project_line()):child(tree.view(width))
 	else
 		panel:child(act.search_view())
 	end
@@ -495,6 +495,8 @@ function act.remove(path, is_dir)
 end
 
 -- After the page was laid out: the row revealed is brought into view.
+-- After a layout: the row asked for brought into view, and the tree as wide as its rows. Whether
+-- the page is to be made again.
 function sidebar.settle()
 	if tree.pending_show and S.listings[text.dirname(tree.pending_show)] then
 		local path = tree.pending_show
@@ -502,6 +504,7 @@ function sidebar.settle()
 		tree.current = tree.rows()
 		tree.show(path)
 	end
+	return tree.measure()
 end
 
 sidebar.context = tree.context

@@ -681,6 +681,47 @@ fn dragging_the_sidebars_edge_makes_only_the_trees_rows_in_view() -> Result<(), 
     Ok(())
 }
 
+/// A name longer than the sidebar is wide is shown whole and the tree scrolls across to it; every
+/// row is as wide as the widest, so that their grounds line up wherever the tree is scrolled, and
+/// the line of a shorter one, what is said of its file at its end, is as wide as the tree.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_tree_narrower_than_its_names_scrolls_across() -> Result<(), Error> {
+    let long = "a-name-far-longer-than-a-narrow-sidebar-is-wide-and-then-some.ts";
+    let project = Project::new(&[(long, ""), ("b.txt", "")]);
+    let session = project.session(&[]);
+    let mut page = project.open(&session, WIDE)?;
+    assert!(shows(&page, long), "{:?}", page_words(&page));
+    let row = |page: &Page, name: &str| {
+        page.bounds(&format!("row:{name}"))
+            .ok_or_else(|| Error::NoSuch(name.to_owned()))
+    };
+    let tree = page
+        .bounds("tree")
+        .ok_or_else(|| Error::NoSuch("tree".to_owned()))?;
+    let (wide, short) = (row(&page, long)?, row(&page, "b.txt")?);
+    assert!(wide.w > tree.w, "{wide:?} in {tree:?}");
+    assert_eq!(short.w, wide.w, "the rows are as wide as the widest");
+    let line = page
+        .bounds("rowline:b.txt")
+        .ok_or_else(|| Error::NoSuch("rowline:b.txt".to_owned()))?;
+    assert_eq!(
+        line.w, tree.w,
+        "a shorter row's line ends at the tree's edge"
+    );
+    page.wheel_at(
+        Point::new(tree.x + 20.0, short.y + short.h / 2.0),
+        120.0,
+        0.0,
+    )?;
+    assert_eq!(
+        row(&page, "b.txt")?.x,
+        short.x - 120.0,
+        "the tree scrolled across"
+    );
+    Ok(())
+}
+
 /// The tree opens a folder and a file; a file is made, renamed (its tab and its editor follow) and
 /// deleted from its row's menu.
 #[test]

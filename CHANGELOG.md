@@ -34,6 +34,13 @@ change what the previous one did.
   own look.
 - The tree shows whether a folder is open by its icon alone, with no arrow beside it, and the
   pointer stays a hand over its rows when one is clicked.
+- The tree scrolls across when a name is wider than the sidebar, where it cut the name short with
+  an ellipsis: every name is whole, what git says of a file stays at the sidebar's edge (or right
+  after a name that goes past it), and each level of folders is indented further, 16 points where
+  it was 12.
+- Dragging the sidebar's edge keeps up with the pointer in a project with many folders open: while
+  the edge is held the tree makes only the rows in view, and a move that leaves the edge where it
+  is draws nothing.
 - The numbers of the lines keep more room to their left, away from the tree.
 - The editor is a page of pencere's kit, in Lua, and the text is in the terminal's own editor, drawn
   in its font, in place of a web page with CodeMirror. It reads 33 languages in place of well over

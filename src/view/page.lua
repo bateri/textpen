@@ -127,8 +127,8 @@ end
 
 local function settle()
 	tabs.reveal()
-	sidebar.settle()
-	return preview.settle()
+	local wider = sidebar.settle()
+	return preview.settle() or wider
 end
 
 -- --- What the person does -------------------------------------------------------------------------------

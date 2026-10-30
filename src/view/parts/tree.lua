@@ -14,7 +14,12 @@ local tree = {}
 
 tree.LIST = "tree"
 local ROW = SIZE.row
-local INDENT = 12
+local INDENT = 16
+
+-- How wide the rows are where a name is wider than the tree (`tree.measure`); 0 where none is.
+tree.width = 0
+-- How wide the tree was made last, points.
+local shown_width = 0
 
 -- Never shown: the repository's own records and a Mac's folder notes.
 local HIDDEN = { [".git"] = true, [".DS_Store"] = true }
@@ -103,14 +108,15 @@ local function row_view(row, index, ctx)
 	if state and files.GIT_COLOR[state] then
 		color = files.GIT_COLOR[state]
 	end
+	-- The row is as wide as the tree, or as the widest of its rows where one is wider (its ground
+	-- goes all the way across wherever the tree is scrolled); its line is as wide as the tree, or as
+	-- its own name where that is wider: what is said of the file stands at the tree's edge, or right
+	-- after a name that goes past it.
 	local element = b.div()
 		:press(id)
 		:row()
-		:items_center()
-		:gap(6)
 		:h(ROW)
-		:pl(8 + row.depth * INDENT)
-		:pr(10)
+		:min_w(tree.width)
 		:no_shrink()
 		:bg(ground)
 		:role("button")
@@ -122,26 +128,39 @@ local function row_view(row, index, ctx)
 	for depth = 0, row.depth - 1 do
 		element:child(b.div():absolute():inset(0, nil, 0, 15 + depth * INDENT):w(1):bg(b.alpha("border", 0.7)))
 	end
+	local line = b.div()
+		:id("rowline:" .. path)
+		:row()
+		:items_center()
+		:gap(6)
+		:h_full()
+		:pl(8 + row.depth * INDENT)
+		:pr(10)
+		:min_w(ctx.width)
+		:no_shrink()
 	-- A folder says whether it is open by its icon alone: no arrow beside it.
 	if is_dir then
-		element:child(kit.icon(row.open and "folder-open" or "folder", 15, "accent"))
+		line:child(kit.icon(row.open and "folder-open" or "folder", 15, "accent"))
 	else
 		local kind = files.kind(path)
-		element:child(kit.icon(kind.icon, 15, kind.color))
+		line:child(kit.icon(kind.icon, 15, kind.color))
 	end
+	-- The name is whole: a tree narrower than its names scrolls across.
 	local name = entry.name .. (entry.link and " ↗" or "")
-	element:child(b.text(name):color(color):weight(path == S.active and 650 or 400):truncate():grow(1):min_w(0))
+	line:child(b.text(name):color(color):weight(path == S.active and 650 or 400):no_shrink())
+	line:child(b.spacer())
 	if row.loading then
-		element:child(kit.spinner(12, "quiet"))
+		line:child(kit.spinner(12, "quiet"))
 	end
 	if ctx.dirty[path] then
-		element:child(b.div():size(7, 7):rounded(4):bg("foreground"):no_shrink())
+		line:child(b.div():size(7, 7):rounded(4):bg("foreground"):no_shrink())
 	end
 	if state and not is_dir then
-		element:child(b.text(files.GIT_LETTER[state] or ""):color(files.GIT_COLOR[state] or "dim"):weight(700):text_size(11))
+		line:child(b.text(files.GIT_LETTER[state] or ""):color(files.GIT_COLOR[state] or "dim"):weight(700):text_size(11))
 	elseif state then
-		element:child(b.div():size(6, 6):rounded(3):bg(files.GIT_COLOR[state] or "dim"):no_shrink())
+		line:child(b.div():size(6, 6):rounded(3):bg(files.GIT_COLOR[state] or "dim"):no_shrink())
 	end
+	element:child(line)
 	return element
 end
 
@@ -167,7 +186,8 @@ local function rows_in_view(rows, ctx)
 	return box
 end
 
-function tree.view()
+-- The tree in a sidebar `width` points wide.
+function tree.view(width)
 	local rows = tree.rows()
 	tree.current = rows
 	local error_words = S.listing_errors[""]
@@ -180,7 +200,8 @@ function tree.view()
 			:child(b.text("This folder is empty."):color("dim"))
 			:child(kit.button("tree-make-file", "Make a file", { h = 24 }))
 	end
-	local ctx = { dirs = dir_states(), git = S.git and S.git.changes or {}, dirty = dirty_paths() }
+	shown_width = width
+	local ctx = { dirs = dir_states(), git = S.git and S.git.changes or {}, dirty = dirty_paths(), width = width }
 	if S.resizing then
 		local box = rows_in_view(rows, ctx)
 		if box then
@@ -196,6 +217,35 @@ function tree.view()
 		:list(b.Rows.even(#rows, ROW):padded(0, 8), function(index)
 			return row_view(rows[index], index, ctx)
 		end)
+end
+
+-- How wide the rows are to be, from how wide their lines were laid out: as the widest, where a
+-- line is wider than the tree, so that every row's ground goes as far as the tree scrolls; as the
+-- tree where none is. Whether it changed, for the page to be made again with it. Not while the
+-- sidebar's edge is dragged, which changes no name.
+function tree.measure()
+	if S.resizing then
+		return false
+	end
+	local first, last = b.list_window(tree.LIST)
+	local rows = tree.current
+	if not (first and rows) then
+		return false
+	end
+	local widest = 0
+	for index = first, last do
+		local row = rows[index]
+		local line = row and layout.bounds("rowline:" .. row.entry.path)
+		if line then
+			widest = math.max(widest, line.w)
+		end
+	end
+	local width = widest > shown_width + 0.5 and math.ceil(widest) or 0
+	if width == tree.width then
+		return false
+	end
+	tree.width = width
+	return true
 end
 
 -- --- What the tree does ------------------------------------------------------------------------------
