@@ -6,6 +6,7 @@ local kit = require("../lib/kit")
 local text = require("../lib/text")
 local docs = require("./docs")
 local changes = require("./changes")
+local pictures = require("./pictures")
 local terminal = require("@pencere/terminal")
 
 local b, S, act = kit.b, kit.S, kit.act
@@ -111,8 +112,11 @@ local function banner_of(tab)
 	return nil
 end
 
--- A page for a tab that shows no text: its file is being read, or is not text.
-local function placeholder(tab)
+-- A page for a tab that shows no text: its file is being read, is a picture, or is not text.
+local function placeholder(tab, size)
+	if tab.status == "picture" then
+		return pictures.view(tab, size)
+	end
 	local box = b.div():col():grow(1):items_center():justify_center():gap(8):p(20)
 	if tab.status == "loading" then
 		return box:child(kit.spinner(22, "quiet"))
@@ -175,7 +179,7 @@ function area.view(size)
 	if not tab then
 		row:child(act.welcome_view(size))
 	elseif not (tab.doc and tab.doc.loaded) then
-		row:child(placeholder(tab))
+		row:child(placeholder(tab, size))
 	end
 	column:child(row)
 	return column

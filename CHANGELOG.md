@@ -9,6 +9,16 @@ change what the previous one did.
 
 ### Added
 
+- **A picture opens in its tab.** A click on a PNG, a JPEG or an SVG in the tree shows it fitted into
+  the tab (smaller in its proportions where it does not fit, never made larger), with how large the
+  file is and its pixels under it ("48.2 KB · 640 × 480"). A picture of more than 8 MiB, or of more
+  than 4096 pixels either way, is not drawn: the tab says "Too large to preview" with the file's
+  size, and offers Close Tab. A file named like a picture that is none (a text, a JPEG that is
+  cut short, an SVG that says no size) opens as it did, and so does any other picture format. The
+  program reads and measures the file (the sizes are in the first bytes, no library is added) and
+  gives it to the terminal to hold while the tab is open, which needs a terminal that opens the
+  page at `lua` 2.1 (bateri does; with one that does not, a picture is the placeholder it was). The
+  program has the calls `picture` and `release` for it (`docs/calls.md`).
 - **The editor has a right-click menu**, as VS Code's: Cut, Copy, Paste, Select All, Toggle Line
   Comment and Select All Occurrences, each with its keys, then Find in Project (the selection, or
   the word at the caret), Revert Change (on a line git has changed) and Command Palette. A right

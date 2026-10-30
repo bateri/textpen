@@ -4,5 +4,6 @@
 pub mod buffers;
 pub mod defaults;
 pub mod later;
+pub mod pictures;
 pub mod session;
 pub mod store;

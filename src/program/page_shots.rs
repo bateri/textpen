@@ -15,7 +15,10 @@ use pencere_drive::headless::{Error, InProcess};
 use pencere_drive::shot::{Fonts, Palette};
 
 use crate::options;
-use crate::page_tests::{PANE, Page, Project, go_to, lantern, open_with, shown, shows, wait};
+use crate::page_tests::{
+    PANE, Page, Project, go_to, lantern, open_holding, open_with, pictures_drawn, png, recording,
+    shown, shows, wait,
+};
 
 /// The fonts a Mac draws a terminal and its system in: bateri's terminal face is SF Mono where the
 /// system has it, else Menlo.
@@ -95,6 +98,54 @@ fn open(project: &Project, tabs: &[&str], size: (f32, f32), fonts: &Fonts) -> Re
     Ok(page)
 }
 
+/// A picture to show: a lantern's glow on a dark ground, 1600 × 1000 pixels, larger than the room the tab has.
+fn lantern_art() -> Vec<u8> {
+    let (width, height) = (1600_u32, 1000_u32);
+    png(width, height, |x, y| {
+        let (u, v) = (
+            f64::from(x) / f64::from(width),
+            f64::from(y) / f64::from(height),
+        );
+        let ground = [14.0 + 14.0 * v, 24.0 + 24.0 * v, 40.0 + 40.0 * v];
+        let (dx, dy) = ((u - 0.5) * 1.6, v - 0.46);
+        let glow = (1.0 - (dx * dx + dy * dy).sqrt() / 0.42)
+            .clamp(0.0, 1.0)
+            .powf(1.6);
+        let body = (u - 0.5).abs() < 0.07 && (v - 0.5).abs() < 0.17;
+        let warm = [255.0, 196.0, 92.0];
+        let mut pixel = [0_u8; 3];
+        for (n, out) in pixel.iter_mut().enumerate() {
+            let lit = ground[n] * (1.0 - glow) + warm[n] * glow;
+            let value = if body { lit * 0.55 + 30.0 } else { lit };
+            // The channel is in 0..=255 by the clamp.
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let channel = value.clamp(0.0, 255.0) as u8;
+            *out = channel;
+        }
+        pixel
+    })
+}
+
+/// As [`open`], on a terminal that holds the pictures `files` already.
+fn open_pictured(
+    project: &Project,
+    tabs: &[&str],
+    size: (f32, f32),
+    fonts: &Fonts,
+    files: &[&[u8]],
+) -> Result<Page, Error> {
+    let session = project.session(tabs);
+    recording(&session);
+    let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
+    let mut page = open_holding(program, size, Some(fonts), 0.0, files)?;
+    wait(&mut page, |page| {
+        shown(page).is_some() || !pictures_drawn(page).is_empty() || tabs.is_empty()
+    })?;
+    // The picture is decoded and drawn, a few frames on.
+    page.advance(1.5)?;
+    Ok(page)
+}
+
 fn save(page: &Page, fonts: &Fonts, palette: Palette, name: &str) {
     let png = page.shot_in(fonts, palette).expect("a picture");
     std::fs::write(docs(name), png).expect("the picture written");
@@ -166,6 +217,21 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     page.press("cmd+shift+v")?;
     page.advance(1.0)?;
     save(&page, &fonts, Palette::Light, "preview.png");
+
+    // A picture in its tab, fitted, with its size under it.
+    let project = lantern();
+    let art = lantern_art();
+    project.write_bytes("assets/lantern.png", &art);
+    with_git(&project);
+    let mut page = open_pictured(
+        &project,
+        &["assets/lantern.png", "src/server.ts", "README.md"],
+        (1280.0, 800.0),
+        &fonts,
+        &[&art],
+    )?;
+    page.advance(0.5)?;
+    save(&page, &fonts, Palette::Dark, "picture.png");
 
     // An 80×24 pane, in a light terminal: the editor alone, the tree in its drawer.
     let project = lantern();

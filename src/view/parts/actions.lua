@@ -6,6 +6,7 @@ local kit = require("../lib/kit")
 local text = require("../lib/text")
 local docs = require("./docs")
 local marks = require("./changes")
+local pictures = require("./pictures")
 
 local b, S, act = kit.b, kit.S, kit.act
 local json = b.json
@@ -87,12 +88,24 @@ function act.open_file(path, options)
 		arrive = { line = options.line, column = options.column, select = options.select }
 	end
 	local doc = tab.doc
-	if not doc and tab.status ~= "unopenable" then
-		if not arrive and S.places[path] then
-			arrive = { place = S.places[path] }
+	if not doc and tab.status ~= "unopenable" and tab.status ~= "picture" and not tab.asking then
+		-- The file as text, or as the placeholder of a file that is not.
+		local function as_file()
+			if not arrive and S.places[path] then
+				arrive = { place = S.places[path] }
+			end
+			local size = act.size_of(path)
+			docs.open(tab, arrive, size)
 		end
-		local size = act.size_of(path)
-		docs.open(tab, arrive, size)
+		if pictures.named(path) and not tab.plain then
+			-- A picture, where the program finds it one; else the file as any other.
+			pictures.open(tab, function()
+				tab.plain = true
+				as_file()
+			end)
+		else
+			as_file()
+		end
 	elseif doc and arrive then
 		if doc.loaded then
 			doc.arrive = arrive
@@ -163,6 +176,7 @@ local recently_closed = {}
 
 -- The tab is gone: the one seen last before it comes to the front.
 local function drop_tab(tab)
+	pictures.closed(tab)
 	local at = text.index_of(S.tabs, tab)
 	if at then
 		table.remove(S.tabs, at)

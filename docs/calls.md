@@ -118,6 +118,14 @@ SearchMatch = { line: number, start: number, end: number, text: string, offset: 
               -- around the match when long; offset where text begins in the line, code points
 SearchFile  = { path: string, matches: SearchMatch[] }
 SearchResult= { files: SearchFile[], matches: number, searched: number, truncated: boolean, ms: number }
+Picture     = { name: string, size: number, width: number, height: number }
+              -- name: what the page draws it by (`sha256:` and the digest of the file), the terminal
+              -- holds the file; size: the file's bytes; width, height: its pixels as it is shown
+              -- (a photograph held on its side is as wide as it is tall).
+Refused     = { refused: "too-large", size: number } | { refused: "not-a-picture" }
+              -- too-large: a picture past 8 MiB or past 4096 pixels either way; size is the file's.
+              -- not-a-picture: not there, not a file, not named .png .jpg .jpeg .svg, not a picture of
+              -- the three formats (by its bytes) or one that says no size, outside the project (`from`).
 FilesPage   = { files: string[], truncated: boolean, next: number | null, generation: number }
 ```
 
@@ -142,6 +150,8 @@ FilesPage   = { files: string[], truncated: boolean, next: number | null, genera
 | `discard`  | `{}`                                                                                     | `{}`. Quitting without saving: nothing unsaved is kept as a draft.                                                                                                                                                             |
 | `quit`     | `{}`                                                                                     | `{}`, or no answer: the program closes its view once the buffer calls sent before it are done, and textpen ends, what is not saved kept as drafts (none after `discard`). `failed` where the terminal cannot close the view.     |
 | `diff`     | `{ path: string }`                                                                       | `Diffed`: where the open buffer `path` differs from `git show :path`, the file as git's **index** keeps it (a change staged is not a difference, as VS Code's). Both texts are the program's buffer text: line ends `\n`, no byte order mark, so a file with CRLF line ends or a mark is not one hunk. `hunks` is `null`, and nothing is marked, for a file outside the project, a symbolic link, one git does not keep (untracked), a project that is not in a repository, a file that is not UTF-8 text, one that is not on disk yet, or a text of more than 2 MiB or 50 000 lines on either side; `out-of-sync` where `path` is not open. What is told fits one message: at most 2 000 hunks (`more`), and of each at most 64 lines (8 Ki code points) of `old`, 192 Ki code points together (`cut`: the hunk is marked, its old lines are not all there). It runs beside the buffer calls and not in their lane: the page asks after its edit was answered, and takes the answer only when `version` is the buffer's. |
+| `picture`  | `{ path: string, owner: string, from?: string }`                                         | `Picture \| Refused`. The picture at `path` (the project's, or absolute) is read, measured and given to the terminal to hold, for `owner` (a tab: a path), and the page draws it by `name`; the bytes never reach the page. With `from`, a Markdown file's path, `path` is as that file wrote it: relative to its folder, `%20` read, `?` and `#` cut, and only a file in the project, links followed, is read (an address, a path from the top of the disk, or one that climbs out of the project is `not-a-picture`). `failed` where the terminal holds no files for the view (the page is not at `lua` 2.1): the page then opens the file as any other. It runs beside the buffer calls and not in their lane. |
+| `release`  | `{ owner: string }`                                                                      | `{}`. `owner` holds no picture any more: the files nobody else holds are let go. Asked of an owner that holds none, it does nothing. |
 | `search`   | `{ query: string (≥ 1), regex?: boolean, caseSensitive?: boolean, wholeWord?: boolean }` | `SearchResult`, cut to fit one message. The pattern is the Rust `regex` crate's: back-references and lookaround are refused (`failed`, with words), so a search ends in time linear in the text.                               |
 
 A page of the kit has no message of the host's own to close its view with (the protocol, Section

@@ -169,6 +169,16 @@ function text.bytes(size)
 	return string.format("%.1f MB", size / 1024 / 1024)
 end
 
+-- The same to a tenth of the unit, for a file whose size is what is being said ("48.2 KB").
+function text.bytes_fine(size)
+	if size < 1024 then
+		return string.format("%d B", size)
+	elseif size < 1024 * 1024 then
+		return string.format("%.1f KB", size / 1024)
+	end
+	return string.format("%.1f MB", size / 1024 / 1024)
+end
+
 -- Whether a list holds `value`, and where.
 function text.index_of(list, value)
 	for index, item in list do

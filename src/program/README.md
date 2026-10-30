@@ -14,11 +14,13 @@ subscription, a push, a `code`. What the page is told is made in `api/` from wha
 | file                       | what it is                                                                                                  |
 | -------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `main.rs`                  | the entry: the command line, the state, `serve` with the calls and the topic of `api/`, the way out        |
+| `bundle.rs`                | the page as the terminal is offered it, at `lua` 2.1 (the pictures need it), from the files `build.rs` carried |
 | `api/mod.rs`               | how a call is answered: its params read, what the work could not do told with a code the page acts on       |
 | `api/params.rs`            | each call reads what it asks: what does not fit is answered `bad-params`, with where, and never run         |
 | `api/pieces.rs`            | what one message to the page may carry                                                                      |
 | `api/files.rs`             | the calls `list`, `files`, `create`, `rename`, `delete`; a listing is cut to fit one message                |
 | `api/buffers.rs`           | the calls `open`, `edit`, `slice`, `save`, `buffer`, `discard`, `quit`; a long text read in pieces          |
+| `api/pictures.rs`          | the calls `picture` and `release`: a picture file read, measured and held by the terminal for a tab         |
 | `api/search.rs`            | the call `search`                                                                                           |
 | `api/session.rs`           | the calls `boot`, `ui`, `settings`, `handoff`                                                               |
 | `api/changes.rs`           | the topic `changes`: the disk and git, as they change                                                       |
@@ -28,8 +30,10 @@ subscription, a push, a `code`. What the page is told is made in `api/` from wha
 | `project/watch.rs`         | which of the listed directories changed                                                                     |
 | `project/search.rs`        | a search through the files of the project                                                                   |
 | `project/paths.rs`         | paths by their text alone                                                                                   |
+| `project/image.rs`         | the format and the size of a PNG, a JPEG or an SVG, from its first bytes                                    |
 | `state/session.rs`         | the state of the program: its project, open files, settings, what is told once                              |
 | `state/buffers.rs`         | the open files, their versions, drafts                                                                      |
+| `state/pictures.rs`        | the pictures held for the page's tabs: attached to the terminal, let go when the last tab that had them closes |
 | `state/store.rs`           | settings and each project's open files, where the XDG directories say                                       |
 | `state/defaults.rs`        | the settings and the page's state, their defaults and the names of their choices                            |
 | `state/later.rs`           | work done a moment after it was last asked for: a draft, the page's state                                   |

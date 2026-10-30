@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use super::buffers::{self, Buffers};
 use super::defaults::{Settings, UiState};
+use super::pictures::Pictures;
 use super::store::Store;
 use crate::project::tree::Tree;
 use crate::terminal::handoff::Desk;
@@ -29,6 +30,8 @@ pub struct Session {
     pub project: Arc<Tree>,
     /// Who lends the pane to a shell, and takes it back.
     pub desk: Desk,
+    /// The pictures the page draws, held by the terminal for the tabs that show them.
+    pub pictures: Pictures,
     buffers: Arc<Mutex<Buffers>>,
     store: Store,
     settings: Mutex<Settings>,
@@ -64,8 +67,10 @@ impl Session {
                 ..focus
             });
         }
+        let desk = Desk::new(&project.root);
         Self {
-            desk: Desk::new(&project.root),
+            pictures: Pictures::new(Arc::new(desk.control())),
+            desk,
             project,
             buffers,
             store,

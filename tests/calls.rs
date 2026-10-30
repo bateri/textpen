@@ -260,6 +260,14 @@ fn params_that_are_not_what_a_call_asks_are_refused_with_bad_params_and_nothing_
         ("settings", settings("indentGuides", None)),
         ("settings", settings("whitespace", Some(json!(true)))),
         ("settings", settings("tabSize", Some(json!("2")))),
+        ("picture", json!({ "path": "a.png" })),
+        ("picture", json!({ "path": "", "owner": "a.png" })),
+        (
+            "picture",
+            json!({ "path": "a.png", "owner": "a.png", "from": null }),
+        ),
+        ("release", json!({})),
+        ("release", json!({ "owner": "" })),
     ];
     let mut calls: Vec<(&str, Value)> = refused.to_vec();
     calls.push(("nothing-by-this-name", json!({})));
@@ -988,4 +996,103 @@ fn a_long_text_of_four_byte_characters_is_read_in_pieces_that_count_code_points(
     assert_eq!(second["text"].as_str().unwrap(), "😀".repeat(budget / 4));
     assert_eq!(heard[3].result(), &json!({ "text": "", "end": 300_000 }));
     assert!(heard[4].failed("out-of-sync"));
+}
+
+/// A PNG that is only the header that says its size, which is all the program reads of it.
+fn png_header(width: u32, height: u32) -> Vec<u8> {
+    let mut bytes = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
+    bytes.extend(width.to_be_bytes());
+    bytes.extend(height.to_be_bytes());
+    bytes.extend([8, 2, 0, 0, 0]);
+    bytes
+}
+
+#[test]
+fn a_picture_is_measured_and_given_to_the_terminal_to_hold_and_what_is_none_is_refused() {
+    let pane = Pane::new();
+    let logo = png_header(640, 480);
+    pane.write("logo.png", &logo);
+    pane.write("art/mark.svg", "<svg viewBox='0 0 24 12'/>");
+    pane.write("wide.png", png_header(4097, 10));
+    pane.write("words.png", "just words");
+    pane.write("notes.txt", &logo);
+    pane.write("docs/guide.md", "");
+    pane.write("docs/x.png", &logo);
+    let heard = ask(
+        &pane,
+        &[
+            (
+                "picture",
+                json!({ "path": "logo.png", "owner": "logo.png" }),
+            ),
+            (
+                "picture",
+                json!({ "path": "art/mark.svg", "owner": "art/mark.svg" }),
+            ),
+            (
+                "picture",
+                json!({ "path": "wide.png", "owner": "wide.png" }),
+            ),
+            (
+                "picture",
+                json!({ "path": "words.png", "owner": "words.png" }),
+            ),
+            (
+                "picture",
+                json!({ "path": "notes.txt", "owner": "notes.txt" }),
+            ),
+            (
+                "picture",
+                json!({ "path": "gone.png", "owner": "gone.png" }),
+            ),
+            (
+                "picture",
+                json!({ "path": "x.png", "owner": "g", "from": "docs/guide.md" }),
+            ),
+            (
+                "picture",
+                json!({ "path": "../logo.png", "owner": "g", "from": "docs/guide.md" }),
+            ),
+            (
+                "picture",
+                json!({ "path": "../../logo.png", "owner": "g", "from": "docs/guide.md" }),
+            ),
+            ("release", json!({ "owner": "logo.png" })),
+            ("release", json!({ "owner": "nobody" })),
+        ],
+    );
+    let named = heard[0].result();
+    // What the terminal calls a file it holds: its digest.
+    assert!(
+        named["name"].as_str().unwrap().starts_with("sha256:"),
+        "{named}"
+    );
+    assert_eq!(named["name"].as_str().unwrap().len(), "sha256:".len() + 64);
+    assert_eq!(named["size"], json!(logo.len()));
+    assert_eq!(
+        (named["width"].clone(), named["height"].clone()),
+        (json!(640), json!(480))
+    );
+    let drawing = heard[1].result();
+    assert_eq!(
+        (drawing["width"].clone(), drawing["height"].clone()),
+        (json!(24), json!(12))
+    );
+    assert_eq!(
+        heard[2].result(),
+        &json!({ "refused": "too-large", "size": png_header(4097, 10).len() })
+    );
+    for refused in [3, 4, 5] {
+        assert_eq!(
+            heard[refused].result(),
+            &json!({ "refused": "not-a-picture" }),
+            "{refused}"
+        );
+    }
+    // A Markdown file's: beside it, up from it inside the project, and not out of the project.
+    assert_eq!(heard[6].result()["name"], named["name"]);
+    assert_eq!(heard[7].result()["name"], named["name"]);
+    assert_eq!(heard[8].result(), &json!({ "refused": "not-a-picture" }));
+    assert_eq!(heard[9].result(), &json!({}));
+    assert_eq!(heard[10].result(), &json!({}));
 }

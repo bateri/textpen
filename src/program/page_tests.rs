@@ -19,6 +19,7 @@ use serde_json::Value;
 
 use crate::options;
 use crate::state::defaults::UiState;
+use crate::state::pictures::recorder::Recorder;
 use crate::state::session::Session;
 use crate::state::store::Store;
 
@@ -59,6 +60,14 @@ impl Project {
         std::fs::write(file, text).expect("the file");
     }
 
+    pub(crate) fn write_bytes(&self, path: &str, bytes: &[u8]) {
+        let file = self.root().join(path);
+        if let Some(dir) = file.parent() {
+            std::fs::create_dir_all(dir).expect("its folder");
+        }
+        std::fs::write(file, bytes).expect("the file");
+    }
+
     pub(crate) fn read(&self, path: &str) -> String {
         std::fs::read_to_string(self.root().join(path)).unwrap_or_default()
     }
@@ -95,6 +104,17 @@ impl Project {
     }
 
     /// As [`Project::open`], the machine's time of day `later` seconds past the real one.
+    /// As [`Project::open`], on a terminal that holds `files` already (pictures attached).
+    pub(crate) fn open_holding(
+        &self,
+        session: &Arc<Session>,
+        size: (f32, f32),
+        files: &[&[u8]],
+    ) -> Result<Page, Error> {
+        let program = InProcess::new(options(session, &[], &Arc::new(Mutex::new(None))));
+        open_holding(program, size, None, 0.0, files)
+    }
+
     pub(crate) fn open_later(
         &self,
         session: &Arc<Session>,
@@ -148,6 +168,18 @@ pub(crate) fn open_after(
     fonts: Option<&pencere_drive::shot::Fonts>,
     later: f64,
 ) -> Result<Page, Error> {
+    open_holding(program, size, fonts, later, &[])
+}
+
+/// As [`open_after`], on a terminal that holds `files` already: the pictures the program attached
+/// before the page came, which a page that starts on a picture draws from its first frame.
+pub(crate) fn open_holding(
+    program: InProcess,
+    size: (f32, f32),
+    fonts: Option<&pencere_drive::shot::Fonts>,
+    later: f64,
+    files: &[&[u8]],
+) -> Result<Page, Error> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0.0, |since| since.as_secs_f64());
@@ -162,11 +194,16 @@ pub(crate) fn open_after(
     if let Some(fonts) = fonts {
         opening = opening.measure(fonts.clone()).scale(2.0);
     }
+    for bytes in files {
+        opening = opening.attached(bytes);
+    }
     let mut page = opening.peer(program).open()?;
     // What the page reads first comes from the program on its own threads: the file in front, or
-    // with none the start page.
+    // with none the start page, or a picture.
     page.wait_for(WITHIN, |page| {
-        shown(page).is_some() || page_words(page).iter().any(|word| word == "Go to File")
+        shown(page).is_some()
+            || !pictures_drawn(page).is_empty()
+            || page_words(page).iter().any(|word| word == "Go to File")
     })?;
     page.advance(0.5)?;
     Ok(page)
@@ -1194,6 +1231,340 @@ fn a_markdown_files_preview_reads_as_it_should_and_opens_its_links() -> Result<(
     page.type_text("abc")?;
     page.advance(1.0)?;
     assert!(shows(&page, "Section 3"), "{:?}", page_words(&page));
+    Ok(())
+}
+
+// --- Pictures -----------------------------------------------------------------------------------------
+
+/// A PNG of `width` by `height` pixels, each pixel what `pixel(x, y)` says (RGB). Its data is stored,
+/// not compressed: a file as large as the pixels are, which is how a test makes one that is too large.
+pub(crate) fn png(width: u32, height: u32, pixel: impl Fn(u32, u32) -> [u8; 3]) -> Vec<u8> {
+    fn crc(bytes: &[u8]) -> u32 {
+        let mut crc = 0xFFFF_FFFF_u32;
+        for byte in bytes {
+            crc ^= u32::from(*byte);
+            for _ in 0..8 {
+                crc = if crc & 1 == 1 {
+                    (crc >> 1) ^ 0xEDB8_8320
+                } else {
+                    crc >> 1
+                };
+            }
+        }
+        !crc
+    }
+    fn chunk(out: &mut Vec<u8>, name: &[u8; 4], data: &[u8]) {
+        out.extend((data.len() as u32).to_be_bytes());
+        let mut body = name.to_vec();
+        body.extend(data);
+        out.extend(&body);
+        out.extend(crc(&body).to_be_bytes());
+    }
+    let mut raw = Vec::with_capacity((width as usize * 3 + 1) * height as usize);
+    for y in 0..height {
+        raw.push(0);
+        for x in 0..width {
+            raw.extend(pixel(x, y));
+        }
+    }
+    let (mut a, mut b) = (1_u32, 0_u32);
+    for byte in &raw {
+        a = (a + u32::from(*byte)) % 65521;
+        b = (b + a) % 65521;
+    }
+    let mut zlib = vec![0x78, 0x01];
+    let blocks: Vec<&[u8]> = raw.chunks(65535).collect();
+    for (index, block) in blocks.iter().enumerate() {
+        zlib.push(u8::from(index + 1 == blocks.len()));
+        zlib.extend((block.len() as u16).to_le_bytes());
+        zlib.extend((!(block.len() as u16)).to_le_bytes());
+        zlib.extend(*block);
+    }
+    zlib.extend(((b << 16) | a).to_be_bytes());
+    let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
+    let mut header = Vec::new();
+    header.extend(width.to_be_bytes());
+    header.extend(height.to_be_bytes());
+    header.extend([8, 2, 0, 0, 0]);
+    chunk(&mut out, b"IHDR", &header);
+    chunk(&mut out, b"IDAT", &zlib);
+    chunk(&mut out, b"IEND", &[]);
+    out
+}
+
+/// A picture with a blue-to-green slope and a white frame, so that its being whole is seen.
+pub(crate) fn sloped(width: u32, height: u32) -> Vec<u8> {
+    png(width, height, |x, y| {
+        if x < 3 || y < 3 || x + 3 >= width || y + 3 >= height {
+            return [250, 250, 250];
+        }
+        let across = (x * 255 / width) as u8;
+        let down = (y * 255 / height) as u8;
+        [40, 90 + down / 2, 255 - across]
+    })
+}
+
+/// The pictures the page draws that the program attached, with where each is drawn (pixels).
+pub(crate) fn pictures_drawn(page: &Page) -> Vec<(String, pencere_view::Rect)> {
+    page.list()
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Paint::Image(picture) if picture.src.starts_with("sha256:") => {
+                Some((picture.src.clone(), picture.rect))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The program's side of the terminal that holds what is attached, a recorder; the host with no
+/// screen is given the same files beforehand, so that it has what the page names.
+pub(crate) fn recording(session: &Session) -> Arc<Recorder> {
+    let recorder = Arc::new(Recorder::default());
+    session
+        .pictures
+        .attaching(Arc::clone(&recorder) as Arc<dyn crate::state::pictures::Attach>);
+    recorder
+}
+
+/// How the page says the size of a file of `bytes`, with its pixels.
+fn caption(bytes: &[u8], pixels: &str) -> String {
+    let size = bytes.len() as f64;
+    let words = if size < 1024.0 * 1024.0 {
+        format!("{:.1} KB", size / 1024.0)
+    } else {
+        format!("{:.1} MB", size / 1024.0 / 1024.0)
+    };
+    format!("{words} · {pixels}")
+}
+
+/// The files of a project with pictures in it: `logo.png` of 200 × 100, a `photo.png` that does not fit
+/// the page as it is, a drawing, and a Markdown file that shows some of them.
+fn with_pictures() -> (Project, Vec<(&'static str, Vec<u8>)>) {
+    let project = lantern();
+    let logo = sloped(200, 100);
+    let photo = sloped(1600, 1200);
+    let drawing = b"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"120\" height=\"60\"><rect width=\"120\" height=\"60\" fill=\"#c33\"/></svg>".to_vec();
+    project.write_bytes("logo.png", &logo);
+    project.write_bytes("photo.png", &photo);
+    project.write_bytes("art/mark.svg", &drawing);
+    (
+        project,
+        vec![
+            ("logo.png", logo),
+            ("photo.png", photo),
+            ("art/mark.svg", drawing),
+        ],
+    )
+}
+
+/// The picture in front of the page: where it is drawn, once it is.
+fn picture_in_front(page: &mut Page, bytes: &[u8]) -> Result<(String, pencere_view::Rect), Error> {
+    let name = format!("sha256:{}", {
+        use sha2::{Digest as _, Sha256};
+        format!("{:x}", Sha256::digest(bytes))
+    });
+    wait(page, |page| {
+        pictures_drawn(page).iter().any(|(src, _)| *src == name)
+    })?;
+    page.advance(0.3)?;
+    let drawn = pictures_drawn(page);
+    drawn
+        .into_iter()
+        .find(|(src, _)| *src == name)
+        .ok_or(Error::NoSuch(name))
+}
+
+/// A picture opens in its tab, fitted into it and not made larger, with its size and its pixels under
+/// it; it is let go when its tab closes.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_picture_opens_in_its_tab_fitted_with_its_size_under_it_and_is_let_go_when_it_closes()
+-> Result<(), Error> {
+    let (project, files) = with_pictures();
+    let session = project.session(&["README.md"]);
+    let recorder = recording(&session);
+    let mut page = project.open(&session, WIDE)?;
+    for (_, bytes) in &files {
+        page.attach(bytes);
+    }
+    let bytes = |name: &str| {
+        files
+            .iter()
+            .find(|file| file.0 == name)
+            .expect("a file")
+            .1
+            .clone()
+    };
+
+    // Small, it is drawn as it is.
+    page.click("row:logo.png")?;
+    let (name, rect) = picture_in_front(&mut page, &bytes("logo.png"))?;
+    assert!(
+        (rect.w - 200.0).abs() < 1.0 && (rect.h - 100.0).abs() < 1.0,
+        "not made larger: {rect:?}"
+    );
+    assert!(
+        shows(&page, &caption(&bytes("logo.png"), "200 × 100")),
+        "{:?}",
+        page_words(&page)
+    );
+    assert_eq!(recorder.attached(), [name.clone()]);
+    assert!(bounds_of(&page, "tab:logo.png"), "its tab");
+
+    // Large, it is made smaller to fit the room the tab has, in its proportions, and says its own size.
+    page.click("row:photo.png")?;
+    let (_, rect) = picture_in_front(&mut page, &bytes("photo.png"))?;
+    let (w, h) = (rect.w, rect.h);
+    assert!(w < 1600.0 && h < 1200.0, "made smaller: {rect:?}");
+    assert!(
+        (w / h - 4.0 / 3.0).abs() < 0.02,
+        "in its proportions: {rect:?}"
+    );
+    let room = page.bounds("tab:photo.png").expect("the tab").y + 36.0;
+    assert!(
+        rect.y >= room - 1.0 && rect.y + h <= WIDE.1 - 24.0 && rect.x + w <= WIDE.0,
+        "inside the page, between the tabs and the status line: {rect:?}"
+    );
+    assert!(
+        shows(&page, &caption(&bytes("photo.png"), "1600 × 1200")),
+        "{:?}",
+        page_words(&page)
+    );
+
+    // A drawing too.
+    page.click("row:art")?;
+    wait(&mut page, |page| page.bounds("row:art/mark.svg").is_some())?;
+    page.click("row:art/mark.svg")?;
+    let (_, rect) = picture_in_front(&mut page, &bytes("art/mark.svg"))?;
+    assert!(
+        (rect.w - 120.0).abs() < 1.0 && (rect.h - 60.0).abs() < 1.0,
+        "{rect:?}"
+    );
+    assert!(shows(&page, "120 × 60"), "{:?}", page_words(&page));
+
+    // Back to the first: nothing is let go for a tab that is only not in front.
+    page.click("tab:logo.png")?;
+    picture_in_front(&mut page, &bytes("logo.png"))?;
+    assert!(recorder.detached().is_empty(), "{:?}", recorder.detached());
+
+    // Closing the tab lets its picture go, and only its.
+    page.press("ctrl+w")?;
+    wait(&mut page, |page| page.bounds("tab:logo.png").is_none())?;
+    wait(&mut page, |_| recorder.detached() == [name.clone()])?;
+    assert!(
+        methods(&page).contains(&"release".to_owned()),
+        "{:?}",
+        methods(&page)
+    );
+    Ok(())
+}
+
+fn bounds_of(page: &Page, name: &str) -> bool {
+    page.bounds(name).is_some()
+}
+
+/// In an 80×24 pane the picture is fitted to what is left of it, and the sidebar is not there.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_picture_is_fitted_into_a_small_pane() -> Result<(), Error> {
+    let (project, files) = with_pictures();
+    let session = project.session(&["photo.png"]);
+    recording(&session);
+    let mut page = project.open_holding(&session, PANE, &[&files[1].1])?;
+    let (_, rect) = picture_in_front(&mut page, &files[1].1)?;
+    assert!(rect.w < 600.0 && rect.h < 330.0 - 36.0 - 24.0, "{rect:?}");
+    assert!((rect.w / rect.h - 4.0 / 3.0).abs() < 0.02, "{rect:?}");
+    assert!(shows(&page, "1600 × 1200"), "{:?}", page_words(&page));
+    Ok(())
+}
+
+/// A picture past 4096 pixels either way, or past 8 MiB, is not shown: the tab says so, with the
+/// file's size, and offers to close; nothing is attached.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_picture_too_large_to_preview_says_so_in_its_tabs_place() -> Result<(), Error> {
+    let project = lantern();
+    project.write_bytes("wide.png", &png(4097, 4, |_, _| [9, 9, 9]));
+    project.write_bytes("tall.png", &png(4, 4097, |_, _| [9, 9, 9]));
+    project.write_bytes("heavy.png", &png(1700, 1700, |x, y| [(x ^ y) as u8, 0, 0]));
+    assert!(
+        std::fs::metadata(project.root().join("heavy.png"))
+            .expect("a file")
+            .len()
+            > 8 * 1024 * 1024
+    );
+    let session = project.session(&["README.md"]);
+    let recorder = recording(&session);
+    let mut page = project.open(&session, WIDE)?;
+    for (file, size) in [("wide.png", "KB"), ("tall.png", "KB"), ("heavy.png", "MB")] {
+        page.click(&format!("row:{file}"))?;
+        wait(&mut page, |page| shows(page, "Too large to preview"))?;
+        let words = page_words(&page);
+        assert!(
+            words
+                .iter()
+                .any(|word| word.starts_with("Too large to preview · ") && word.ends_with(size)),
+            "{file}: {words:?}"
+        );
+        assert!(shows(&page, "Close Tab"), "{file}: {words:?}");
+        assert!(pictures_drawn(&page).is_empty(), "{file}");
+        page.click("placeholder-close")?;
+        wait(&mut page, |page| {
+            page.bounds(&format!("tab:{file}")).is_none()
+        })?;
+    }
+    assert!(recorder.attached().is_empty(), "{:?}", recorder.attached());
+    Ok(())
+}
+
+/// A file named like a picture that is none opens as it did: as text where it is text, as a file that
+/// is not where it is not; and other pictures than the three are the placeholder they were.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_file_named_like_a_picture_that_is_none_opens_as_it_did() -> Result<(), Error> {
+    let project = lantern();
+    project.write("words.png", "this is text");
+    project.write_bytes("noise.jpg", &[0xFF, 0x00, 0x01, 0x02, 0x00]);
+    project.write_bytes("anim.gif", b"GIF89a\x01\0\x01\0\0\0\0;\0");
+    project.write_bytes("broken.svg", b"<svg><g/></svg>");
+    let session = project.session(&["README.md"]);
+    let recorder = recording(&session);
+    let mut page = project.open(&session, WIDE)?;
+    page.click("row:words.png")?;
+    wait(&mut page, |page| text(page) == "this is text")?;
+    page.click("row:noise.jpg")?;
+    wait(&mut page, |page| shows(page, "noise.jpg is not text"))?;
+    page.click("row:anim.gif")?;
+    wait(&mut page, |page| shows(page, "anim.gif is not text"))?;
+    // A drawing that says no size is text to read.
+    page.click("row:broken.svg")?;
+    wait(&mut page, |page| text(page) == "<svg><g/></svg>")?;
+    assert!(recorder.attached().is_empty());
+    // The page asked about the three that are named like pictures, and not about the fourth.
+    assert_eq!(
+        methods(&page)
+            .iter()
+            .filter(|method| *method == "picture")
+            .count(),
+        3,
+        "{:?}",
+        methods(&page)
+    );
+    Ok(())
+}
+
+/// A page that starts on a picture tab draws the picture, as it was left.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_page_that_starts_on_a_picture_draws_it() -> Result<(), Error> {
+    let (project, files) = with_pictures();
+    let session = project.session(&["logo.png", "README.md"]);
+    recording(&session);
+    let mut page = project.open_holding(&session, WIDE, &[&files[0].1])?;
+    picture_in_front(&mut page, &files[0].1)?;
+    assert!(shows(&page, "200 × 100"), "{:?}", page_words(&page));
     Ok(())
 }
 

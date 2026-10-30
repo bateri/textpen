@@ -51,6 +51,12 @@ theme and the editor follows, live.
 **Search in the project's files**, as words, whole words or patterns, with the matches by
 file; go through them from anywhere with `F4` and `⇧F4`.
 
+**Pictures**: a PNG, a JPEG or an SVG opens in its tab, fitted into it and not made larger, with its
+size and its pixels under it. A file past 8 MiB or 4096 pixels is not drawn, and says so. It needs
+a terminal that shows the page at `lua` 2.1, as bateri does.
+
+![A picture in its tab: fitted, with its size and its pixels under it](docs/picture.png)
+
 **A preview of Markdown**, beside the text in a wide pane and in its place in a narrow one,
 read again only where you changed the text, and shown to its end for a long file.
 
