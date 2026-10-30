@@ -14,7 +14,6 @@ subscription, a push, a `code`. What the page is told is made in `api/` from wha
 | file                       | what it is                                                                                                  |
 | -------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `main.rs`                  | the entry: the command line, the state, `serve` with the calls and the topic of `api/`, the way out        |
-| `bundle.rs`                | the page as the terminal is offered it, at `lua` 2.1 (the pictures need it), from the files `build.rs` carried |
 | `api/mod.rs`               | how a call is answered: its params read, what the work could not do told with a code the page acts on       |
 | `api/params.rs`            | each call reads what it asks: what does not fit is answered `bad-params`, with where, and never run         |
 | `api/pieces.rs`            | what one message to the page may carry                                                                      |

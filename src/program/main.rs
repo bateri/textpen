@@ -18,7 +18,6 @@
 //!   terminal/  the command line, who and where, the pane lent to a shell or the person's editor; same
 
 mod api;
-mod bundle;
 #[cfg(test)]
 mod page_changes;
 #[cfg(test)]
@@ -83,7 +82,7 @@ fn icon(png: &[u8], theme: IconTheme) -> Icon {
     icon
 }
 
-/// What `serve` is given: the page, its name and icons, the calls and the topic of `api/`, the hand
+/// What `serve` is given: the app, its name and icons, the calls and the topic of `api/`, the hand
 /// that lends the pane, and the person's own editor for a terminal that shows no views, whose status
 /// goes to `fallen_back`.
 fn options(
@@ -92,7 +91,7 @@ fn options(
     fallen_back: &Arc<Mutex<Option<u8>>>,
 ) -> Options {
     let mut options = Options::new()
-        .view(bundle::view())
+        .app(pencere::app!())
         .program("textpen")
         // What a terminal writes above the view.
         .title("Editor")
