@@ -1568,6 +1568,57 @@ fn a_page_that_starts_on_a_picture_draws_it() -> Result<(), Error> {
     Ok(())
 }
 
+/// A Markdown file's preview draws the pictures it names that are in the project, beside the file;
+/// the ones that are not there, are out of the project or are addresses stay the words they were.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_markdown_preview_draws_the_pictures_it_names_and_leaves_the_others_as_words()
+-> Result<(), Error> {
+    let project = lantern();
+    let logo = sloped(160, 90);
+    project.write_bytes("docs/images/logo.png", &logo);
+    // Beside the project, not in it.
+    std::fs::write(project.root().with_file_name("outside.png"), sloped(30, 30)).expect("a file");
+    project.write(
+        "docs/guide.md",
+        "# Guide\n\n![Our logo](images/logo.png)\n\n![Not there](images/gone.png)\n\n![Out of reach](../../outside.png)\n\n![On the web](https://example.com/x.png)\n\n![Absolute](/etc/x.png)\n",
+    );
+    let session = project.session(&["docs/guide.md"]);
+    let recorder = recording(&session);
+    let mut page = project.open(&session, WIDE)?;
+    page.attach(&logo);
+    page.press("cmd+shift+v")?;
+    let (name, rect) = picture_in_front(&mut page, &logo)?;
+    assert!(
+        rect.w > 100.0 && (rect.w / rect.h - 160.0 / 90.0).abs() < 0.02,
+        "{rect:?}"
+    );
+    for words in ["Not there", "Out of reach", "On the web", "Absolute"] {
+        assert!(shows(&page, words), "{words}: {:?}", page_words(&page));
+    }
+    assert!(!shows(&page, "Our logo"), "{:?}", page_words(&page));
+    assert_eq!(pictures_drawn(&page).len(), 1);
+    // Only the picture in the project was given to the terminal.
+    assert_eq!(recorder.attached(), [name.clone()]);
+    // Typing goes on beside it; the picture stays.
+    let editor = shown(&page).expect("an editor");
+    page.caret_to(&editor, 0)?;
+    page.type_text("x")?;
+    page.advance(1.0)?;
+    assert_eq!(pictures_drawn(&page).len(), 1);
+    // It is let go with the file's tab.
+    page.press("cmd+shift+v")?;
+    page.press("ctrl+w")?;
+    wait(&mut page, |page| {
+        page.bounds("tab:docs/guide.md").is_none() || shows(page, "Save the changes")
+    })?;
+    if shows(&page, "Save the changes") {
+        page.press("d")?;
+    }
+    wait(&mut page, |_| recorder.detached() == [name.clone()])?;
+    Ok(())
+}
+
 // --- The pane, the settings, the start --------------------------------------------------------------
 
 /// The shell button hands the pane to a shell in the project; when it ends, the page comes back where

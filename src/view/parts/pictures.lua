@@ -120,4 +120,75 @@ function pictures.view(tab, size)
 		:child(b.text(words):color("dim"):text_size(12))
 end
 
+-- --- The pictures of a Markdown file ------------------------------------------------------------------
+--
+-- A preview is drawn while the page is made, which asks nothing of the program: a picture it names is
+-- asked for a moment later (once for each, by what the file wrote), and the preview is drawn again
+-- when the answer comes (`generation` is what tells it). Until then, and for a picture the program
+-- does not find, is not in the project or cannot show, it is its words, as it was.
+
+-- How many answers have come, for the preview to know it is to be drawn again.
+local generation = 0
+local queue = {}
+local queued = false
+
+function pictures.generation()
+	return generation
+end
+
+-- What a name is, where it is no file of the project's disk: an address, a path from the top of the
+-- disk, a part of the page.
+local function is_file_name(src)
+	if src == "" or string.sub(src, 1, 1) == "/" or string.sub(src, 1, 1) == "#" then
+		return false
+	end
+	return string.find(src, "^[%a][%w+.%-]*:") == nil
+end
+
+local function ask_queued()
+	queued = false
+	local jobs = queue
+	queue = {}
+	for _, job in jobs do
+		local tab, src = job.tab, job.src
+		local owner = pictures.owner(tab)
+		kit.call("picture", { path = src, owner = owner, from = tab.path }, function(answer, err)
+			if not text.index_of(S.tabs, tab) then
+				-- The file was closed while the program was at it.
+				pictures.release(owner)
+				return nil
+			end
+			if err or answer.refused then
+				tab.pictures[src] = { gone = true }
+			else
+				tab.pictures[src] = { picture = answer }
+			end
+			generation += 1
+			return true
+		end)
+	end
+	return nil
+end
+
+-- The picture a Markdown file `tab` names as `src`, once the program has said: its answer
+-- (`Picture`), or nil where there is none (yet).
+function pictures.named_in(tab, src)
+	local path = string.match(src, "^[^?#]*") or src
+	if not (is_file_name(src) and pictures.named(path)) then
+		return nil
+	end
+	tab.pictures = tab.pictures or {}
+	local known = tab.pictures[src]
+	if known == nil then
+		tab.pictures[src] = { asking = true }
+		queue[#queue + 1] = { tab = tab, src = src }
+		if not queued then
+			queued = true
+			kit.after(0, ask_queued)
+		end
+		return nil
+	end
+	return known.picture
+end
+
 return pictures

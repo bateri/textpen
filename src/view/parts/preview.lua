@@ -3,12 +3,14 @@
 -- read again where a change touched it (a moment after the typing stops), and drawn as a long list,
 -- only the blocks near what is in view made, so a long file is shown to its end. It goes where the
 -- caret goes. Links open in the person's browser through the terminal (an http or https address
--- alone); images, which the page cannot reach, are named; raw HTML is shown as text, never run.
+-- alone); a picture is drawn where it is in the project, fitted to the width of the text, and its
+-- words are shown where it is not; raw HTML is shown as text, never run.
 
 local kit = require("../lib/kit")
 local text = require("../lib/text")
 local markdown = require("@pencere/markdown")
 local docs = require("./docs")
+local pictures = require("./pictures")
 
 local b, S, act = kit.b, kit.S, kit.act
 local layout = b.layout
@@ -68,6 +70,38 @@ local function link(href)
 	return nil
 end
 
+-- The tallest a picture of the preview is, points.
+local PICTURE_HEIGHT = 520
+
+-- What draws a picture of the file (`image` of the markdown module): the picture where the program
+-- has one, else the words the file gave it. A new function when the answers or the room changed,
+-- which is what makes the module draw its blocks again.
+local drawing = { key = nil, image = nil }
+
+local function image_for(tab, room)
+	local key = tab.path .. ":" .. room .. ":" .. pictures.generation()
+	if drawing.key ~= key then
+		drawing.key = key
+		drawing.image = function(src, alt, title)
+			local picture = pictures.named_in(tab, src)
+			if not picture then
+				local words = (alt ~= nil and alt ~= "") and alt or src or ""
+				return b.text(words):color("dim"):wrap()
+			end
+			local w, h = pictures.fitted(picture.width, picture.height, room, PICTURE_HEIGHT)
+			local element = b.image(picture.name):size(w, h):fit("contain"):no_shrink():role("image")
+			if alt and alt ~= "" then
+				element:label(alt)
+			end
+			if title and title ~= "" then
+				element:tip(title)
+			end
+			return element
+		end
+	end
+	return drawing.image
+end
+
 local OPTIONS = {
 	id = "markdown",
 	headings = { 23, 19, 16, 14.5, 13.5, 13 },
@@ -83,6 +117,8 @@ function act.preview_view(tab, size)
 	local only = S.layout ~= "wide"
 	local width = only and size.w or math.floor((size.w - (act.sidebar_docked() and S.settings.sidebarWidth or 0)) / 2)
 	local side = math.max(20, math.floor((width - COLUMN) / 2))
+	local options = table.clone(OPTIONS)
+	options.image = image_for(tab, math.max(width - 2 * side, 40))
 	-- The list is a box that scrolls and has no room of its own around its rows: the box around it has.
 	local box = b.div()
 		:id("preview-room")
@@ -93,7 +129,7 @@ function act.preview_view(tab, size)
 		:bg("background")
 		:px(side)
 		:pt(22)
-		:child(document:list(BOX, OPTIONS):size_full())
+		:child(document:list(BOX, options):size_full())
 	if only then
 		box:grow(1)
 	else

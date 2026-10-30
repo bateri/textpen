@@ -19,6 +19,10 @@ change what the previous one did.
   gives it to the terminal to hold while the tab is open, which needs a terminal that opens the
   page at `lua` 2.1 (bateri does; with one that does not, a picture is the placeholder it was). The
   program has the calls `picture` and `release` for it (`docs/calls.md`).
+- **A Markdown preview draws the pictures it names.** `![](docs/x.png)` is the picture, fitted to the
+  width of the text, where `docs/x.png` is a PNG, a JPEG or an SVG in the project, found from the
+  Markdown file's own folder; one that is not there, is past the limits above, is out of the project
+  (a path that climbs out of it, or leads out by a link), or is an address, is its words, as it was.
 - **The editor has a right-click menu**, as VS Code's: Cut, Copy, Paste, Select All, Toggle Line
   Comment and Select All Occurrences, each with its keys, then Find in Project (the selection, or
   the word at the caret), Revert Change (on a line git has changed) and Command Palette. A right

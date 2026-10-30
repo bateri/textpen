@@ -58,7 +58,9 @@ a terminal that shows the page at `lua` 2.1, as bateri does.
 ![A picture in its tab: fitted, with its size and its pixels under it](docs/picture.png)
 
 **A preview of Markdown**, beside the text in a wide pane and in its place in a narrow one,
-read again only where you changed the text, and shown to its end for a long file.
+read again only where you changed the text, and shown to its end for a long file. The pictures it
+names (`![](docs/x.png)`, found from the file's own folder, in the project) are drawn, fitted to the
+width of the text; the others stay their words.
 
 **Nothing is lost to a ⌃C.** textpen keeps what you have not saved, and when it ends — a
 ⌃C, a dropped connection — it writes a draft; open the file again and it offers to bring

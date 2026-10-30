@@ -212,9 +212,20 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
 
     // A Markdown file beside its preview, in a light terminal.
     let project = lantern();
+    let art = lantern_art();
+    project.write_bytes("docs/lantern.png", &art);
+    project.write(
+        "README.md",
+        &project.read("README.md").replacen(
+            "mail.\n",
+            "mail.\n\n![A brass lantern, lit](docs/lantern.png)\n",
+            1,
+        ),
+    );
     with_git(&project);
-    let mut page = open(&project, &["README.md"], (1100.0, 680.0), &fonts)?;
+    let mut page = open_pictured(&project, &["README.md"], (1100.0, 680.0), &fonts, &[&art])?;
     page.press("cmd+shift+v")?;
+    wait(&mut page, |page| !pictures_drawn(page).is_empty())?;
     page.advance(1.0)?;
     save(&page, &fonts, Palette::Light, "preview.png");
 
