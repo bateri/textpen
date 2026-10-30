@@ -16,7 +16,7 @@ it was. Run it anywhere else and your own `$EDITOR` opens instead.
 **The files of the project**, as a tree with what git says of each — changed, new, in
 conflict — and of the folders that hold them; which files are open and which have changes
 that are not saved. Make, rename, move and delete files and folders from it. It follows the
-file you are in.
+file you are in, and shows every name whole: a tree narrower than its names scrolls across.
 
 **An editor**, the terminal's own, drawn in its font, that reads 33 languages: the C family
 (JavaScript, TypeScript, JSX, TSX, Rust, Go, C, C++, C#, Java, Kotlin, Swift, PHP), the
