@@ -120,6 +120,10 @@ function sidebar.dragged(event)
 		return false
 	end
 	local width = math.clamp(math.floor(drag.width + event.x - drag.x + 0.5), MIN_W, math.min(MAX_W, S.width - 280))
+	-- A move up or down, or past where the edge stops: the page stays as it is.
+	if width == S.settings.sidebarWidth then
+		return true
+	end
 	S.settings = table.clone(S.settings)
 	S.settings.sidebarWidth = width
 	kit.gather({ redraw = true, cursor = "resize_horizontal" })

@@ -211,7 +211,8 @@ end
 
 local function moved(event)
 	if sidebar.dragged(event) then
-		return true
+		-- Drawn again only where the edge moved (`sidebar.dragged` asks for it).
+		return { cursor = "resize_horizontal" }
 	end
 	local changed = ui:point(layout, { x = event.x, y = event.y })
 	if S.overlay and S.overlay.kind == "palette" and palette.hover(ui.hover) then

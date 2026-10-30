@@ -617,6 +617,70 @@ fn the_pointer_is_the_hand_over_the_trees_rows_before_and_after_a_click() -> Res
     Ok(())
 }
 
+/// While the sidebar's edge is dragged the tree makes only the rows in view, where they stood, and
+/// a move that does not move the edge draws nothing; let go, the long list makes its rows ahead of
+/// a scroll again and the width is kept.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn dragging_the_sidebars_edge_makes_only_the_trees_rows_in_view() -> Result<(), Error> {
+    use pencere_view::{Button, Input, Mods};
+    let names: Vec<String> = (1..=150).map(|n| format!("f{n:03}.txt")).collect();
+    let files: Vec<(&str, &str)> = names.iter().map(|name| (name.as_str(), "")).collect();
+    let project = Project::new(&files);
+    let session = project.session(&[]);
+    let mut page = project.open(&session, WIDE)?;
+    page.wheel("row:f010.txt", 0.0, 400.0)?;
+    let seen = "row:f030.txt";
+    let ahead = "row:f080.txt";
+    let place = |page: &Page, name: &str| page.bounds(name).map(|rect| rect.y);
+    let before = place(&page, seen).ok_or_else(|| Error::NoSuch(seen.to_owned()))?;
+    assert!(
+        place(&page, ahead).is_some(),
+        "the list makes rows past the view"
+    );
+    let edge = page
+        .bounds("resizer")
+        .ok_or_else(|| Error::NoSuch("resizer".to_owned()))?;
+    let at = Point::new(edge.x + edge.w / 2.0, edge.y + edge.h / 2.0);
+    page.pointer(Input::Press {
+        at,
+        button: Button::Left,
+        mods: Mods::default(),
+        count: 1,
+    })?;
+    page.pointer(Input::Move(Point::new(at.x + 40.0, at.y)))?;
+    assert_eq!(
+        page.bounds("resizer").map(|rect| rect.x),
+        Some(edge.x + 40.0)
+    );
+    assert_eq!(
+        place(&page, seen),
+        Some(before),
+        "the rows in view stay where they were"
+    );
+    assert_eq!(place(&page, ahead), None, "no row past the view is made");
+    page.pointer(Input::Move(Point::new(at.x + 40.0, at.y + 30.0)))?;
+    let drawn = page.replies().last().map(|answer| answer.reply.redraw);
+    assert_eq!(
+        drawn,
+        Some(false),
+        "a move that leaves the edge where it is draws nothing"
+    );
+    page.pointer(Input::Release {
+        at: Point::new(at.x + 40.0, at.y + 30.0),
+        button: Button::Left,
+    })?;
+    assert_eq!(place(&page, seen), Some(before));
+    assert!(
+        place(&page, ahead).is_some(),
+        "let go, the list makes its rows ahead again"
+    );
+    wait(&mut page, |_| {
+        settings_of(&session)["sidebarWidth"] == 240 + 40
+    })?;
+    Ok(())
+}
+
 /// The tree opens a folder and a file; a file is made, renamed (its tab and its editor follow) and
 /// deleted from its row's menu.
 #[test]

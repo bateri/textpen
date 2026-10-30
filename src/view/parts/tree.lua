@@ -145,6 +145,28 @@ local function row_view(row, index, ctx)
 	return element
 end
 
+-- While the sidebar's edge is dragged the page is made again at every move of the pointer, and the
+-- pointer is held on the edge, so the tree cannot scroll: only the rows in view are made then, not
+-- the screens more that the long list makes ahead of a scroll, which in a project with its folders
+-- open are most of the page's work. The rows stand where the list has them and the box is as tall,
+-- so the tree stays where it was scrolled. None before the tree is laid out.
+local function rows_in_view(rows, ctx)
+	local extent = layout.scroll_extent(tree.LIST)
+	if not extent then
+		return nil
+	end
+	local offset = layout.scroll_offset(tree.LIST)
+	local first = math.max(math.floor(offset / ROW) + 1, 1)
+	local last = math.min(math.ceil((offset + extent.view) / ROW), #rows)
+	local box = b.div():id(tree.LIST):col():grow(1):min_h(0):scroll()
+	box:child(b.div():h((first - 1) * ROW):no_shrink())
+	for index = first, last do
+		box:child(row_view(rows[index], index, ctx))
+	end
+	box:child(b.div():h((#rows - math.max(last, first - 1)) * ROW + 8):no_shrink())
+	return box
+end
+
 function tree.view()
 	local rows = tree.rows()
 	tree.current = rows
@@ -159,6 +181,12 @@ function tree.view()
 			:child(kit.button("tree-make-file", "Make a file", { h = 24 }))
 	end
 	local ctx = { dirs = dir_states(), git = S.git and S.git.changes or {}, dirty = dirty_paths() }
+	if S.resizing then
+		local box = rows_in_view(rows, ctx)
+		if box then
+			return box
+		end
+	end
 	return b.div()
 		:id(tree.LIST)
 		:col()
