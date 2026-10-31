@@ -39,6 +39,10 @@ const SKIPPED: [&str; 14] = [
     "target",
 ];
 
+/// How the parts of a file being received end (pencere's, and the one the program lets a new file in
+/// by): they are not listed.
+const PARTS: [&str; 2] = [".pencere-part", ".textpen-upload"];
+
 /// The most entries a listing has.
 const LIST_LIMIT: usize = 5000;
 
@@ -227,6 +231,10 @@ impl Tree {
             let Ok(name) = item.file_name().into_string() else {
                 continue;
             };
+            // What a file being received is written to is no file yet.
+            if PARTS.iter().any(|ending| name.ends_with(ending)) {
+                continue;
+            }
             let full = paths::join(&absolute, &name);
             let link = item.file_type().is_ok_and(|kind| kind.is_symlink());
             let meta = fs::metadata(&full).or_else(|_| item.metadata()).ok();

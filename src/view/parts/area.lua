@@ -7,6 +7,7 @@ local text = require("../lib/text")
 local docs = require("./docs")
 local changes = require("./changes")
 local pictures = require("./pictures")
+local uploads = require("./uploads")
 local terminal = require("@pencere/terminal")
 
 local b, S, act = kit.b, kit.S, kit.act
@@ -182,6 +183,11 @@ function area.view(size)
 		row:child(placeholder(tab, size))
 	end
 	column:child(row)
+	-- Files dragged over the page that would be uploaded beside the file shown.
+	local mark = uploads.mark("editor")
+	if mark then
+		column:child(mark)
+	end
 	return column
 end
 

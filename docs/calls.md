@@ -22,6 +22,8 @@ tests hold it to it, and the page's tests hold the page to it.
   - `out-of-sync` — a buffer call named a version the program no longer holds, or an edit reaches
     outside the text. The page reads the buffer again (`buffer` with `text`).
   - `failed` — the disk or the project would not do it; `message` is for the person.
+  - `exists` — an `upload` found a file of that name that the page did not say to replace; nothing
+    was written, and `message` names the file.
   - `internal` — the program failed; `message` is for the person.
 - **One message is at most 1 MiB** each way (pencere counts the UTF-8 of the JSON before its
   escapes). Nothing the program answers grows with the project: a long text, a big directory, the
@@ -126,6 +128,11 @@ Refused     = { refused: "too-large", size: number } | { refused: "not-a-picture
               -- too-large: a picture past 8 MiB or past 4096 pixels either way; size is the file's.
               -- not-a-picture: not there, not a file, not named .png .jpg .jpeg .svg, not a picture of
               -- the three formats (by its bytes) or one that says no size, outside the project (`from`).
+Place       = { name: string, exists: boolean, free: string }
+              -- name: the name as the program takes it (only its last part, nothing a path could be
+              -- made of). exists: taken in the folder (a link to nothing too) or by one of `also`.
+              -- free: the first name beside it that is not taken: "foto 2.png", "foto 3.png"…, or
+              -- with `dash` "foto-1.png", "foto-2.png"…; `name` itself where it is not taken.
 FilesPage   = { files: string[], truncated: boolean, next: number | null, generation: number }
 ```
 
@@ -152,6 +159,8 @@ FilesPage   = { files: string[], truncated: boolean, next: number | null, genera
 | `diff`     | `{ path: string }`                                                                       | `Diffed`: where the open buffer `path` differs from `git show :path`, the file as git's **index** keeps it (a change staged is not a difference, as VS Code's). Both texts are the program's buffer text: line ends `\n`, no byte order mark, so a file with CRLF line ends or a mark is not one hunk. `hunks` is `null`, and nothing is marked, for a file outside the project, a symbolic link, one git does not keep (untracked), a project that is not in a repository, a file that is not UTF-8 text, one that is not on disk yet, or a text of more than 2 MiB or 50 000 lines on either side; `out-of-sync` where `path` is not open. What is told fits one message: at most 2 000 hunks (`more`), and of each at most 64 lines (8 Ki code points) of `old`, 192 Ki code points together (`cut`: the hunk is marked, its old lines are not all there). It runs beside the buffer calls and not in their lane: the page asks after its edit was answered, and takes the answer only when `version` is the buffer's. |
 | `picture`  | `{ path: string, owner: string, from?: string }`                                         | `Picture \| Refused`. The picture at `path` (the project's, or absolute) is read, measured and given to the terminal to hold, for `owner` (a tab: a path), and the page draws it by `name`; the bytes never reach the page. With `from`, a Markdown file's path, `path` is as that file wrote it: relative to its folder, `%20` read, `?` and `#` cut, and only a file in the project, links followed, is read (an address, a path from the top of the disk, or one that climbs out of the project is `not-a-picture`). `failed` where the terminal holds no files for the view (the page is not at `lua` 2.1): the page then opens the file as any other. It runs beside the buffer calls and not in their lane. |
 | `release`  | `{ owner: string }`                                                                      | `{}`. `owner` holds no picture any more: the files nobody else holds are let go. Asked of an owner that holds none, it does nothing. |
+| `place`    | `{ dir: string, name: string, also?: string[], dash?: boolean }`                          | `Place`. Whether `name` is taken in the folder `dir` (a folder of the project; `failed` for any other), or by one of `also` (the names of uploads under way), and the next free name. |
+| `upload`   | `{ dir: string, name: string, handle: string, size: integer ≥ 0, path?: string, replace?: boolean }` | `{ path, size }`. The file the person gave the page (its `handle`, which the terminal made of it) is received into the folder `dir` of the project, as `name` (made safe: its last part only). Where the page was handed the file's `path` (the program reads the same files as the person) the file is copied from there, else, or where it is not the file the page was handed (another `size`), its bytes cross the terminal, a MiB at a time. Told how far it has got with a `progress` after each piece (`done` bytes of `total`). A part beside the file takes the bytes and is given the file's name when the last is in; `exists` where the name is taken and `replace` is not true, whether it was when the call began or came to be while the bytes were on their way (nothing is written over it); `failed` where `dir` is not a folder of the project, or the name is a folder's. The page cancels the call to give the file up: the part is deleted, as it is when the view ends or the program is interrupted. Runs beside the other calls and not in the lane of the buffers. |
 | `search`   | `{ query: string (≥ 1), regex?: boolean, caseSensitive?: boolean, wholeWord?: boolean }` | `SearchResult`, cut to fit one message. The pattern is the Rust `regex` crate's: back-references and lookaround are refused (`failed`, with words), so a search ends in time linear in the text.                               |
 
 A page of the kit has no message of the host's own to close its view with (the protocol, Section

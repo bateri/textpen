@@ -93,7 +93,7 @@ fn boot(session: &Session, (): (), _: &Gone<'_>) -> Result<Boot, Failure> {
         home: machine::home(),
         user: machine::user(),
         hostname: machine::hostname(),
-        remote: machine::remote(),
+        remote: session.remote(),
         version: env!("CARGO_PKG_VERSION"),
         git: session.project.git.status(Duration::ZERO),
         settings: session.settings(),

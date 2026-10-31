@@ -69,6 +69,10 @@ local S = {
 	saved_at = {},
 	-- The field the keyboard was last sent to (nil: the page's own keys).
 	field = nil,
+	-- The files the person gave that the program is receiving into the project (`parts/uploads.lua`).
+	uploads = {},
+	-- Where files dragged over the page would go: { kind = "tree" | "editor", dir =, count = }.
+	drop = nil,
 }
 
 local SIZE = {
@@ -122,15 +126,22 @@ local function take(reply)
 end
 
 -- Asks the program to do `method`; `done(result, err)` is called with its answer, and what it
--- gathered goes out with that answer's reply. `err` is { code =, message = }.
-local function call(method, params, done)
+-- gathered goes out with that answer's reply. `err` is { code =, message = }. A call that takes a
+-- while may be told how far it has got: `progress({ done =, total =, note = })`, answered likewise.
+local function call(method, params, done, progress)
+	local on_progress = nil
+	if progress then
+		on_progress = function(report)
+			return take(progress(report))
+		end
+	end
 	return b.call(method, params, function(result, err)
 		local reply = nil
 		if done then
 			reply = done(result, err)
 		end
 		return take(reply == nil and true or reply)
-	end)
+	end, on_progress)
 end
 
 -- Runs `fn` `seconds` from now; what it gathers goes out with the wake's reply.

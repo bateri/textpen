@@ -11,6 +11,7 @@ local text = require("../lib/text")
 local markdown = require("@pencere/markdown")
 local docs = require("./docs")
 local pictures = require("./pictures")
+local uploads = require("./uploads")
 
 local b, S, act = kit.b, kit.S, kit.act
 local layout = b.layout
@@ -79,10 +80,14 @@ local PICTURE_HEIGHT = 520
 local drawing = { key = nil, image = nil }
 
 local function image_for(tab, room)
-	local key = tab.path .. ":" .. room .. ":" .. pictures.generation()
+	local key = tab.path .. ":" .. room .. ":" .. pictures.generation() .. ":" .. uploads.generation()
 	if drawing.key ~= key then
 		drawing.key = key
 		drawing.image = function(src, alt, title)
+			local coming = uploads.pending(tab, src)
+			if coming then
+				return uploads.placeholder(coming)
+			end
 			local picture = pictures.named_in(tab, src)
 			if not picture then
 				local words = (alt ~= nil and alt ~= "") and alt or src or ""

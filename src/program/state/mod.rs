@@ -7,3 +7,4 @@ pub mod later;
 pub mod pictures;
 pub mod session;
 pub mod store;
+pub mod transfers;

@@ -24,6 +24,7 @@ local welcome = require("./parts/welcome")
 local sheets = require("./parts/sheets")
 local changes = require("./parts/changes")
 local editor_menu = require("./parts/editor_menu")
+local uploads = require("./parts/uploads")
 
 local b, ui, S, SIZE, act = kit.b, kit.ui, kit.S, kit.SIZE, kit.act
 local layout = b.layout
@@ -301,10 +302,12 @@ local function handle(event)
 		-- The person changed how their terminal draws its cursor or its selection: the editors are
 		-- drawn again with it (`area.options` reads it).
 		reply = true
+	elseif kind == "files_over" then
+		reply = uploads.over(event)
+	elseif kind == "files_left" then
+		reply = uploads.left()
 	elseif kind == "files" then
-		for _, path in event.paths or {} do
-			act.open_file(path, { focus = true })
-		end
+		uploads.files(event)
 		reply = true
 	end
 	return kit.take(reply)

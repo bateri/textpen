@@ -6,6 +6,7 @@ local kit = require("../lib/kit")
 local text = require("../lib/text")
 local files = require("../lib/files")
 local docs = require("./docs")
+local uploads = require("./uploads")
 
 local b, S, SIZE, act = kit.b, kit.S, kit.SIZE, kit.act
 local layout = b.layout
@@ -47,13 +48,25 @@ function tree.rows()
 		if not listing then
 			return
 		end
+		local listed = {}
 		for _, entry in listing.entries do
-			if not HIDDEN[entry.name] then
+			listed[entry.path] = true
+			-- A file on its way takes the place of the one it is replacing.
+			local coming = uploads.of(entry.path)
+			if not HIDDEN[entry.name] and not (coming and coming.state ~= "asking") then
 				local is_open = entry.kind == "dir" and open[entry.path] == true
 				out[#out + 1] = { entry = entry, depth = depth, open = is_open, loading = is_open and not S.listings[entry.path] }
 				if is_open then
 					walk(entry.path, depth + 1)
 				end
+			end
+		end
+		-- The files on their way into the directory, faint, after what is there; one whose name is
+		-- taken is shown once the person has said what to do.
+		for _, coming in uploads.in_dir(dir) do
+			if not (coming.state == "asking" and listed[coming.path]) then
+				local entry = { name = coming.name, path = coming.path, kind = "file", size = coming.size }
+				out[#out + 1] = { entry = entry, depth = depth, upload = coming }
 			end
 		end
 	end
@@ -86,7 +99,73 @@ local function dirty_paths()
 	return out
 end
 
+-- The row of a file on its way into the project: faint, with how far it has got at its end, and a
+-- Cancel button under the pointer.
+local function entry_name(row)
+	return row.entry.name
+end
+
+local function upload_view(row, ctx)
+	local up = row.upload
+	local path = up.path
+	local id = "row:" .. path
+	local cancel = "upload-cancel:" .. up.id
+	local over = kit.hovered(id) or kit.hovered(cancel)
+	local selected = S.tree_selection == path
+	local ground = nil
+	if selected and S.focus == "sidebar" and S.sidebar == "files" then
+		ground = b.alpha("accent", 0.2)
+	elseif selected then
+		ground = b.alpha("foreground", 0.07)
+	elseif over then
+		ground = b.alpha("foreground", 0.045)
+	end
+	local fade = up.state == "done" and 1 or 0.55
+	local element = b.div()
+		:press(id)
+		:row()
+		:h(ROW)
+		:min_w(tree.width)
+		:no_shrink()
+		:bg(ground)
+		:selected(selected)
+		:tip(path)
+	if up.state == "done" then
+		element:role("button"):label(entry_name(row))
+	else
+		element:role("progress"):label(uploads.spoken(up)):value(uploads.words(up))
+	end
+	for depth = 0, row.depth - 1 do
+		element:child(b.div():absolute():inset(0, nil, 0, 15 + depth * INDENT):w(1):bg(b.alpha("border", 0.7)))
+	end
+	local line = b.div()
+		:id("rowline:" .. path)
+		:row()
+		:items_center()
+		:gap(6)
+		:h_full()
+		:pl(8 + row.depth * INDENT)
+		:pr(10)
+		:min_w(ctx.width)
+		:no_shrink()
+	local kind = files.kind(path)
+	line:child(kit.icon(kind.icon, 15, kind.color):opacity(fade))
+	line:child(b.text(up.name):color("foreground"):no_shrink():opacity(fade))
+	line:child(b.spacer())
+	if up.state ~= "done" then
+		line:child(b.text(uploads.words(up)):color("dim"):text_size(11):no_shrink())
+		if over then
+			line:child(kit.button(cancel, "Cancel", { h = 18, px = 8 }))
+		end
+	end
+	element:child(line)
+	return element
+end
+
 local function row_view(row, index, ctx)
+	if row.upload then
+		return upload_view(row, ctx)
+	end
 	local entry = row.entry
 	local path = entry.path
 	local id = "row:" .. path
@@ -96,7 +175,10 @@ local function row_view(row, index, ctx)
 	local state = is_dir and ctx.dirs[path] or (ctx.git[path])
 	local over = kit.hovered(id)
 	local ground = nil
-	if focused then
+	if is_dir and uploads.dropping(path) then
+		-- Files dragged over the page would go into this folder.
+		ground = b.alpha("accent", 0.32)
+	elseif focused then
 		ground = b.alpha("accent", 0.2)
 	elseif selected or path == S.active then
 		ground = b.alpha("foreground", 0.07)
@@ -124,6 +206,9 @@ local function row_view(row, index, ctx)
 		:expanded(is_dir and row.open)
 		:selected(selected)
 		:tip(path)
+	if is_dir and uploads.dropping(path) then
+		element:border(1, "accent")
+	end
 	-- A guide under the middle of each ancestor's icon.
 	for depth = 0, row.depth - 1 do
 		element:child(b.div():absolute():inset(0, nil, 0, 15 + depth * INDENT):w(1):bg(b.alpha("border", 0.7)))
@@ -260,6 +345,10 @@ local function index_of(path)
 end
 
 function tree.entry_of(path)
+	local coming = uploads.of(path)
+	if coming and coming.state ~= "asking" then
+		return { name = coming.name, path = coming.path, kind = "file", size = coming.size, upload = coming }
+	end
 	for _, listing in S.listings do
 		for _, entry in listing.entries do
 			if entry.path == path then
@@ -315,6 +404,11 @@ function tree.menu(entry, at)
 		{ "New File…", "a", function() act.create("file", dir) end },
 		{ "New Folder…", "shift+a", function() act.create("dir", dir) end },
 	}
+	if entry and entry.upload then
+		items = { { "Cancel Upload", nil, function() uploads.cancel(entry.upload) end } }
+		act.menu(items, at)
+		return
+	end
 	if entry then
 		items[#items + 1] = "-"
 		if not is_dir then
@@ -329,6 +423,8 @@ function tree.menu(entry, at)
 	act.menu(items, at)
 end
 
+act.tree_entry = tree.entry_of
+
 -- A key while the tree has the keyboard: whether it was the tree's.
 function tree.key(key, mods)
 	if mods.command or mods.alt then
@@ -341,6 +437,22 @@ function tree.key(key, mods)
 	local index = index_of(S.tree_selection) or 0
 	local row = rows[index]
 	local page = math.max(math.floor(((layout.scroll_extent(tree.LIST) or { view = 240 }).view) / ROW) - 1, 1)
+	if row and row.upload then
+		-- A file on its way is not on the disk to rename, delete or copy the path of: Delete gives it
+		-- up, and a picture is shown from the file the person gave.
+		local up = row.upload
+		if key == "d" or key == "delete" or key == "backspace" then
+			uploads.cancel(up)
+			return true
+		elseif key == "enter" or key == "o" or key == " " or key == "right" or key == "l" then
+			if up.image and up.state ~= "asking" then
+				act.open_file(up.path, { focus = false })
+			end
+			return true
+		elseif key == "r" or key == "f2" or key == "y" or key == "Y" or key == "." then
+			return true
+		end
+	end
 	if key == "down" or key == "j" or (mods.control and key == "n") then
 		choose(index + 1)
 	elseif key == "up" or key == "k" or (mods.control and key == "p") then
@@ -421,6 +533,9 @@ end
 -- A click on a row: it is chosen and the tree has the keys (r, d, . act on it); a file comes up in
 -- the editor, which has the keys at a second click (and at once in a drawer, which then closes).
 function tree.press(id, event)
+	if uploads.press(id) then
+		return true
+	end
 	if id == "tree-make-file" then
 		act.create("file", "")
 		return true
@@ -435,6 +550,14 @@ function tree.press(id, event)
 		return true
 	end
 	S.tree_selection = path
+	if row.upload then
+		-- A picture on its way is shown from the file the person gave; no other file is open yet.
+		act.focus_sidebar("files")
+		if row.upload.image and row.upload.state ~= "asking" then
+			act.open_file(path, { focus = false })
+		end
+		return true
+	end
 	local to_editor = (event.count or 1) > 1 or S.layout == "narrow"
 	if not to_editor then
 		act.focus_sidebar("files")

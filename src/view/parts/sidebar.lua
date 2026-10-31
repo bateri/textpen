@@ -5,6 +5,7 @@ local kit = require("../lib/kit")
 local text = require("../lib/text")
 local docs = require("./docs")
 local tree = require("./tree")
+local uploads = require("./uploads")
 
 local b, S, SIZE, act = kit.b, kit.S, kit.SIZE, kit.act
 
@@ -63,9 +64,14 @@ local function project_line()
 end
 
 function sidebar.view(width, drawer)
-	local panel = b.div():col():w(width):h_full():no_shrink():bg("raised1"):child(head(drawer))
+	local panel = b.div():id("sidebar"):col():w(width):h_full():no_shrink():bg("raised1"):child(head(drawer))
 	if S.sidebar == "files" then
 		panel:child(project_line()):child(tree.view(width))
+		-- Files dragged over the page that would go to the top of the project, or into a folder.
+		local mark = uploads.mark("tree")
+		if mark then
+			panel:child(mark)
+		end
 	else
 		panel:child(act.search_view())
 	end
@@ -239,13 +245,16 @@ end
 
 -- --- The tree's listings and the files ----------------------------------------------------------------
 
-function act.list_dir(dir)
+function act.list_dir(dir, after)
 	kit.call("list", { dir = dir }, function(listing, err)
 		if err then
 			S.listing_errors[dir] = err.message
 		else
 			S.listings[dir] = listing
 			S.listing_errors[dir] = nil
+		end
+		if after then
+			after()
 		end
 		return true
 	end)

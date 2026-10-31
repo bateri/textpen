@@ -7,6 +7,7 @@ local text = require("../lib/text")
 local docs = require("./docs")
 local marks = require("./changes")
 local pictures = require("./pictures")
+local uploads = require("./uploads")
 
 local b, S, act = kit.b, kit.S, kit.act
 local json = b.json
@@ -64,6 +65,11 @@ function act.open_file(path, options)
 	local tab = docs.tab_of(path)
 	if not tab then
 		tab = { path = path, status = "loading" }
+		local coming = uploads.of(path)
+		if coming and coming.image and coming.state ~= "asking" and coming.state ~= "done" then
+			-- A picture on its way into the project is shown from the file the person gave.
+			tab.status, tab.upload = "picture", coming
+		end
 		local at = text.index_of(S.tabs, docs.tab_of(S.active)) or #S.tabs
 		table.insert(S.tabs, at + 1, tab)
 	end

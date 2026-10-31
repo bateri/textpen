@@ -24,6 +24,8 @@ mod page_changes;
 mod page_shots;
 #[cfg(test)]
 mod page_tests;
+#[cfg(test)]
+mod page_uploads;
 mod project;
 mod state;
 mod terminal;

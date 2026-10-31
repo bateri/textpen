@@ -57,6 +57,18 @@ a terminal that shows the page at `lua` 2.1, as bateri does.
 
 ![A picture in its tab: fitted, with its size and its pixels under it](docs/picture.png)
 
+**Drop a file on the tree** to put it in the project: dragged over a folder (or a file, which is
+its folder, or the room under the rows, which is the project) the place is marked and named, and
+dropped, each file is a faint row there with how far it has got, and a Cancel under the pointer.
+A name that is taken is asked about once, Replace or Keep Both; nothing is written over a file
+unasked, and a file given up leaves no half file. It needs a terminal that shows the page at
+`lua` 2.1, as bateri does.
+
+|                                                              |                                                                    |
+| ------------------------------------------------------------ | ------------------------------------------------------------------ |
+| ![Dragged over a folder](docs/upload-over.png)               | ![Two files on their way](docs/upload-going.png)                   |
+| ![A name that is taken](docs/upload-asks.png)                |                                                                    |
+
 **A preview of Markdown**, beside the text in a wide pane and in its place in a narrow one,
 read again only where you changed the text, and shown to its end for a long file. The pictures it
 names (`![](docs/x.png)`, found from the file's own folder, in the project) are drawn, fitted to the

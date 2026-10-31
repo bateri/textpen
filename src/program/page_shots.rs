@@ -19,6 +19,9 @@ use crate::page_tests::{
     PANE, Page, Project, go_to, lantern, open_holding, open_with, pictures_drawn, png, recording,
     shown, shows, wait,
 };
+use crate::page_uploads::{
+    give, handle, moving, open_quick_in, over_row, through, wait as wait_through,
+};
 
 /// The fonts a Mac draws a terminal and its system in: bateri's terminal face is SF Mono where the
 /// system has it, else Menlo.
@@ -254,5 +257,78 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
         &fonts,
     )?;
     save(&page, &fonts, Palette::Light, "light-80x24.png");
+    Ok(())
+}
+
+/// The pictures of what the person sees as files change hands: files dragged over a folder, two
+/// that are on their way (one with the pointer on it), and the question of a name that is taken.
+#[test]
+#[ignore = "shots: draws the page in the fonts of this machine into docs/; make shots"]
+fn the_pictures_of_the_uploads() -> Result<(), Error> {
+    use pencere_view::FileSource;
+    let fonts = fonts();
+    let patience = std::time::Duration::from_secs(4);
+    let size = (900.0, 560.0);
+    let opened = |project: &Project| -> Result<_, Error> {
+        let session = project.session(&["src/server.ts"]);
+        let double = moving(&session);
+        let mut page = open_quick_in(&session, size, Some(&fonts), patience)?;
+        // The file in front has its folder open: the folder beside it is opened.
+        wait_through(&mut page, |page| page.bounds("row:src/lib").is_some())?;
+        page.press("cmd+shift+e")?;
+        page.click("row:src/lib")?;
+        wait_through(&mut page, |page| {
+            page.bounds("row:src/lib/format.ts").is_some()
+        })?;
+        Ok((page, double))
+    };
+
+    // Dragged over a folder: the folder is marked, and named.
+    let project = lantern();
+    with_git(&project);
+    let (mut page, _) = opened(&project)?;
+    over_row(&mut page, "row:src/lib", 2)?;
+    page.advance(0.3)?;
+    save(&page, &fonts, Palette::Dark, "upload-over.png");
+    page.drag_files_away()?;
+
+    // Two files on their way, the pointer on the second: how far each has got, and Cancel.
+    let (mut page, double) = opened(&project)?;
+    let bytes = vec![7_u8; 100];
+    double.give(&handle(1), &bytes);
+    double.give(&handle(2), &bytes);
+    *double.piece.lock().expect("a lock") = 21;
+    double.hold_at(42);
+    give(
+        &mut page,
+        "row:src/lib",
+        FileSource::Drop,
+        &[("product-photo.png", &bytes), ("notes.txt", &bytes)],
+    )?;
+    wait_through(&mut page, |page| {
+        shows(page, "product-photo.png") && shows(page, "notes.txt") && shows(page, "42%")
+    })?;
+    through(page.hover("row:src/lib/notes.txt"))?;
+    wait_through(&mut page, |page| shows(page, "Cancel"))?;
+    page.advance(0.3).ok();
+    save(&page, &fonts, Palette::Dark, "upload-going.png");
+    double.go_on();
+    wait_through(&mut page, |page| !shows(page, "42%"))?;
+
+    // A name that is taken: one question, Replace or Keep Both.
+    let project = lantern();
+    project.write("src/lib/product-photo.png", "the one that is there");
+    with_git(&project);
+    let (mut page, double) = opened(&project)?;
+    double.give(&handle(1), &bytes);
+    give(
+        &mut page,
+        "row:src/lib",
+        FileSource::Drop,
+        &[("product-photo.png", &bytes)],
+    )?;
+    wait_through(&mut page, |page| shows(page, "Keep Both"))?;
+    page.advance(0.4).ok();
+    save(&page, &fonts, Palette::Dark, "upload-asks.png");
     Ok(())
 }

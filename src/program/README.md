@@ -20,6 +20,7 @@ subscription, a push, a `code`. What the page is told is made in `api/` from wha
 | `api/files.rs`             | the calls `list`, `files`, `create`, `rename`, `delete`; a listing is cut to fit one message                |
 | `api/buffers.rs`           | the calls `open`, `edit`, `slice`, `save`, `buffer`, `discard`, `quit`; a long text read in pieces          |
 | `api/pictures.rs`          | the calls `picture` and `release`: a picture file read, measured and held by the terminal for a tab         |
+| `api/transfers.rs`         | the calls `place` and `upload`: the files the person gave the page, received into the project              |
 | `api/search.rs`            | the call `search`                                                                                           |
 | `api/session.rs`           | the calls `boot`, `ui`, `settings`, `handoff`                                                               |
 | `api/changes.rs`           | the topic `changes`: the disk and git, as they change                                                       |
@@ -33,6 +34,7 @@ subscription, a push, a `code`. What the page is told is made in `api/` from wha
 | `state/session.rs`         | the state of the program: its project, open files, settings, what is told once                              |
 | `state/buffers.rs`         | the open files, their versions, drafts                                                                      |
 | `state/pictures.rs`        | the pictures held for the page's tabs: attached to the terminal, let go when the last tab that had them closes |
+| `state/transfers.rs`       | the files that cross the terminal: where a name is free, a file received beside its place, never over another unasked |
 | `state/store.rs`           | settings and each project's open files, where the XDG directories say                                       |
 | `state/defaults.rs`        | the settings and the page's state, their defaults and the names of their choices                            |
 | `state/later.rs`           | work done a moment after it was last asked for: a draft, the page's state                                   |

@@ -18,6 +18,7 @@ mod search;
 mod session;
 #[cfg(test)]
 mod tests;
+mod transfers;
 
 use std::sync::Arc;
 
@@ -35,6 +36,8 @@ enum Failure {
     Failed(String),
     /// A buffer is not open, or not at the version the page named.
     OutOfSync(String),
+    /// A file is there that the page did not say to replace.
+    Exists(String),
 }
 
 impl From<String> for Failure {
@@ -57,6 +60,7 @@ impl From<Failure> for ViewError {
         match failure {
             Failure::Failed(words) => Self::with_message("failed", words),
             Failure::OutOfSync(words) => Self::with_message("out-of-sync", words),
+            Failure::Exists(words) => Self::with_message("exists", words),
         }
     }
 }
@@ -103,11 +107,27 @@ fn call_in<P: Params + 'static, T: Serialize + 'static>(
     options.call_in(lane, name, handler(session, work))
 }
 
+/// The same, for a call that tells how far it has got: its work is given the call.
+fn call_reporting<P: Params + 'static, T: Serialize + 'static>(
+    options: Options,
+    session: &Arc<Session>,
+    name: &'static str,
+    work: fn(&Session, P, &Call) -> Result<T, Failure>,
+) -> Options {
+    let session = Arc::clone(session);
+    options.call(name, move |params, call| {
+        let params = params::parse::<P>(&params)
+            .map_err(|why| ViewError::with_message("bad-params", why))?;
+        work(&session, params, call).map_err(ViewError::from)
+    })
+}
+
 /// The calls and the topic the page may use, answered from `session`.
 pub fn serve(options: Options, session: &Arc<Session>) -> Options {
     let options = files::calls(options, session);
     let options = buffers::calls(options, session);
     let options = pictures::calls(options, session);
+    let options = transfers::calls(options, session);
     let options = search::calls(options, session);
     let options = diff::calls(options, session);
     let options = session::calls(options, session);

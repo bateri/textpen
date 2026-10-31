@@ -180,6 +180,20 @@ pub(crate) fn open_holding(
     later: f64,
     files: &[&[u8]],
 ) -> Result<Page, Error> {
+    open_patiently(program, size, fonts, later, files, None)
+}
+
+/// As [`open_holding`], the host giving a program that owes the page an answer `patience` to give it
+/// (the default is a minute): a test that holds a call half way (a file on its way) is not made to
+/// wait for it.
+pub(crate) fn open_patiently(
+    program: InProcess,
+    size: (f32, f32),
+    fonts: Option<&pencere_drive::shot::Fonts>,
+    later: f64,
+    files: &[&[u8]],
+    patience: Option<Duration>,
+) -> Result<Page, Error> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0.0, |since| since.as_secs_f64());
@@ -196,6 +210,9 @@ pub(crate) fn open_holding(
     }
     for bytes in files {
         opening = opening.attached(bytes);
+    }
+    if let Some(patience) = patience {
+        opening = opening.patience(patience);
     }
     let mut page = opening.peer(program).open()?;
     // What the page reads first comes from the program on its own threads: the file in front, or

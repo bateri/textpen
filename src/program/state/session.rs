@@ -4,14 +4,17 @@
 //! Plain values in and out: this file knows nothing of the page. What the page is told of it is
 //! made from it by api/.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use super::buffers::{self, Buffers};
 use super::defaults::{Settings, UiState};
 use super::pictures::Pictures;
 use super::store::Store;
+use super::transfers::Transfers;
 use crate::project::tree::Tree;
 use crate::terminal::handoff::Desk;
+use crate::terminal::machine;
 
 /// Where the command line asked the cursor to go: a file, a line (from 1) and a column (from 1, in
 /// code points).
@@ -32,6 +35,8 @@ pub struct Session {
     pub desk: Desk,
     /// The pictures the page draws, held by the terminal for the tabs that show them.
     pub pictures: Pictures,
+    /// The files that cross the terminal: the ones the person gives the page, and the ones it saves.
+    pub transfers: Transfers,
     buffers: Arc<Mutex<Buffers>>,
     store: Store,
     settings: Mutex<Settings>,
@@ -42,6 +47,9 @@ pub struct Session {
     pub problems: Vec<String>,
     /// The command line named the files, as `$EDITOR` is run: closing the last tab ends textpen.
     pub close_quits: bool,
+    /// Whether the program is reached over ssh: the files the person drags to the pane are not on
+    /// the machine the program runs on.
+    remote: AtomicBool,
 }
 
 impl Session {
@@ -70,6 +78,7 @@ impl Session {
         let desk = Desk::new(&project.root);
         Self {
             pictures: Pictures::new(Arc::new(desk.control())),
+            transfers: Transfers::new(Arc::new(desk.control())),
             desk,
             project,
             buffers,
@@ -79,7 +88,18 @@ impl Session {
             focus: Mutex::new(told),
             problems: Vec::new(),
             close_quits,
+            remote: AtomicBool::new(machine::remote()),
         }
+    }
+
+    pub fn remote(&self) -> bool {
+        self.remote.load(Ordering::Relaxed)
+    }
+
+    /// Makes the program remote or not, for a test of what the page says of it.
+    #[cfg(test)]
+    pub fn pretend_remote(&self, remote: bool) {
+        self.remote.store(remote, Ordering::Relaxed);
     }
 
     /// The open files, while no other call has them.

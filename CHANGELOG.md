@@ -9,6 +9,19 @@ change what the previous one did.
 
 ### Added
 
+- **Drop a file on the tree to put it in the project.** Files dragged from Finder over the page mark
+  where they would go and say so ("Upload to docs/"): a folder's row is that folder, a file's row
+  is its folder, and the empty room in the tree is the project's own folder. Dropped, each file is
+  a faint row in that folder at once, with how far it has got at its end ("42%") and a Cancel button
+  under the pointer; Cancel, ⌃C and closing the view delete what was received, so no half file is
+  left. Where the name is taken, one question is asked, Replace or Keep Both (the new file is `foto
+  2.png`), and Esc gives the file up; no file is written over another unasked, even one that came
+  to be there while the bytes were on their way. A folder dropped is not uploaded ("Folders can't
+  be uploaded yet"); the files dropped with it are. A picture dropped alone is shown in a tab from
+  the file you gave before it is all in. A file of this machine dropped on the editor opens where it
+  is, as it did; where textpen runs over ssh it is uploaded beside the file shown. The program has
+  the calls `place` and `upload` for it (`docs/calls.md`), and the page needs a terminal that opens
+  it at `lua` 2.1 (bateri does).
 - **A picture opens in its tab.** A click on a PNG, a JPEG or an SVG in the tree shows it fitted into
   the tab (smaller in its proportions where it does not fit, never made larger), with how large the
   file is and its pixels under it ("48.2 KB · 640 × 480"). A picture of more than 8 MiB, or of more

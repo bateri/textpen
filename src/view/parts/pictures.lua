@@ -15,6 +15,9 @@ local b, S = kit.b, kit.S
 
 local pictures = {}
 
+-- How many answers have come, for the preview to know it is to be drawn again.
+local generation = 0
+
 local NAMED = { png = true, jpg = true, jpeg = true, svg = true }
 
 -- Whether the file is named as a picture the terminal draws. The program says whether it is one.
@@ -39,9 +42,12 @@ end
 -- --- A tab of a picture --------------------------------------------------------------------------
 
 -- Asks for the picture of the tab's file. `plain()` is what is done where the file is none, or the
--- terminal holds nothing for it: it opens as any file does.
-function pictures.open(tab, plain)
-	tab.status = "loading"
+-- terminal holds nothing for it: it opens as any file does. With `options.keep` the tab goes on
+-- showing what it showed (a picture on its way into the project) until the answer comes.
+function pictures.open(tab, plain, options)
+	if not (options and options.keep) then
+		tab.status = "loading"
+	end
 	tab.asking = true
 	local owner = pictures.owner(tab)
 	S.busy += 1
@@ -53,6 +59,7 @@ function pictures.open(tab, plain)
 			pictures.release(owner)
 			return nil
 		end
+		tab.upload = nil
 		if err or answer.refused == "not-a-picture" then
 			-- The program holds nothing for it.
 			tab.owner = nil
@@ -82,6 +89,19 @@ function pictures.release(owner)
 	end)
 end
 
+-- The files of the project changed under the pictures a Markdown file names: those that were not
+-- there are asked for again.
+function pictures.changed()
+	for _, tab in S.tabs do
+		for src, known in tab.pictures or {} do
+			if known.gone then
+				tab.pictures[src] = nil
+			end
+		end
+	end
+	generation += 1
+end
+
 -- The room a picture has in the tab, points: what the page leaves the tab, less a margin around it
 -- and the line under it that says its size.
 function pictures.room(size)
@@ -93,9 +113,37 @@ function pictures.room(size)
 	return math.max(size.w - side - margin, 40), math.max(size.h - kit.SIZE.tabs - kit.SIZE.status - margin - 36, 40)
 end
 
+-- The tab of a picture the person gave that is on its way into the project: the file they gave,
+-- fitted into the room, until the program holds the picture.
+local function uploading(tab, size)
+	local row = tab.upload
+	local room_w, room_h = pictures.room(size)
+	local shown = b.image("file:" .. row.handle)
+		:size(room_w, room_h)
+		:fit("contain")
+		:no_shrink()
+		:role("image")
+		:label(text.basename(tab.path))
+	return b.div()
+		:col()
+		:grow(1)
+		:min_w(0)
+		:min_h(0)
+		:items_center()
+		:justify_center()
+		:gap(12)
+		:p(24)
+		:bg("background")
+		:child(shown)
+		:child(b.text(text.bytes_fine(row.size)):color("dim"):text_size(12))
+end
+
 -- The tab's page: the picture, and under it how large the file is and how many pixels.
 function pictures.view(tab, size)
 	local picture = tab.picture
+	if tab.upload and not picture then
+		return uploading(tab, size)
+	end
 	local room_w, room_h = pictures.room(size)
 	local w, h = pictures.fitted(picture.width, picture.height, room_w, room_h)
 	local shown = b.image(picture.name)
@@ -127,8 +175,6 @@ end
 -- when the answer comes (`generation` is what tells it). Until then, and for a picture the program
 -- does not find, is not in the project or cannot show, it is its words, as it was.
 
--- How many answers have come, for the preview to know it is to be drawn again.
-local generation = 0
 local queue = {}
 local queued = false
 
