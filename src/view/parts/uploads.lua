@@ -157,7 +157,6 @@ local function go(row)
 		name = row.name,
 		handle = row.handle,
 		size = row.size,
-		path = row.from,
 		replace = row.replace or nil,
 	}, function(result, err)
 		if not alive(row) then
@@ -342,7 +341,6 @@ local function begin(file, dir, name, checked)
 		path = text.join(dir, name),
 		handle = file.handle,
 		size = file.size or 0,
-		from = file.path,
 		kind = file.type,
 		done = 0,
 		state = "asking",
@@ -462,14 +460,10 @@ function uploads.target_at(x, y)
 	return { kind = "editor", dir = "" }
 end
 
--- Files are over the page: the place they would go to is marked, and named. An editor takes a file
--- of this machine in place, as it did, so only where the program is reached over ssh does it say
--- that a file would be uploaded.
+-- Files are over the page: the place they would go to is marked, and named. Over an editor that is
+-- the folder of the file shown, wherever the program runs.
 function uploads.over(event)
 	local target = uploads.target_at(event.x, event.y)
-	if target.kind == "editor" and not (S.boot and S.boot.remote) then
-		target = nil
-	end
 	local before = S.drop
 	if target then
 		target.count = event.count
@@ -622,24 +616,9 @@ function uploads.files(event)
 	if event.source ~= "drop" then
 		return
 	end
-	local target = uploads.target_at(event.x, event.y)
-	if target.kind == "editor" then
-		-- A file of this machine opens where it is; one that is not (the program is on another
-		-- machine) is uploaded beside the file shown.
-		local rest = {}
-		for _, file in event.files do
-			if file.kind ~= "folder" and file.path then
-				act.open_file(file.path, { focus = true })
-			else
-				rest[#rest + 1] = file
-			end
-		end
-		if #rest > 0 then
-			uploads.give(rest, target.dir)
-		end
-	else
-		uploads.give(event.files, target.dir)
-	end
+	-- On the tree into the folder under the pointer, on an editor beside the file shown: uploaded
+	-- the same wherever the program runs, by the handles the terminal made.
+	uploads.give(event.files, uploads.target_at(event.x, event.y).dir)
 end
 
 -- --- The panels -----------------------------------------------------------------------------------------

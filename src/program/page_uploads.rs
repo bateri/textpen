@@ -6,7 +6,6 @@
 //!
 //! Each opens the interpreter (compiled once a run): `make test-page` runs them, in `make check`.
 
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -233,8 +232,8 @@ fn files_dragged_over_the_tree_mark_the_folder_they_would_go_into_and_name_it() 
 }
 
 /// A file dropped on a folder is a faint row there at once, with how far it has got at its end; when
-/// the last byte is in the tree lists the file and the row is the file's own. Where the program is
-/// handed the file's path it copies the file from there, else the bytes come through the terminal.
+/// the last byte is in the tree lists the file and the row is the file's own. A file the page is
+/// handed with its path is received by its handle all the same: the path is never read.
 #[test]
 #[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
 fn a_file_dropped_on_a_folder_is_a_faint_row_that_says_how_far_it_has_got_until_it_is_whole()
@@ -280,7 +279,7 @@ fn a_file_dropped_on_a_folder_is_a_faint_row_that_says_how_far_it_has_got_until_
     // The row is the file's own: no percent, and the tree lists it once.
     wait(&mut page, |page| !shows(page, "%"))?;
     assert!(page.bounds("row:src/data.bin").is_some());
-    assert_eq!(double.routes(), [None], "through the terminal");
+    assert_eq!(double.asked(), [handle(1)], "by its handle");
     assert_eq!(
         left_in(&project, "src")
             .iter()
@@ -289,13 +288,15 @@ fn a_file_dropped_on_a_folder_is_a_faint_row_that_says_how_far_it_has_got_until_
         1
     );
 
-    // A file of this machine, handed with its path, is copied from there.
+    // A file of this machine, handed with its path, comes by its handle as any other: what is at
+    // the path is not what the handle gives, and the handle's bytes are what the project gets.
     let source = project.root().parent().unwrap().join("elsewhere.txt");
-    std::fs::write(&source, b"from the person's disk").unwrap();
+    std::fs::write(&source, b"at the path").unwrap();
+    double.give(&handle(2), b"by the handle");
     let given = entry(
         2,
         "elsewhere.txt",
-        b"from the person's disk",
+        b"by the handle",
         Some(&source.to_string_lossy()),
     );
     let at = page.bounds("row:src").expect("the folder");
@@ -306,12 +307,8 @@ fn a_file_dropped_on_a_folder_is_a_faint_row_that_says_how_far_it_has_got_until_
     );
     through(page.settle())?;
     wait(&mut page, |_| project.exists("src/elsewhere.txt"))?;
-    assert_eq!(project.read("src/elsewhere.txt"), "from the person's disk");
-    assert_eq!(
-        double.routes().last().cloned().flatten().as_deref(),
-        Some(source.to_str().unwrap()),
-        "from the path"
-    );
+    assert_eq!(project.read("src/elsewhere.txt"), "by the handle");
+    assert_eq!(double.asked(), [handle(1), handle(2)]);
     Ok(())
 }
 
@@ -346,7 +343,7 @@ fn a_name_that_is_taken_is_asked_about_once_and_nothing_is_written_over_unasked(
     through(page.press("escape"))?;
     wait(&mut page, |page| !shows(page, "Keep Both"))?;
     assert_eq!(project.read("src/foto.png"), "mine");
-    assert!(double.routes().is_empty(), "no byte was asked for");
+    assert!(double.asked().is_empty(), "no byte was asked for");
     assert!(
         page.bounds("row:src/foto.png").is_some(),
         "the file that is there stays"
@@ -540,66 +537,52 @@ fn a_picture_dropped_is_shown_from_the_file_given_before_it_is_whole() -> Result
     Ok(())
 }
 
-/// An editor takes a file of this machine where it is, as it did; where the program is on another
-/// machine (the file has no path) it is uploaded into the folder of the file shown, and the editor
-/// says so as the file is dragged over it.
+/// A file dropped on an editor is uploaded into the folder of the file shown, and the editor says so
+/// as the file is dragged over it: the same where the program runs on this machine (the file comes
+/// with its path, which is not read) as where it runs on another.
 #[test]
 #[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
-fn an_editor_opens_a_file_of_this_machine_and_uploads_one_that_is_not() -> Result<(), Error> {
+fn a_file_dropped_on_an_editor_is_uploaded_beside_the_file_shown_wherever_the_program_runs()
+-> Result<(), Error> {
     let project = lantern();
     let session = project.session(&["src/server.ts"]);
     let double = moving(&session);
-    let mut page = project.open(&session, WIDE)?;
-    let editor = shown(&page).expect("an editor");
-    let in_editor = |page: &Page| {
-        let at = page.bounds(&editor).expect("the editor");
-        Point::new(at.x + 60.0, at.y + 60.0)
-    };
-
-    // Here: nothing is said of uploading, and the file is opened.
-    let at = in_editor(&page);
-    over_at(&mut page, at, 1)?;
-    assert!(!shows(&page, "Upload to"), "{:?}", page_words(&page));
     let outside = project.root().parent().unwrap().join("note.txt");
-    std::fs::write(&outside, b"a note").unwrap();
-    page.page_mut().give(
-        at,
-        FileSource::Drop,
-        vec![entry(
-            1,
-            "note.txt",
-            b"a note",
-            Some(&outside.to_string_lossy()),
-        )],
-    );
-    page.settle()?;
-    let path: PathBuf = outside.clone();
-    crate::page_tests::wait(&mut page, |page| {
-        page.bounds(&format!("tab:{}", path.to_string_lossy()))
-            .is_some()
-    })?;
-    assert!(double.routes().is_empty(), "opened where it is, not copied");
-
-    // On another machine: named, and uploaded beside the file shown.
-    session.pretend_remote(true);
-    let mut page = project.open(&session, WIDE)?;
-    let editor = shown(&page).expect("an editor");
-    let at = {
-        let at = page.bounds(&editor).expect("the editor");
-        Point::new(at.x + 60.0, at.y + 60.0)
-    };
-    over_at(&mut page, at, 1)?;
-    assert!(shows(&page, "Upload to src/"), "{:?}", page_words(&page));
-    double.give(&handle(1), b"sent over");
-    page.page_mut().give(
-        at,
-        FileSource::Drop,
-        vec![entry(1, "sent.txt", b"sent over", None)],
-    );
-    page.settle()?;
-    crate::page_tests::wait(&mut page, |_| project.exists("src/sent.txt"))?;
-    assert_eq!(project.read("src/sent.txt"), "sent over");
-    assert!(!shows(&page, "Upload to"));
+    std::fs::write(&outside, b"at the path").unwrap();
+    // Each page is opened anew, and the first file given to it is its handle 1.
+    double.give(&handle(1), b"by the handle");
+    for (remote, name) in [(false, "here.txt"), (true, "there.txt")] {
+        session.pretend_remote(remote);
+        let mut page = project.open(&session, WIDE)?;
+        let editor = shown(&page).expect("an editor");
+        let at = {
+            let at = page.bounds(&editor).expect("the editor");
+            Point::new(at.x + 60.0, at.y + 60.0)
+        };
+        over_at(&mut page, at, 1)?;
+        assert!(shows(&page, "Upload to src/"), "{:?}", page_words(&page));
+        page.page_mut().give(
+            at,
+            FileSource::Drop,
+            vec![entry(
+                1,
+                name,
+                b"by the handle",
+                Some(&outside.to_string_lossy()),
+            )],
+        );
+        page.settle()?;
+        let file = format!("src/{name}");
+        crate::page_tests::wait(&mut page, |_| project.exists(&file))?;
+        assert_eq!(project.read(&file), "by the handle");
+        assert!(!shows(&page, "Upload to"));
+        assert!(
+            page.bounds(&format!("tab:{}", outside.to_string_lossy()))
+                .is_none(),
+            "the file is not opened where it is"
+        );
+    }
+    assert_eq!(double.asked(), [handle(1), handle(1)]);
     Ok(())
 }
 
@@ -903,7 +886,7 @@ fn a_pause_keeps_the_percent_and_thirty_seconds_without_a_word_offers_retry() ->
     wait(&mut page, |page| {
         shows(page, "50%") && !shows(page, "stalled")
     })?;
-    wait(&mut page, |_| double.routes().len() == 2)?;
+    wait(&mut page, |_| double.asked().len() == 2)?;
     double.go_on();
     wait(&mut page, |_| project.exists("src/slow.bin"))?;
     wait(&mut page, |_| double.going() == 0)?;

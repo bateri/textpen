@@ -1,8 +1,9 @@
 //! A file the person gives the page crossing the terminal into the project, and the other way: the
 //! stand-in terminal drops a real file on the page (`--drop`) and the page's calls pass its handle on
-//! (`$1`), so the bytes travel the stream as they do in bateri, in pieces, with the progress the page
-//! is told; or the path is passed, and the file is copied on the machine. Nothing is written over a
-//! file unasked, and a file given up (the page cancels, ⌃C) leaves no half file behind.
+//! (`$1`), so the bytes travel the stream in pieces, with the progress the page is told; or, where the
+//! stand-in keeps a folder for them (`--stage`, as bateri does on the program's machine), through a
+//! pipe in it, and not a byte in the stream. Nothing is written over a file unasked, and a file given
+//! up (the page cancels, ⌃C) leaves no half file behind.
 //!
 //! See `common` for how the stand-in terminal is found.
 
@@ -17,6 +18,11 @@ use serde_json::{Value, json};
 /// A file of `size` bytes that is not the same all through.
 fn bytes(size: usize) -> Vec<u8> {
     (0..size).map(|n| (n * 31 % 251) as u8).collect()
+}
+
+/// The stand-in keeps a folder at `folder` on this machine for the bytes of files to cross through.
+fn keeping(folder: &std::path::Path) -> Vec<String> {
+    vec!["--stage".to_owned(), folder.to_string_lossy().into_owned()]
 }
 
 /// The stand-in drops the file at `path` on the page as it starts; `$1` is its handle.
@@ -94,37 +100,31 @@ fn a_file_given_by_its_handle_crosses_the_terminal_in_pieces_and_the_page_is_tol
 }
 
 #[test]
-fn where_the_page_is_handed_the_path_the_file_is_copied_on_the_machine_and_no_byte_crosses_the_terminal()
- {
+fn where_the_terminal_keeps_a_folder_the_file_crosses_a_pipe_in_it_and_not_a_byte_the_stream() {
     let (pane, data, given) = pane_with_a_file();
-    let mut params = upload_params(data.len(), "given.bin");
-    params["path"] = json!(given.to_string_lossy());
-    let run = script(&[("upload", params)], &dropping(&given));
+    let folder = pane.path("folder");
+    let mut host = keeping(&folder);
+    host.extend(dropping(&given));
+    let run = script(&[("upload", upload_params(data.len(), "given.bin"))], &host);
     let log = pane.record(&in_project(&pane, run));
-    assert_eq!(common::answers(&log)[0].result()["size"], json!(data.len()));
+    assert_eq!(
+        common::answers(&log)[0].result(),
+        &json!({ "path": "docs/given.bin", "size": data.len() }),
+        "{log}"
+    );
     assert_eq!(
         std::fs::read(pane.path("project/docs/given.bin")).unwrap(),
         data
     );
+    assert_eq!(count(&log, "program: stage "), 1, "{log}");
     assert_eq!(count(&log, "program: read "), 0, "{log}");
-    assert!(count(&log, "view: <- progress id=1") >= 3, "{log}");
-    assert_eq!(left_in(&pane, "project/docs"), ["given.bin"]);
-}
-
-#[test]
-fn a_path_that_is_no_longer_the_file_the_page_was_handed_is_received_by_the_handle() {
-    let (pane, data, given) = pane_with_a_file();
-    // The size the page was handed is not the file's now.
-    let mut params = upload_params(data.len() - 1, "given.bin");
-    params["path"] = json!(given.to_string_lossy());
-    params["size"] = json!(data.len() - 1);
-    let run = script(&[("upload", params)], &dropping(&given));
-    let log = pane.record(&in_project(&pane, run));
+    assert!(count(&log, "view: <- progress id=1") >= 1, "{log}");
     assert_eq!(
-        std::fs::read(pane.path("project/docs/given.bin")).unwrap(),
-        data
+        left_in(&pane, "project/docs"),
+        ["given.bin"],
+        "no part left"
     );
-    assert!(count(&log, "program: read ") >= 4, "{log}");
+    assert!(!folder.exists(), "the folder is left: {log}");
 }
 
 #[test]
@@ -301,6 +301,43 @@ fn a_file_of_the_project_is_written_to_the_place_the_person_chose_in_the_save_pa
         std::fs::read(pane.path("project/docs/photo.bin")).unwrap(),
         data
     );
+}
+
+#[test]
+fn where_the_terminal_keeps_a_folder_a_download_crosses_a_pipe_in_it() {
+    let pane = Pane::new();
+    let data = bytes(2 * 1024 * 1024 + 7);
+    pane.write("project/docs/photo.bin", &data);
+    std::fs::create_dir_all(pane.path("saved")).unwrap();
+    let folder = pane.path("folder");
+    let mut host = keeping(&folder);
+    host.extend([
+        "--save".to_owned(),
+        "photo copy.bin".to_owned(),
+        "--save-in".to_owned(),
+        pane.path("saved").to_string_lossy().into_owned(),
+    ]);
+    let run = script(
+        &[(
+            "download",
+            json!({ "path": "docs/photo.bin", "handle": "$1" }),
+        )],
+        &host,
+    );
+    let log = pane.record(&in_project(&pane, run));
+    assert_eq!(
+        common::answers(&log)[0].result()["size"],
+        json!(data.len()),
+        "{log}"
+    );
+    assert_eq!(
+        std::fs::read(pane.path("saved/photo copy.bin")).unwrap(),
+        data
+    );
+    assert_eq!(count(&log, "program: fetch "), 1, "{log}");
+    assert_eq!(count(&log, "program: write "), 0, "{log}");
+    assert_eq!(left_in(&pane, "saved"), ["photo copy.bin"], "no part left");
+    assert!(!folder.exists(), "the folder is left: {log}");
 }
 
 #[test]

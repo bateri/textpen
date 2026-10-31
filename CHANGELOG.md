@@ -18,8 +18,8 @@ change what the previous one did.
   2.png`), and Esc gives the file up; no file is written over another unasked, even one that came
   to be there while the bytes were on their way. A folder dropped is not uploaded ("Folders can't
   be uploaded yet"); the files dropped with it are. A picture dropped alone is shown in a tab from
-  the file you gave before it is all in. A file of this machine dropped on the editor opens where it
-  is, as it did; where textpen runs over ssh it is uploaded beside the file shown. The program has
+  the file you gave before it is all in. A file dropped on the editor is uploaded beside the file
+  shown, the same on this machine as over ssh. The program has
   the calls `place` and `upload` for it (`docs/calls.md`), and the page needs a terminal that opens
   it at `lua` 2.1 (bateri does).
 - **Upload Files and Download from the keyboard.** The right-click menu of a folder in the tree, and
@@ -28,6 +28,11 @@ change what the previous one did.
   palette where a file is chosen (or shown), have Download: the Save panel proposing the file's
   name, the file written where you choose, and a note, "Downloaded foto.png". The program has the
   call `download` for it (`docs/calls.md`).
+- **Files go through the terminal's folder, not its stream.** Where the terminal keeps a folder on
+  textpen's machine (bateri does, here and on a server it reaches with kablo), a file you drop,
+  paste or choose, and a file you download, cross a pipe in it at the speed of the disk or the
+  line. textpen asks the same wherever it runs; a terminal that keeps no folder still carries the
+  file in its stream.
 - **Paste a picture into a Markdown file.** `⌘V` with a picture on the pasteboard, while you edit a
   Markdown file, puts the picture beside the file as `image.png` (`image-1.png`, `image-2.png`
   where the name is taken, so nothing is written over) and writes `![](image.png)` where the caret

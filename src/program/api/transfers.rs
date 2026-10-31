@@ -51,7 +51,6 @@ struct Upload {
     name: String,
     handle: String,
     size: u64,
-    path: Option<String>,
     replace: bool,
 }
 
@@ -62,7 +61,6 @@ impl Params for Upload {
             name: fields.text("name")?,
             handle: fields.text("handle")?,
             size: u64::try_from(fields.count("size")?).unwrap_or(u64::MAX),
-            path: fields.optional("path")?,
             replace: fields.optional("replace")?.unwrap_or(false),
         })
     }
@@ -76,8 +74,6 @@ fn upload(session: &Session, args: Upload, call: &pencere::Call) -> Result<Value
         dir: &args.dir,
         name: &args.name,
         handle: &args.handle,
-        size: args.size,
-        path: args.path.as_deref(),
         replace: args.replace,
     };
     let total = args.size as f64;

@@ -30,13 +30,11 @@ static ATTEMPTS: AtomicU64 = AtomicU64::new(0);
 pub trait Transfer: Send + Sync {
     /// Receives the file the person gave by `handle` into `to`, and returns its length. `progress`
     /// is told how many bytes are in and returns `false` to give the receiving up, which deletes
-    /// what was received. Where `path` is given (the program reads the same files as the person)
-    /// the file is copied from there; else, or where that fails, it crosses the terminal.
+    /// what was received. The program asks the same wherever it runs: the terminal moves the bytes
+    /// through a pipe in its folder on this machine where it keeps one, else in its messages.
     fn receive(
         &self,
         handle: &str,
-        path: Option<&str>,
-        size: u64,
         to: &Path,
         progress: &mut dyn FnMut(u64) -> bool,
     ) -> Result<u64, String>;
@@ -50,16 +48,10 @@ impl Transfer for ViewControl {
     fn receive(
         &self,
         handle: &str,
-        path: Option<&str>,
-        size: u64,
         to: &Path,
         progress: &mut dyn FnMut(u64) -> bool,
     ) -> Result<u64, String> {
-        let received = match path {
-            Some(path) => self.receive_from(handle, Path::new(path), size, to, progress),
-            None => ViewControl::receive(self, handle, to, progress),
-        };
-        received.map_err(|why| why.to_string())
+        ViewControl::receive(self, handle, to, progress).map_err(|why| why.to_string())
     }
 
     fn send(
@@ -94,8 +86,6 @@ pub struct Incoming<'a> {
     /// The name the person's file is to have there (made safe here).
     pub name: &'a str,
     pub handle: &'a str,
-    pub size: u64,
-    pub path: Option<&'a str>,
     /// An existing file of that name is replaced; else it is left and the file is refused.
     pub replace: bool,
 }
@@ -239,13 +229,7 @@ impl Transfers {
         // it is whole.
         let attempt = ATTEMPTS.fetch_add(1, Ordering::Relaxed);
         let staged = folder.join(format!(".{name}.{attempt}.textpen-upload"));
-        let size = transfer.receive(
-            incoming.handle,
-            incoming.path,
-            incoming.size,
-            &staged,
-            progress,
-        )?;
+        let size = transfer.receive(incoming.handle, &staged, progress)?;
         let placed = if incoming.replace {
             // Replacing is what was asked: the file takes the name, over the old one.
             fs::rename(&staged, &target)
@@ -295,8 +279,7 @@ impl Transfers {
     }
 }
 
-/// What moves the files, as a test sees it: files by handle held in memory, copied where a path
-/// is given, in pieces the test sets, and held (`hold`) at a byte until the test lets them on.
+/// What moves the files, as a test sees it: files by handle held in memory, in pieces the test sets, and held (`hold`) at a byte until the test lets them on.
 #[cfg(test)]
 pub mod double {
     use std::collections::HashMap;
@@ -323,8 +306,8 @@ pub mod double {
         pub piece: Mutex<usize>,
         gate: Mutex<Gate>,
         moved: Condvar,
-        /// The paths asked for, in order (`None`: through the terminal).
-        pub routes: Mutex<Vec<Option<String>>>,
+        /// The handles asked for, in order.
+        pub asked: Mutex<Vec<String>>,
     }
 
     impl Double {
@@ -348,8 +331,8 @@ pub mod double {
             lock(&self.gate).going
         }
 
-        pub fn routes(&self) -> Vec<Option<String>> {
-            lock(&self.routes).clone()
+        pub fn asked(&self) -> Vec<String> {
+            lock(&self.asked).clone()
         }
     }
 
@@ -357,19 +340,14 @@ pub mod double {
         fn receive(
             &self,
             handle: &str,
-            path: Option<&str>,
-            _size: u64,
             to: &Path,
             progress: &mut dyn FnMut(u64) -> bool,
         ) -> Result<u64, String> {
-            lock(&self.routes).push(path.map(str::to_owned));
-            let bytes = match path.and_then(|path| fs::read(path).ok()) {
-                Some(bytes) => bytes,
-                None => lock(&self.given)
-                    .get(handle)
-                    .cloned()
-                    .ok_or_else(|| "no such handle".to_owned())?,
-            };
+            lock(&self.asked).push(handle.to_owned());
+            let bytes = lock(&self.given)
+                .get(handle)
+                .cloned()
+                .ok_or_else(|| "no such handle".to_owned())?;
             let part = to.with_file_name(format!(
                 ".{}.pencere-part",
                 to.file_name().unwrap_or_default().to_string_lossy()
@@ -468,8 +446,6 @@ mod tests {
             dir,
             name,
             handle,
-            size: 0,
-            path: None,
             replace,
         }
     }
@@ -550,7 +526,7 @@ mod tests {
             transfers.receive(&tree, &incoming("docs", "a.txt", "h", false), &mut |_| true);
         assert_eq!(refused, Err(Refusal::Exists("docs/a.txt".to_owned())));
         assert_eq!(fs::read(root.join("a.txt")).unwrap(), b"mine");
-        assert!(double.routes().is_empty(), "no byte was asked for");
+        assert!(double.asked().is_empty(), "no byte was asked for");
         // A name that is only a safe form of what came: nothing climbs out.
         let climbing = transfers
             .receive(
