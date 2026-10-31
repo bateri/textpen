@@ -18,6 +18,10 @@ local layout = b.layout
 
 local uploads = {}
 
+-- How long an upload may go without a byte before its row says so, seconds. The pauses measured in
+-- a terminal so far are 4.4 s at the longest: a few seconds' pause only keeps the percent where it is.
+uploads.STALL = 30
+
 local made = 0
 
 -- --- The rows ----------------------------------------------------------------------------------------
@@ -29,6 +33,10 @@ end
 
 local function remove(row)
 	S.uploads = text.without(S.uploads, row)
+	if row.timer then
+		row.timer:cancel()
+		row.timer = nil
+	end
 end
 
 -- The upload that will make the file at `path`, if one is under way.
@@ -62,11 +70,17 @@ end
 
 -- What a screen reader says of the row.
 function uploads.spoken(row)
+	if row.state == "stalled" then
+		return "Upload stalled"
+	end
 	return "Uploading, " .. uploads.percent(row) .. " percent"
 end
 
--- The row's end, in words: how far it has got.
+-- The row's end, in words: how far it has got, or why it does not go on.
 function uploads.words(row)
+	if row.state == "stalled" then
+		return "Upload stalled"
+	end
 	return uploads.percent(row) .. "%"
 end
 
@@ -128,9 +142,11 @@ local function show(dir)
 end
 
 -- Begins the row's upload: the program receives the file, and tells how far it has got.
+local arm
 local function go(row)
 	row.state = "going"
 	row.done = 0
+	arm(row)
 	if row.open then
 		-- The one picture the person gave is shown, from the file they gave while it is on its way.
 		row.open = nil
@@ -154,7 +170,27 @@ local function go(row)
 			return nil
 		end
 		row.done = report.done or row.done
+		if row.state == "stalled" then
+			row.state = "going"
+		end
 		if row.md then
+			generation += 1
+		end
+		arm(row)
+		return true
+	end)
+end
+
+-- The row says it has stalled when it hears nothing for a while; each word from the program starts
+-- the wait again.
+function arm(row)
+	if row.timer then
+		row.timer:cancel()
+	end
+	row.timer = kit.after(uploads.STALL, function()
+		row.timer = nil
+		if alive(row) and row.state == "going" then
+			row.state = "stalled"
 			generation += 1
 		end
 		return true
@@ -180,6 +216,10 @@ end
 
 -- The program answered: the file is whole, or why it is not.
 function act.upload_over(row, result, err)
+	if row.timer then
+		row.timer:cancel()
+		row.timer = nil
+	end
 	if err and err.code == "exists" then
 		-- Something came to be there that the listing did not know of, or while the file was on its
 		-- way: nothing was written over it; the person is asked, as for any file that is there.
@@ -358,6 +398,20 @@ function uploads.cancel(row)
 	kit.gather(true)
 end
 
+-- Tries again a file that stalled: the terminal is asked for its bytes from the start (a file the
+-- person gave can be read again), and the old call is given up.
+function uploads.retry(row)
+	if not alive(row) then
+		return
+	end
+	if row.call then
+		b.cancel(row.call)
+		row.call = nil
+	end
+	go(row)
+	kit.gather(true)
+end
+
 -- A press on one of the row's own buttons: whether it was.
 function uploads.press(id)
 	local kind, number = string.match(id or "", "^upload%-(%a+):(%d+)$")
@@ -368,6 +422,8 @@ function uploads.press(id)
 		if row.id == tonumber(number) then
 			if kind == "cancel" then
 				uploads.cancel(row)
+			elseif kind == "retry" then
+				uploads.retry(row)
 			end
 			return true
 		end

@@ -34,6 +34,15 @@ change what the previous one did.
   is. The preview holds a place for the picture, with how far it has got, until it is whole, then
   draws it. A picture pasted in any other file goes nowhere. It uses the program's `place`
   (with `dash`) and `upload` calls (`docs/calls.md`).
+- **A file on its way waits out a pause, and says when it has stopped.** The terminal pauses for a
+  few seconds now and then while a file crosses it (4.4 s at the longest measured): the row keeps its
+  percent and shows no error. With no word for 30 seconds the row says "Upload stalled" and has a
+  Retry button, which asks the terminal for the file's bytes again from the start (what was received
+  is not kept; the old attempt's part is another file and is deleted when it ends). A screen reader
+  reads a row as "Uploading, 42 percent", and "Upload stalled". In a narrow pane (80×24) the name of a
+  row gives way first, its last 22 points faded, and what is said at its end fades over its last 22
+  points where it does not fit (a stalled row with Cancel under the pointer); the whole of each is
+  in the tip.
 - **A picture opens in its tab.** A click on a PNG, a JPEG or an SVG in the tree shows it fitted into
   the tab (smaller in its proportions where it does not fit, never made larger), with how large the
   file is and its pixels under it ("48.2 KB · 640 × 480"). A picture of more than 8 MiB, or of more

@@ -15,7 +15,7 @@ use pencere_view::{Button, FileEntry, FileSource, Input, Mods, Panel, Point};
 
 use crate::options;
 use crate::page_tests::{
-    Page, Project, WIDE, lantern, open_patiently, page_words, pictures_drawn, png, recording,
+    PANE, Page, Project, WIDE, lantern, open_patiently, page_words, pictures_drawn, png, recording,
     shown, shows,
 };
 use crate::state::session::Session;
@@ -801,5 +801,168 @@ fn a_picture_pasted_in_a_markdown_file_goes_beside_it_and_is_written_into_it() -
                 .any(|(name, _)| name.starts_with("sha256:"))
     })?;
     assert!(!recorder.attached().is_empty());
+    Ok(())
+}
+
+/// Moves the page's clock `seconds` on while a call is out (the host gives up waiting for its answer
+/// at each frame, which is no matter here): in steps, as far as it goes.
+pub(crate) fn pass(page: &mut Page, seconds: f64) -> Result<(), Error> {
+    let end = page.now() + seconds;
+    let mut rounds = 0;
+    while page.now() < end && rounds < 5000 {
+        rounds += 1;
+        through(page.advance(end - page.now()))?;
+    }
+    Ok(())
+}
+
+/// A page that waits for an answer only a moment, and that a minute of its clock is cheap in: for
+/// what the page does as time goes by with a file held.
+fn open_waiting(session: &Arc<Session>, size: (f32, f32)) -> Result<Page, Error> {
+    open_quick_in(session, size, None, Duration::from_millis(800))
+}
+
+/// What a screen reader is told of the element that says `words`: its role and its value.
+fn spoken(page: &Page, words: &str) -> Option<(String, Option<String>)> {
+    page.outline()
+        .accessible
+        .iter()
+        .find(|item| item.words == words)
+        .map(|item| (format!("{:?}", item.role), item.state.value.clone()))
+}
+
+/// A pause of a few seconds keeps the percent where it is and shows no error; with no word for 30
+/// seconds the row says "Upload stalled" and offers Retry, which asks for the file's bytes again from
+/// the start. A screen reader is told "Uploading, 50 percent", then "Upload stalled".
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_pause_keeps_the_percent_and_thirty_seconds_without_a_word_offers_retry() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&[]);
+    let double = moving(&session);
+    let mut page = open_waiting(&session, WIDE)?;
+    let bytes: Vec<u8> = (0..100).collect();
+    double.give(&handle(1), &bytes);
+    *double.piece.lock().unwrap() = 25;
+    double.hold_at(50);
+    give(
+        &mut page,
+        "row:src",
+        FileSource::Drop,
+        &[("slow.bin", &bytes)],
+    )?;
+    wait(&mut page, |page| shows(page, "50%"))?;
+    assert_eq!(
+        spoken(&page, "Uploading, 50 percent"),
+        Some(("Progress".to_owned(), Some("50%".to_owned()))),
+        "{:?}",
+        page.outline()
+            .accessible
+            .iter()
+            .map(|item| &item.words)
+            .collect::<Vec<_>>()
+    );
+
+    // A pause: the percent waits, and nothing is said of a failure.
+    pass(&mut page, 6.0)?;
+    assert!(shows(&page, "50%"), "{:?}", page_words(&page));
+    assert!(!shows(&page, "stalled") && !shows(&page, "Retry"));
+    assert!(
+        !page_words(&page)
+            .iter()
+            .any(|word| word.contains("could not") || word.contains("Could not")),
+        "{:?}",
+        page_words(&page)
+    );
+
+    // Thirty seconds with no word.
+    pass(&mut page, 26.0)?;
+    wait(&mut page, |page| shows(page, "Upload stalled"))?;
+    assert!(shows(&page, "Retry"), "{:?}", page_words(&page));
+    assert!(!shows(&page, "50%"));
+    assert!(spoken(&page, "Upload stalled").is_some());
+    assert!(!project.exists("src/slow.bin"));
+
+    // Retry: the bytes are asked for again; the file comes whole, once.
+    click(&mut page, "upload-retry:1")?;
+    wait(&mut page, |page| {
+        shows(page, "50%") && !shows(page, "stalled")
+    })?;
+    wait(&mut page, |_| double.routes().len() == 2)?;
+    double.go_on();
+    wait(&mut page, |_| project.exists("src/slow.bin"))?;
+    wait(&mut page, |_| double.going() == 0)?;
+    assert_eq!(
+        std::fs::read(project.root().join("src/slow.bin")).unwrap(),
+        bytes
+    );
+    assert_eq!(
+        left_in(&project, "src")
+            .iter()
+            .filter(|name| name.contains("slow.bin"))
+            .count(),
+        1,
+        "{:?}",
+        left_in(&project, "src")
+    );
+    Ok(())
+}
+
+/// In an 80×24 pane the name of an upload's row gives way first, faded over its last 22 points; what is
+/// said at its end fades over its last 22 points where it does not fit (a stalled row with its Cancel
+/// under the pointer), the whole of it in the tip.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn in_an_80_by_24_pane_what_does_not_fit_in_a_row_fades_and_is_whole_in_the_tip()
+-> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["src/server.ts"]);
+    let double = moving(&session);
+    let mut page = open_waiting(&session, PANE)?;
+    page.press("cmd+shift+e")?;
+    wait(&mut page, |page| page.bounds("row:src/lib").is_some())?;
+    let bytes = vec![5_u8; 100];
+    double.give(&handle(1), &bytes);
+    double.give(&handle(2), &bytes);
+    *double.piece.lock().unwrap() = 50;
+    double.hold_at(50);
+    let long = "a-rather-long-name-for-a-product-photo.txt";
+    give(
+        &mut page,
+        "row:src/lib",
+        FileSource::Drop,
+        &[(long, &bytes), ("a.txt", &bytes)],
+    )?;
+    wait(&mut page, |page| {
+        page.bounds("upend:1").is_some() && page.bounds("upend:2").is_some()
+    })?;
+    through(page.tick())?;
+    // The long name is cut and fades; the short one is whole; the percents fit.
+    wait(&mut page, |page| page.bounds("upnamefade:1").is_some())?;
+    let fade = page.bounds("upnamefade:1").expect("the fade");
+    assert!((fade.w - 22.0).abs() < 1.0, "the last 22 points: {fade:?}");
+    assert!(page.bounds("upnamefade:2").is_none(), "this name fits");
+    assert!(page.bounds("upfade:1").is_none(), "the end fits");
+    assert!(
+        page.outline().tips.iter().any(|tip| tip.words == long),
+        "the whole name in the tip: {:?}",
+        page.outline().tips
+    );
+
+    // Stalled, and the pointer on the row: Retry and Cancel and the words do not fit.
+    pass(&mut page, 32.0)?;
+    wait(&mut page, |page| shows(page, "Upload stalled"))?;
+    through(page.hover("row:src/lib/a-rather-long-name-for-a-product-photo.txt"))?;
+    wait(&mut page, |page| page.bounds("upfade:1").is_some())?;
+    let fade = page.bounds("upfade:1").expect("the fade");
+    assert!((fade.w - 22.0).abs() < 1.0, "the last 22 points: {fade:?}");
+    assert!(
+        page.outline()
+            .tips
+            .iter()
+            .any(|tip| tip.words == "Upload stalled"),
+        "the whole of it in the tip: {:?}",
+        page.outline().tips
+    );
     Ok(())
 }

@@ -11,6 +11,7 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use pencere::ViewControl;
@@ -21,6 +22,9 @@ use crate::project::tree::Tree;
 
 /// The kind of thing a folder a file is received into must be.
 const NOT_A_FOLDER: &str = "is not a folder of the project";
+
+/// How many receivings were begun, for each to have a file of its own to write to.
+static ATTEMPTS: AtomicU64 = AtomicU64::new(0);
 
 /// What moves the bytes: the terminal, by the program's hand on its view.
 pub trait Transfer: Send + Sync {
@@ -230,27 +234,25 @@ impl Transfers {
         }
         let transfer = self.transfer();
         let fail = |why: io::Error| Refusal::Failed(format!("{shown}: {}", said(&why)));
-        let size = if incoming.replace {
-            // Replacing is what was asked: the part takes the name, over the old file.
-            transfer.receive(
-                incoming.handle,
-                incoming.path,
-                incoming.size,
-                &target,
-                progress,
-            )?
+        // The bytes go to a file of a name of this receiving alone (a receiving tried again while the
+        // first still waits on the terminal is another), and the file is let into its place when
+        // it is whole.
+        let attempt = ATTEMPTS.fetch_add(1, Ordering::Relaxed);
+        let staged = folder.join(format!(".{name}.{attempt}.textpen-upload"));
+        let size = transfer.receive(
+            incoming.handle,
+            incoming.path,
+            incoming.size,
+            &staged,
+            progress,
+        )?;
+        let placed = if incoming.replace {
+            // Replacing is what was asked: the file takes the name, over the old one.
+            fs::rename(&staged, &target)
         } else {
-            // A new file is let into its place with a link, which fails where something is there
-            // by then: a file that came meanwhile is not written over.
-            let staged = folder.join(format!(".{name}.textpen-upload"));
-            let size = transfer.receive(
-                incoming.handle,
-                incoming.path,
-                incoming.size,
-                &staged,
-                progress,
-            )?;
-            let placed = fs::hard_link(&staged, &target).or_else(|why| {
+            // A new file is let in with a link, which fails where something is there by then: a
+            // file that came meanwhile is not written over.
+            fs::hard_link(&staged, &target).or_else(|why| {
                 if why.kind() == io::ErrorKind::AlreadyExists {
                     Err(why)
                 } else if fs::symlink_metadata(&target).is_ok() {
@@ -259,16 +261,16 @@ impl Transfers {
                     // A disk that makes no links: the file is renamed, in the moment between.
                     fs::rename(&staged, &target)
                 }
-            });
-            let _ = fs::remove_file(&staged);
-            match placed {
-                Ok(()) => size,
-                Err(why) if why.kind() == io::ErrorKind::AlreadyExists => {
-                    return Err(Refusal::Exists(shown));
-                }
-                Err(why) => return Err(fail(why)),
-            }
+            })
         };
+        let _ = fs::remove_file(&staged);
+        match placed {
+            Ok(()) => {}
+            Err(why) if why.kind() == io::ErrorKind::AlreadyExists => {
+                return Err(Refusal::Exists(shown));
+            }
+            Err(why) => return Err(fail(why)),
+        }
         project.forget();
         Ok((shown, size))
     }

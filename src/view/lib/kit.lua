@@ -71,6 +71,8 @@ local S = {
 	field = nil,
 	-- The files the person gave that the program is receiving into the project (`parts/uploads.lua`).
 	uploads = {},
+	-- Which uploads' rows cut what they say at the end short (the faded ones), by the upload's number.
+	upload_fade = {},
 	-- Where files dragged over the page would go: { kind = "tree" | "editor", dir =, count = }.
 	drop = nil,
 	-- The folder the Open panel is for, and the file the Save panel is for.

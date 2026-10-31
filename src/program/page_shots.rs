@@ -20,7 +20,7 @@ use crate::page_tests::{
     shown, shows, wait,
 };
 use crate::page_uploads::{
-    give, handle, moving, open_quick_in, over_row, through, wait as wait_through,
+    give, handle, moving, open_quick_in, over_row, pass, through, wait as wait_through,
 };
 
 /// The fonts a Mac draws a terminal and its system in: bateri's terminal face is SF Mono where the
@@ -370,5 +370,36 @@ fn the_pictures_of_the_uploads() -> Result<(), Error> {
     wait_through(&mut page, |page| shows(page, "33%"))?;
     page.advance(0.3).ok();
     save(&page, &fonts, Palette::Light, "upload-paste.png");
+
+    // An 80×24 pane, in a light terminal: an upload that has stalled, the end of its row faded where
+    // it does not fit.
+    let project = lantern();
+    with_git(&project);
+    let session = project.session(&["src/server.ts"]);
+    let double = moving(&session);
+    let mut page = open_quick_in(
+        &session,
+        PANE,
+        Some(&fonts),
+        std::time::Duration::from_millis(1500),
+    )?;
+    page.press("cmd+shift+e")?;
+    wait_through(&mut page, |page| page.bounds("row:src/lib").is_some())?;
+    double.give(&handle(1), &bytes);
+    *double.piece.lock().expect("a lock") = 50;
+    double.hold_at(50);
+    give(
+        &mut page,
+        "row:src/lib",
+        FileSource::Drop,
+        &[("a-rather-long-name-for-a-report.txt", &bytes)],
+    )?;
+    wait_through(&mut page, |page| shows(page, "50%"))?;
+    pass(&mut page, 32.0)?;
+    wait_through(&mut page, |page| shows(page, "Upload stalled"))?;
+    through(page.hover("row:src/lib/a-rather-long-name-for-a-report.txt"))?;
+    wait_through(&mut page, |page| shows(page, "Cancel"))?;
+    through(page.tick())?;
+    save(&page, &fonts, Palette::Light, "upload-stalled-80x24.png");
     Ok(())
 }

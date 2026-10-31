@@ -110,7 +110,8 @@ local function upload_view(row, ctx)
 	local path = up.path
 	local id = "row:" .. path
 	local cancel = "upload-cancel:" .. up.id
-	local over = kit.hovered(id) or kit.hovered(cancel)
+	local retry = "upload-retry:" .. up.id
+	local over = kit.hovered(id) or kit.hovered(cancel) or kit.hovered(retry)
 	local selected = S.tree_selection == path
 	local ground = nil
 	if selected and S.focus == "sidebar" and S.sidebar == "files" then
@@ -138,6 +139,8 @@ local function upload_view(row, ctx)
 	for depth = 0, row.depth - 1 do
 		element:child(b.div():absolute():inset(0, nil, 0, 15 + depth * INDENT):w(1):bg(b.alpha("border", 0.7)))
 	end
+	-- The line is as wide as the tree and no wider: what is said at its end gives way to the name, and
+	-- where it does not fit its last 22 points fade, the whole of it in the tip.
 	local line = b.div()
 		:id("rowline:" .. path)
 		:row()
@@ -146,17 +149,37 @@ local function upload_view(row, ctx)
 		:h_full()
 		:pl(8 + row.depth * INDENT)
 		:pr(10)
-		:min_w(ctx.width)
+		:w(ctx.width)
 		:no_shrink()
+		:clip()
 	local kind = files.kind(path)
 	line:child(kit.icon(kind.icon, 15, kind.color):opacity(fade))
-	line:child(b.text(up.name):color("foreground"):no_shrink():opacity(fade))
-	line:child(b.spacer())
+	-- The name gives way first, with its last 22 points faded where it is cut; what is said at the end
+	-- keeps the room it needs but for a little of the name.
+	local ground = over and b.mix("raised1", "foreground", 0.045) or "raised1"
+	local name = b.div():id("upname:" .. up.id):row():items_center():grow(1):min_w(0):clip():tip(up.name)
+	name:child(b.div():id("upnamein:" .. up.id):no_shrink():child(b.text(up.name):color("foreground"):no_shrink():opacity(fade)))
+	if S.upload_fade["name" .. up.id] then
+		name:child(b.div():id("upnamefade:" .. up.id):absolute():inset(0, 0, 0, nil):w(22):bg_gradient(90, b.alpha(ground, 0), ground))
+	end
+	line:child(name)
 	if up.state ~= "done" then
-		line:child(b.text(uploads.words(up)):color("dim"):text_size(11):no_shrink())
-		if over then
-			line:child(kit.button(cancel, "Cancel", { h = 18, px = 8 }))
+		local stalled = up.state == "stalled"
+		local inner = b.div():id("upin:" .. up.id):row():items_center():gap(6):no_shrink()
+		inner:child(b.text(uploads.words(up)):color(stalled and "warning" or "dim"):text_size(11):no_shrink())
+		if stalled then
+			inner:child(kit.button(retry, "Retry", { h = 18, px = 8 }))
 		end
+		if over then
+			inner:child(kit.button(cancel, "Cancel", { h = 18, px = 8 }))
+		end
+		local room = math.max(ctx.width - (8 + row.depth * INDENT) - 15 - 6 - 10 - 40 - 6, 40)
+		local outer = b.div():id("upend:" .. up.id):row():items_center():no_shrink():max_w(room):clip():tip(uploads.words(up))
+		outer:child(inner)
+		if S.upload_fade[up.id] then
+			outer:child(b.div():id("upfade:" .. up.id):absolute():inset(0, 0, 0, nil):w(22):bg_gradient(90, b.alpha(ground, 0), ground))
+		end
+		line:child(outer)
 	end
 	element:child(line)
 	return element
@@ -325,9 +348,25 @@ function tree.measure()
 			widest = math.max(widest, line.w)
 		end
 	end
+	-- What is said at the end of an upload's row fades where it does not fit.
+	local faded = false
+	local function measure_fade(key, box_id, content_id)
+		local box, content = layout.bounds(box_id), layout.bounds(content_id)
+		if box and content then
+			local cut = content.w > box.w + 0.5
+			if (S.upload_fade[key] or false) ~= cut then
+				S.upload_fade[key] = cut
+				faded = true
+			end
+		end
+	end
+	for _, up in S.uploads do
+		measure_fade(up.id, "upend:" .. up.id, "upin:" .. up.id)
+		measure_fade("name" .. up.id, "upname:" .. up.id, "upnamein:" .. up.id)
+	end
 	local width = widest > shown_width + 0.5 and math.ceil(widest) or 0
 	if width == tree.width then
-		return false
+		return faded
 	end
 	tree.width = width
 	return true

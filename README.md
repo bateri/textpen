@@ -67,13 +67,15 @@ the Open panel and puts what you choose in that folder, and **Download** (a file
 palette) asks for the Save panel with the file's name and says "Downloaded foto.png" when it is
 written. In a Markdown file, `⌘V` with a picture on the pasteboard puts it beside the file as
 `image.png` (`image-1.png`, `image-2.png`… where the name is taken) and writes `![](image.png)`
-at the caret; the preview holds its place until it is whole. It needs a terminal that shows the
+at the caret; the preview holds its place until it is whole. A pause of a few seconds leaves the percent where
+it is; with no word for 30 seconds the row says "Upload stalled" and offers **Retry**. It needs a terminal that shows the
 page at `lua` 2.1, as bateri does.
 
 |                                                              |                                                                    |
 | ------------------------------------------------------------ | ------------------------------------------------------------------ |
 | ![Dragged over a folder](docs/upload-over.png)               | ![Two files on their way](docs/upload-going.png)                   |
 | ![A name that is taken](docs/upload-asks.png)                | ![A picture pasted in a Markdown file](docs/upload-paste.png)      |
+| ![An upload that stalled, in an 80×24 pane](docs/upload-stalled-80x24.png) |                                                      |
 
 **A preview of Markdown**, beside the text in a wide pane and in its place in a narrow one,
 read again only where you changed the text, and shown to its end for a long file. The pictures it
