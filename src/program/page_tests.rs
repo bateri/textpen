@@ -133,7 +133,7 @@ impl Project {
 /// many milliseconds, the rest to the kit's own: the page in the time a terminal gives it, or in
 /// half of it (`TEXTPEN_CALL_MS=125`), to see how near it comes. Meant for a machine at rest.
 pub(crate) fn limits(call_ms: Option<u64>) -> pencere_sandbox::ModuleLimits {
-    let kit = pencere_sandbox::ModuleLimits::default();
+    let kit = pencere_sandbox::ModuleLimits::floor();
     match call_ms {
         Some(ms) => pencere_sandbox::ModuleLimits {
             call: Duration::from_millis(ms),
