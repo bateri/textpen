@@ -330,5 +330,45 @@ fn the_pictures_of_the_uploads() -> Result<(), Error> {
     wait_through(&mut page, |page| shows(page, "Keep Both"))?;
     page.advance(0.4).ok();
     save(&page, &fonts, Palette::Dark, "upload-asks.png");
+
+    // A picture pasted in a Markdown file: written into it at once, and the preview holds its place.
+    let project = lantern();
+    with_git(&project);
+    let session = project.session(&["README.md"]);
+    let double = moving(&session);
+    // The preview reads the text again after 0.2 s of the page's clock, which moves a frame a
+    // round of the host's patience: a short one.
+    let mut page = open_quick_in(
+        &session,
+        (1100.0, 680.0),
+        Some(&fonts),
+        std::time::Duration::from_millis(1000),
+    )?;
+    let art = lantern_art();
+    double.give(&handle(1), &art);
+    *double.piece.lock().expect("a lock") = art.len() / 3;
+    double.hold_at(u64::try_from(art.len() / 3).expect("a size"));
+    through(page.press("cmd+shift+v"))?;
+    let editor = crate::page_tests::shown(&page).expect("an editor");
+    let at = page.bounds(&editor).expect("the editor");
+    page.page_mut().give(
+        pencere_view::Point::new(at.x + 80.0, at.y + 200.0),
+        FileSource::Paste,
+        vec![pencere_view::FileEntry {
+            handle: Some(handle(1)),
+            name: "image.png".to_owned(),
+            size: art.len() as u64,
+            media_type: "image/png".to_owned(),
+            path: None,
+            folder: false,
+        }],
+    );
+    through(page.settle())?;
+    wait_through(&mut page, |page| {
+        page.bounds("upload-placeholder:1").is_some()
+    })?;
+    wait_through(&mut page, |page| shows(page, "33%"))?;
+    page.advance(0.3).ok();
+    save(&page, &fonts, Palette::Light, "upload-paste.png");
     Ok(())
 }

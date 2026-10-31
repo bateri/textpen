@@ -1,6 +1,6 @@
 -- The files that change hands: ones the person gives the page (dropped on the tree or on the editor,
--- chosen in the Open panel), which the program receives into a folder of the project, and one of the
--- project's that the person saves where they choose in the Save panel.
+-- pasted into a Markdown file, chosen in the Open panel), which the program receives into a folder
+-- of the project, and one of the project's that the person saves where they choose in the Save panel.
 --
 -- A file changes hands only by the person's move, the person sees at every moment what goes where,
 -- and can give it up; and no file is written over another unasked. The page holds the person's files
@@ -106,6 +106,7 @@ end
 -- its name and how far it has got.
 function uploads.placeholder(row)
 	return b.div()
+		:id("upload-placeholder:" .. row.id)
 		:row()
 		:items_center()
 		:gap(8)
@@ -478,7 +479,71 @@ end
 
 -- --- What the person gave -------------------------------------------------------------------------------------
 
--- Files were given to the page: dropped on it, or chosen in the Open panel.
+local IMAGE_TYPES = { png = "png", jpeg = "jpg", jpg = "jpg", gif = "gif", webp = "webp", svg = "svg" }
+
+-- The name a pasted picture is given: "image" and the extension its name or its type says.
+local function pasted_name(file)
+	local extension = text.extension(file.name or "")
+	if extension == "" then
+		extension = IMAGE_TYPES[string.match(file.type or "", "^image/([%w]+)") or ""] or "png"
+	end
+	return "image." .. extension
+end
+
+-- Pasted pictures into a Markdown file being edited: each goes beside the file as `image.png` (the
+-- next free `image-1.png`, `image-2.png`), and `![](image.png)` is written where the caret is.
+local function paste(event)
+	local tab = docs.tab_of(S.active)
+	local doc = docs.active()
+	if S.focus ~= "editor" or not (tab and doc and act.is_markdown(tab.path)) or string.sub(tab.path, 1, 1) == "/" then
+		return
+	end
+	local dir = text.dirname(tab.path)
+	local files = {}
+	for _, file in event.files or {} do
+		if file.handle and file.kind ~= "folder" and string.match(file.type or "", "^image/") then
+			files[#files + 1] = file
+		end
+	end
+	local taken = {}
+	local function next_one(index)
+		local file = files[index]
+		if not file then
+			return
+		end
+		local also = {}
+		for _, name in taken do
+			also[#also + 1] = name
+		end
+		for _, each in S.uploads do
+			if each.dir == dir then
+				also[#also + 1] = each.name
+			end
+		end
+		-- An empty table is no list to JSON: none is left out.
+		kit.call("place", { dir = dir, name = pasted_name(file), also = #also > 0 and also or nil, dash = true }, function(place, err)
+			if err then
+				kit.toast(err.message or "Could not paste the picture", "bad", 6)
+				return true
+			end
+			local name = place.exists and place.free or place.name
+			taken[#taken + 1] = name
+			-- The name is free, so that nothing is asked.
+			local row = begin(file, dir, name, true)
+			row.md = tab.path
+			local words = "![](" .. string.gsub(name, " ", "%%20") .. ")"
+			if index > 1 then
+				words = "\n" .. words
+			end
+			kit.ask(doc.id, { command = "insert", text = words })
+			next_one(index + 1)
+			return true
+		end)
+	end
+	next_one(1)
+end
+
+-- Files were given to the page: dropped on it, pasted, or chosen in the Open panel.
 function uploads.files(event)
 	S.drop = nil
 	if event.files == nil then
@@ -486,6 +551,10 @@ function uploads.files(event)
 		for _, path in event.paths or {} do
 			act.open_file(path, { focus = true })
 		end
+		return
+	end
+	if event.source == "paste" then
+		paste(event)
 		return
 	end
 	if event.source == "pick" then

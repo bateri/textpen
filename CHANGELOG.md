@@ -28,6 +28,12 @@ change what the previous one did.
   palette where a file is chosen (or shown), have Download: the Save panel proposing the file's
   name, the file written where you choose, and a note, "Downloaded foto.png". The program has the
   call `download` for it (`docs/calls.md`).
+- **Paste a picture into a Markdown file.** `⌘V` with a picture on the pasteboard, while you edit a
+  Markdown file, puts the picture beside the file as `image.png` (`image-1.png`, `image-2.png`
+  where the name is taken, so nothing is written over) and writes `![](image.png)` where the caret
+  is. The preview holds a place for the picture, with how far it has got, until it is whole, then
+  draws it. A picture pasted in any other file goes nowhere. It uses the program's `place`
+  (with `dash`) and `upload` calls (`docs/calls.md`).
 - **A picture opens in its tab.** A click on a PNG, a JPEG or an SVG in the tree shows it fitted into
   the tab (smaller in its proportions where it does not fit, never made larger), with how large the
   file is and its pixels under it ("48.2 KB · 640 × 480"). A picture of more than 8 MiB, or of more

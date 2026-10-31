@@ -711,3 +711,95 @@ fn download_asks_for_the_save_panel_with_the_files_name_and_says_when_it_is_done
     );
     Ok(())
 }
+
+/// ⌘V with a picture on the pasteboard, in a Markdown file: the picture goes beside the file as
+/// `image.png` (then `image-1.png`, `image-2.png`), and `![](image.png)` is written where the caret
+/// is; the preview holds a place for it until it is whole, then draws it. A pasted picture goes
+/// nowhere else.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_picture_pasted_in_a_markdown_file_goes_beside_it_and_is_written_into_it() -> Result<(), Error>
+{
+    let project = lantern();
+    project.write("docs/guide.md", "# Guide\n\nThe lantern:\n");
+    let session = project.session(&["README.md", "docs/guide.md", "src/server.ts"]);
+    let recorder = recording(&session);
+    let double = moving(&session);
+    let mut page = open_quick(&session, WIDE)?;
+    let picture = png(40, 20, |x, y| [x as u8 * 5, y as u8 * 10, 60]);
+    page.attach(&picture);
+    let paste = |page: &mut Page, n: u64, name: &str, bytes: &[u8]| -> Result<(), Error> {
+        double.give(&handle(n), bytes);
+        let editor = shown(page).expect("an editor");
+        let at = page.bounds(&editor).expect("the editor");
+        page.page_mut().give(
+            Point::new(at.x + 60.0, at.y + 60.0),
+            FileSource::Paste,
+            vec![entry(n, name, bytes, None)],
+        );
+        through(page.settle())
+    };
+
+    // README.md, the first in front: the caret is at the start; the picture is named for what it is.
+    paste(&mut page, 1, "Screenshot 2026-10-31.png", &picture)?;
+    wait(&mut page, |page| {
+        crate::page_tests::text(page).starts_with("![](image.png)")
+    })?;
+    wait(&mut page, |_| project.exists("image.png"))?;
+    assert_eq!(
+        std::fs::read(project.root().join("image.png")).unwrap(),
+        picture
+    );
+    // The name is taken: the next, and the next.
+    paste(&mut page, 2, "image.png", &picture)?;
+    wait(&mut page, |_| project.exists("image-1.png"))?;
+    paste(&mut page, 3, "image.png", &picture)?;
+    wait(&mut page, |_| project.exists("image-2.png"))?;
+    wait(&mut page, |page| {
+        let text = crate::page_tests::text(page);
+        text.contains("![](image-1.png)") && text.contains("![](image-2.png)")
+    })?;
+    assert!(
+        crate::page_tests::text(&page).contains("![](image.png)"),
+        "the first is still there: {}",
+        crate::page_tests::text(&page)
+    );
+
+    // A picture pasted in a file that is no Markdown goes nowhere, and no file is made.
+    page.press("ctrl+3")?;
+    wait(&mut page, |page| {
+        crate::page_tests::text(page).starts_with("import { createServer }")
+    })?;
+    paste(&mut page, 4, "image.png", &picture)?;
+    page.advance(0.5).ok();
+    assert!(!project.exists("src/image.png") && !project.exists("image-3.png"));
+
+    // A Markdown file in a folder: beside it, and the preview holds a place until it is whole.
+    page.press("ctrl+2")?;
+    wait(&mut page, |page| {
+        crate::page_tests::text(page).starts_with("# Guide")
+    })?;
+    page.press("cmd+shift+v")?;
+    double.hold_at(100);
+    *double.piece.lock().unwrap() = 50;
+    paste(&mut page, 5, "image.png", &picture)?;
+    wait(&mut page, |page| {
+        page.bounds("upload-placeholder:4").is_some()
+    })?;
+    assert!(
+        crate::page_tests::text(&page).contains("![](image.png)"),
+        "{}",
+        crate::page_tests::text(&page)
+    );
+    assert!(!project.exists("docs/image.png"), "not whole yet");
+    double.go_on();
+    wait(&mut page, |_| project.exists("docs/image.png"))?;
+    wait(&mut page, |page| {
+        page.bounds("upload-placeholder:4").is_none()
+            && pictures_drawn(page)
+                .iter()
+                .any(|(name, _)| name.starts_with("sha256:"))
+    })?;
+    assert!(!recorder.attached().is_empty());
+    Ok(())
+}

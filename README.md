@@ -65,12 +65,15 @@ unasked, and a file given up leaves no half file. From the keyboard, **Upload Fi
 right-click menu, or the command palette with a folder chosen in the tree) asks the terminal for
 the Open panel and puts what you choose in that folder, and **Download** (a file's menu, or the
 palette) asks for the Save panel with the file's name and says "Downloaded foto.png" when it is
-written. It needs a terminal that shows the page at `lua` 2.1, as bateri does.
+written. In a Markdown file, `⌘V` with a picture on the pasteboard puts it beside the file as
+`image.png` (`image-1.png`, `image-2.png`… where the name is taken) and writes `![](image.png)`
+at the caret; the preview holds its place until it is whole. It needs a terminal that shows the
+page at `lua` 2.1, as bateri does.
 
 |                                                              |                                                                    |
 | ------------------------------------------------------------ | ------------------------------------------------------------------ |
 | ![Dragged over a folder](docs/upload-over.png)               | ![Two files on their way](docs/upload-going.png)                   |
-| ![A name that is taken](docs/upload-asks.png)                |                                                                    |
+| ![A name that is taken](docs/upload-asks.png)                | ![A picture pasted in a Markdown file](docs/upload-paste.png)      |
 
 **A preview of Markdown**, beside the text in a wide pane and in its place in a narrow one,
 read again only where you changed the text, and shown to its end for a long file. The pictures it
