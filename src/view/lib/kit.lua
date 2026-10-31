@@ -73,6 +73,8 @@ local S = {
 	uploads = {},
 	-- Which uploads' rows cut what they say at the end short (the faded ones), by the upload's number.
 	upload_fade = {},
+	-- How wide the buttons at the end of an upload's row were laid out, by the upload's number.
+	upload_buttons = {},
 	-- Where files dragged over the page would go: { kind = "tree" | "editor", dir =, count = }.
 	drop = nil,
 	-- The folder the Open panel is for, and the file the Save panel is for.

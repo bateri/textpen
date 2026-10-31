@@ -349,6 +349,8 @@ fn the_pictures_of_the_uploads() -> Result<(), Error> {
     *double.piece.lock().expect("a lock") = art.len() / 3;
     double.hold_at(u64::try_from(art.len() / 3).expect("a size"));
     through(page.press("cmd+shift+v"))?;
+    // The caret is on the empty line under the heading: the picture is a paragraph of its own.
+    through(page.press("down"))?;
     let editor = crate::page_tests::shown(&page).expect("an editor");
     let at = page.bounds(&editor).expect("the editor");
     page.page_mut().give(

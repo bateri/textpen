@@ -279,14 +279,12 @@ local function pump()
 		pumping = false
 		return pump()
 	end
-	local folder = row.dir == "" and (S.boot.rootName .. "/") or (row.dir .. "/")
+	-- The buttons say it all, and what Keep Both would name the file is in its tip.
 	act.ask({
 		title = "Replace " .. place.name .. "?",
-		message = folder .. place.name .. " is there already. Keep Both uploads this one as "
-			.. place.free .. ".",
 		actions = {
 			{ id = "replace", label = "Replace", danger = true },
-			{ id = "keep", label = "Keep Both", primary = true },
+			{ id = "keep", label = "Keep Both", primary = true, tip = "Uploads this one as " .. place.free },
 		},
 	}, function(chosen)
 		pumping = false

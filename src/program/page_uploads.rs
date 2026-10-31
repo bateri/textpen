@@ -375,7 +375,22 @@ fn a_name_that_is_taken_is_asked_about_once_and_nothing_is_written_over_unasked(
         &[("foto.png", b"theirs three")],
     )?;
     wait(&mut page, |page| shows(page, "Keep Both"))?;
-    assert!(shows(&page, "foto 3.png"), "{:?}", page_words(&page));
+    // The explanation is the button's tip, not a sentence in the dialog.
+    assert!(
+        page.outline()
+            .tips
+            .iter()
+            .any(|tip| tip.words == "Uploads this one as foto 3.png"),
+        "{:?}",
+        page.outline().tips
+    );
+    assert!(
+        !page_words(&page)
+            .iter()
+            .any(|word| word.contains("is there already")),
+        "no sentence beside the buttons: {:?}",
+        page_words(&page)
+    );
     through(page.press("enter"))?;
     wait(&mut page, |_| project.exists("src/foto 3.png"))?;
     assert_eq!(project.read("src/foto 3.png"), "theirs three");
@@ -908,6 +923,27 @@ fn a_pause_keeps_the_percent_and_thirty_seconds_without_a_word_offers_retry() ->
     Ok(())
 }
 
+/// Every button of the upload `id` (Retry, Cancel) is whole: its box lies inside the row's line.
+fn buttons_lie_in_their_rows(page: &Page, id: u64, path: &str) {
+    let line = page
+        .bounds(&format!("rowline:{path}"))
+        .expect("the row's line");
+    let mut seen = 0;
+    for name in [format!("upload-retry:{id}"), format!("upload-cancel:{id}")] {
+        if let Some(button) = page.bounds(&name) {
+            seen += 1;
+            assert!(
+                button.x >= line.x - 0.5
+                    && button.x + button.w <= line.x + line.w + 0.5
+                    && button.y >= line.y - 0.5
+                    && button.y + button.h <= line.y + line.h + 0.5,
+                "{name} {button:?} is cut by its row {line:?}"
+            );
+        }
+    }
+    assert!(seen > 0, "a button to look at");
+}
+
 /// In an 80×24 pane the name of an upload's row gives way first, faded over its last 22 points; what is
 /// said at its end fades over its last 22 points where it does not fit (a stalled row with its Cancel
 /// under the pointer), the whole of it in the tip.
@@ -949,11 +985,30 @@ fn in_an_80_by_24_pane_what_does_not_fit_in_a_row_fades_and_is_whole_in_the_tip(
         page.outline().tips
     );
 
-    // Stalled, and the pointer on the row: Retry and Cancel and the words do not fit.
+    // With the pointer on a row its Cancel is whole, inside the row, where the name gives way.
+    let row = "row:src/lib/a-rather-long-name-for-a-product-photo.txt";
+    through(page.hover(row))?;
+    wait(&mut page, |page| page.bounds("upload-cancel:1").is_some())?;
+    through(page.tick())?;
+    buttons_lie_in_their_rows(
+        &page,
+        1,
+        "src/lib/a-rather-long-name-for-a-product-photo.txt",
+    );
+
+    // Stalled, and the pointer on the row: Retry and Cancel are whole, and the words do not fit.
     pass(&mut page, 32.0)?;
     wait(&mut page, |page| shows(page, "Upload stalled"))?;
-    through(page.hover("row:src/lib/a-rather-long-name-for-a-product-photo.txt"))?;
+    through(page.hover(row))?;
+    wait(&mut page, |page| {
+        page.bounds("upload-retry:1").is_some() && page.bounds("upload-cancel:1").is_some()
+    })?;
     wait(&mut page, |page| page.bounds("upfade:1").is_some())?;
+    buttons_lie_in_their_rows(
+        &page,
+        1,
+        "src/lib/a-rather-long-name-for-a-product-photo.txt",
+    );
     let fade = page.bounds("upfade:1").expect("the fade");
     assert!((fade.w - 22.0).abs() < 1.0, "the last 22 points: {fade:?}");
     assert!(

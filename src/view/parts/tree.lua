@@ -165,21 +165,39 @@ local function upload_view(row, ctx)
 	line:child(name)
 	if up.state ~= "done" then
 		local stalled = up.state == "stalled"
-		local inner = b.div():id("upin:" .. up.id):row():items_center():gap(6):no_shrink()
-		inner:child(b.text(uploads.words(up)):color(stalled and "warning" or "dim"):text_size(11):no_shrink())
+		-- The buttons keep their whole width at the end of the row; what is said before them is cut
+		-- (its last 22 points faded) where the name, shrunk as far as it goes, leaves it no room.
+		local buttons = {}
 		if stalled then
-			inner:child(kit.button(retry, "Retry", { h = 18, px = 8 }))
+			buttons[#buttons + 1] = kit.button(retry, "Retry", { h = 18, px = 8 })
 		end
 		if over then
-			inner:child(kit.button(cancel, "Cancel", { h = 18, px = 8 }))
+			buttons[#buttons + 1] = kit.button(cancel, "Cancel", { h = 18, px = 8 })
 		end
-		local room = math.max(ctx.width - (8 + row.depth * INDENT) - 15 - 6 - 10 - 40 - 6, 40)
-		local outer = b.div():id("upend:" .. up.id):row():items_center():no_shrink():max_w(room):clip():tip(uploads.words(up))
-		outer:child(inner)
+		local reserved = 0
+		if #buttons > 0 then
+			-- As wide as they were laid out; before they were, as wide as their words are.
+			reserved = S.upload_buttons[up.id]
+			if not reserved or reserved == 0 then
+				reserved = (stalled and 52 or 0) + (over and 66 or 0) + 6 * (#buttons - 1)
+			end
+			reserved += 6
+		end
+		local room = math.max(ctx.width - (8 + row.depth * INDENT) - 15 - 6 - 10 - 40 - 6 - reserved, 30)
+		local words = b.div():id("upend:" .. up.id):row():items_center():no_shrink():max_w(room):clip():tip(uploads.words(up))
+		words:child(b.div():id("upin:" .. up.id):no_shrink():child(
+			b.text(uploads.words(up)):color(stalled and "warning" or "dim"):text_size(11):no_shrink()))
 		if S.upload_fade[up.id] then
-			outer:child(b.div():id("upfade:" .. up.id):absolute():inset(0, 0, 0, nil):w(22):bg_gradient(90, b.alpha(ground, 0), ground))
+			words:child(b.div():id("upfade:" .. up.id):absolute():inset(0, 0, 0, nil):w(22):bg_gradient(90, b.alpha(ground, 0), ground))
 		end
-		line:child(outer)
+		line:child(words)
+		if #buttons > 0 then
+			local box = b.div():id("upbtn:" .. up.id):row():items_center():gap(6):no_shrink()
+			for _, button in buttons do
+				box:child(button)
+			end
+			line:child(box)
+		end
 	end
 	element:child(line)
 	return element
@@ -361,6 +379,12 @@ function tree.measure()
 		end
 	end
 	for _, up in S.uploads do
+		local buttons = layout.bounds("upbtn:" .. up.id)
+		local width = buttons and math.ceil(buttons.w) or 0
+		if (S.upload_buttons[up.id] or 0) ~= width then
+			S.upload_buttons[up.id] = width
+			faded = true
+		end
 		measure_fade(up.id, "upend:" .. up.id, "upin:" .. up.id)
 		measure_fade("name" .. up.id, "upname:" .. up.id, "upnamein:" .. up.id)
 	end

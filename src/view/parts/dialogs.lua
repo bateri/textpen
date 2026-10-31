@@ -11,7 +11,7 @@ local dialogs = {}
 local FIELD = "dialog-input"
 
 -- Asks with a dialog: `spec` is { title =, message =, input = { value =, select =, placeholder =, hint = },
--- actions = { { id =, label =, primary =, danger = }, ... } }; `done(action, value)` is told the
+-- actions = { { id =, label =, primary =, danger =, tip = }, ... } }; `done(action, value)` is told the
 -- action chosen and what was typed, or nil where the person went back. `select` is what of the
 -- value is selected as the dialog comes up ({ from =, to = } in characters, or true for all of it),
 -- so that what is typed takes its place.
@@ -129,7 +129,7 @@ function dialogs.view(size)
 	for index, action in spec.actions do
 		local tone = action.danger and "danger" or (action.primary and "primary" or nil)
 		local letter = not spec.input and overlay.letters[string.lower(string.sub(action.label, 1, 1))] == action.id
-		local element = kit.button("dialog-action:" .. index, action.label, { tone = tone, underline_first = letter })
+		local element = kit.button("dialog-action:" .. index, action.label, { tone = tone, underline_first = letter, tip = action.tip })
 		if index == overlay.chosen and not spec.input then
 			element:border(1, b.alpha("foreground", 0.5))
 		end
