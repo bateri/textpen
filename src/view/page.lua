@@ -309,6 +309,9 @@ local function handle(event)
 	elseif kind == "files" then
 		uploads.files(event)
 		reply = true
+	elseif kind == "saving" then
+		uploads.saving(event)
+		reply = true
 	end
 	return kit.take(reply)
 end

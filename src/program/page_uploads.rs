@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use pencere_drive::headless::{Error, InProcess};
-use pencere_view::{Button, FileEntry, FileSource, Input, Mods, Point};
+use pencere_view::{Button, FileEntry, FileSource, Input, Mods, Panel, Point};
 
 use crate::options;
 use crate::page_tests::{
@@ -585,5 +585,129 @@ fn an_editor_opens_a_file_of_this_machine_and_uploads_one_that_is_not() -> Resul
     crate::page_tests::wait(&mut page, |_| project.exists("src/sent.txt"))?;
     assert_eq!(project.read("src/sent.txt"), "sent over");
     assert!(!shows(&page, "Upload to"));
+    Ok(())
+}
+
+/// The right-click menu of a folder's row and the palette's command, both "Upload Files" (no dots),
+/// ask for the Open panel; what is chosen in it goes into the folder that was chosen in the tree.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn upload_files_asks_for_the_open_panel_from_the_trees_menu_and_the_palette() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&[]);
+    let double = moving(&session);
+    let mut page = project.open(&session, WIDE)?;
+    crate::page_tests::wait(&mut page, |page| page.bounds("row:src").is_some())?;
+
+    // The folder's menu: the person's move, so the panel is up, for more than one file.
+    page.right_click("row:src")?;
+    assert!(
+        page.menu().is_some_and(|menu| {
+            let titles: Vec<String> = menu
+                .entries
+                .iter()
+                .filter_map(|entry| match entry {
+                    pencere_view::MenuEntry::Item { title, .. } => Some(title.clone()),
+                    _ => None,
+                })
+                .collect();
+            titles.iter().any(|title| title == "Upload Files")
+                && titles.iter().all(|title| !title.contains("Download"))
+        }),
+        "{:?}",
+        page.menu()
+    );
+    page.pick_titled("Upload Files")?;
+    assert_eq!(page.panel(), Some(&Panel::Pick { multiple: true }));
+    double.give(&handle(1), b"through the menu");
+    page.choose_files(&[("menu.txt", b"through the menu")])?;
+    crate::page_tests::wait(&mut page, |_| project.exists("src/menu.txt"))?;
+    assert_eq!(project.read("src/menu.txt"), "through the menu");
+
+    // The palette: the folder chosen in the tree is where they go.
+    crate::page_tests::wait(&mut page, |page| page.bounds("row:src/lib").is_some())?;
+    page.click("row:src/lib")?;
+    crate::page_tests::wait(&mut page, |page| {
+        page.bounds("row:src/lib/format.ts").is_some()
+    })?;
+    page.press("f1")?;
+    page.type_text("Upload Files")?;
+    assert!(shows(&page, "Upload Files"), "{:?}", page_words(&page));
+    page.press("enter")?;
+    assert_eq!(page.panel(), Some(&Panel::Pick { multiple: true }));
+    double.give(&handle(2), b"through the palette");
+    page.choose_files(&[("palette.txt", b"through the palette")])?;
+    crate::page_tests::wait(&mut page, |_| project.exists("src/lib/palette.txt"))?;
+    assert_eq!(project.read("src/lib/palette.txt"), "through the palette");
+
+    // Turned away: nothing goes, and nothing is left asked.
+    page.right_click("row:src")?;
+    page.pick_titled("Upload Files")?;
+    page.choose_files(&[])?;
+    page.advance(0.5)?;
+    assert!(!project.exists("src/lib/menu.txt") && !project.exists("src/other.txt"));
+    assert!(page.bounds("upload-cancel:3").is_none());
+    Ok(())
+}
+
+/// A file's menu and the palette say "Download" (no dots), and ask for the Save panel with the file's
+/// name; the file is written where the person chose, and a toast says so. A folder has none.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn download_asks_for_the_save_panel_with_the_files_name_and_says_when_it_is_done()
+-> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&[]);
+    let double = moving(&session);
+    let mut page = project.open(&session, WIDE)?;
+    crate::page_tests::wait(&mut page, |page| page.bounds("row:README.md").is_some())?;
+
+    // A file's menu.
+    page.right_click("row:README.md")?;
+    page.pick_titled("Download")?;
+    assert_eq!(
+        page.panel(),
+        Some(&Panel::Save {
+            name: "README.md".to_owned(),
+            media_type: None
+        })
+    );
+    let place = page.choose_place(Some("README copy.md"))?.expect("a place");
+    crate::page_tests::wait(&mut page, |page| shows(page, "Downloaded README copy.md"))?;
+    assert_eq!(
+        double.saved.lock().unwrap().get(&place).cloned(),
+        Some(project.read("README.md").into_bytes()),
+        "what the program sent is the file"
+    );
+
+    // The palette, for the file chosen in the tree; turned away, nothing is written.
+    page.click("row:README.md")?;
+    page.press("f1")?;
+    page.type_text("Download")?;
+    page.press("enter")?;
+    assert!(matches!(page.panel(), Some(Panel::Save { name, .. }) if name == "README.md"));
+    let saved_before = double.saved.lock().unwrap().len();
+    assert_eq!(page.choose_place(None)?, None);
+    page.advance(0.5)?;
+    assert_eq!(double.saved.lock().unwrap().len(), saved_before);
+
+    // A folder has no Download, and a file has no Upload Files, in the palette.
+    page.click("row:src")?;
+    page.press("f1")?;
+    page.type_text("Download")?;
+    assert!(
+        !page_words(&page).iter().any(|word| word == "Download"),
+        "{:?}",
+        page_words(&page)
+    );
+    page.press("escape")?;
+    page.click("row:README.md")?;
+    page.press("f1")?;
+    page.type_text("Upload Files")?;
+    assert!(
+        !page_words(&page).iter().any(|word| word == "Upload Files"),
+        "{:?}",
+        page_words(&page)
+    );
     Ok(())
 }

@@ -22,6 +22,12 @@ change what the previous one did.
   is, as it did; where textpen runs over ssh it is uploaded beside the file shown. The program has
   the calls `place` and `upload` for it (`docs/calls.md`), and the page needs a terminal that opens
   it at `lua` 2.1 (bateri does).
+- **Upload Files and Download from the keyboard.** The right-click menu of a folder in the tree, and
+  the command palette where a folder is chosen in the tree, have Upload Files: the terminal's Open
+  panel, and what you choose goes into that folder as a dropped file does. A file's menu, and the
+  palette where a file is chosen (or shown), have Download: the Save panel proposing the file's
+  name, the file written where you choose, and a note, "Downloaded foto.png". The program has the
+  call `download` for it (`docs/calls.md`).
 - **A picture opens in its tab.** A click on a PNG, a JPEG or an SVG in the tree shows it fitted into
   the tab (smaller in its proportions where it does not fit, never made larger), with how large the
   file is and its pixels under it ("48.2 KB · 640 × 480"). A picture of more than 8 MiB, or of more

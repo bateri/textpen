@@ -13,6 +13,7 @@ local text = require("../lib/text")
 local docs = require("./docs")
 local changes = require("./changes")
 local editor_menu = require("./editor_menu")
+local uploads = require("./uploads")
 
 local S, act = kit.S, kit.act
 
@@ -137,6 +138,22 @@ add({ id = "conflict-keep", title = "Keep My Changes over the Disk", category = 
 		return tab ~= nil and tab.info ~= nil and tab.info.conflict == true
 	end,
 	run = function() act.keep_mine(S.active) end })
+add({ id = "upload-files", title = "Upload Files", category = "File",
+	when = function() return uploads.chosen_dir() ~= nil end,
+	run = function()
+		local dir = uploads.chosen_dir()
+		if dir then
+			uploads.choose(dir)
+		end
+	end })
+add({ id = "download", title = "Download", category = "File",
+	when = function() return uploads.chosen_file() ~= nil end,
+	run = function()
+		local path = uploads.chosen_file()
+		if path then
+			uploads.save_as(path)
+		end
+	end })
 add({ id = "copy-path", title = "Copy Path", category = "File", when = function() return S.active ~= nil end,
 	run = function() act.copy_path(S.active, false) end })
 add({ id = "copy-absolute-path", title = "Copy Absolute Path", category = "File", when = function() return S.active ~= nil end,

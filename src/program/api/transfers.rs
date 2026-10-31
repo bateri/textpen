@@ -1,7 +1,8 @@
 //! The calls about the files that cross the terminal: `place` (whether a name is taken in a folder,
-//! and the next free one) and `upload` (a file the person gave the page is received into the project,
-//! telling how far it has got). The page holds the person's handles and passes them on; the bytes
-//! move between the program and the terminal, and the page never sees them.
+//! and the next free one), `upload` (a file the person gave the page is received into the project,
+//! telling how far it has got) and `download` (a file of the project is sent to the place the person
+//! chose in the Save panel). The page holds the person's handles and passes them on; the bytes move
+//! between the program and the terminal, and the page never sees them.
 //!
 //! This is api/'s: the files of api/ know the page, and project/, state/ and terminal/ do not.
 
@@ -93,7 +94,32 @@ fn upload(session: &Session, args: Upload, call: &pencere::Call) -> Result<Value
     Ok(json!({ "path": path, "size": size }))
 }
 
+struct Download {
+    path: String,
+    handle: String,
+}
+
+impl Params for Download {
+    fn read(fields: &Fields<'_>) -> Checked<Self> {
+        Ok(Self {
+            path: fields.text("path")?,
+            handle: fields.text("handle")?,
+        })
+    }
+}
+
+/// The file `path` is written to the place the person chose in the Save panel (`handle`).
+fn download(session: &Session, args: Download, call: &pencere::Call) -> Result<Value, Failure> {
+    let size = session
+        .transfers
+        .send(&session.project, &args.path, &args.handle, &mut |done| {
+            call.progress(done as f64, None, None);
+        })?;
+    Ok(json!({ "size": size }))
+}
+
 pub fn calls(options: Options, session: &Arc<Session>) -> Options {
     let options = call(options, session, "place", place);
-    call_reporting(options, session, "upload", upload)
+    let options = call_reporting(options, session, "upload", upload);
+    call_reporting(options, session, "download", download)
 }

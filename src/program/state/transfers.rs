@@ -1,7 +1,7 @@
 //! The files that cross the terminal: a file the person gave the page (dropped, pasted, chosen in
-//! the Open panel) is received into the project. The terminal moves the bytes; the program only says
-//! where they go, so it never writes a file the person did not ask for, and never one over another
-//! unasked.
+//! the Open panel) is received into the project, and a file of the project is sent to the place the
+//! person chose in the Save panel. The terminal moves the bytes; the program only says where they
+//! go, so it never writes a file the person did not ask for, and never one over another unasked.
 //!
 //! The terminal's side of it is [`Transfer`], which the program's hand on its view is
 //! (`pencere::ViewControl`) and which a test puts its own in the place of.
@@ -36,6 +36,10 @@ pub trait Transfer: Send + Sync {
         to: &Path,
         progress: &mut dyn FnMut(u64) -> bool,
     ) -> Result<u64, String>;
+
+    /// Sends the file at `from` to the place the person chose, by `handle`.
+    fn send(&self, handle: &str, from: &Path, progress: &mut dyn FnMut(u64))
+    -> Result<u64, String>;
 }
 
 impl Transfer for ViewControl {
@@ -52,6 +56,15 @@ impl Transfer for ViewControl {
             None => ViewControl::receive(self, handle, to, progress),
         };
         received.map_err(|why| why.to_string())
+    }
+
+    fn send(
+        &self,
+        handle: &str,
+        from: &Path,
+        progress: &mut dyn FnMut(u64),
+    ) -> Result<u64, String> {
+        ViewControl::send(self, handle, from, progress).map_err(|why| why.to_string())
     }
 }
 
@@ -259,6 +272,25 @@ impl Transfers {
         project.forget();
         Ok((shown, size))
     }
+
+    /// Sends the file `path` of the project to the place the person chose, by `handle`.
+    ///
+    /// # Errors
+    ///
+    /// The words for a file that is not one, or that the terminal would not take.
+    pub fn send(
+        &self,
+        project: &Tree,
+        path: &str,
+        handle: &str,
+        progress: &mut dyn FnMut(u64),
+    ) -> Result<u64, String> {
+        let absolute = project.absolute(path);
+        if !fs::metadata(&absolute).is_ok_and(|meta| meta.is_file()) {
+            return Err(format!("{path} is not a file"));
+        }
+        self.transfer().send(handle, Path::new(&absolute), progress)
+    }
 }
 
 /// What moves the files, as a test sees it: files by handle held in memory, copied where a path
@@ -283,6 +315,8 @@ pub mod double {
     pub struct Double {
         /// The files the person gave, by handle.
         pub given: Mutex<HashMap<String, Vec<u8>>>,
+        /// What was written to the places the person chose in the Save panel, by handle.
+        pub saved: Mutex<HashMap<String, Vec<u8>>>,
         /// How many bytes make a piece: a progress report is told after each.
         pub piece: Mutex<usize>,
         gate: Mutex<Gate>,
@@ -390,6 +424,18 @@ pub mod double {
                 let _ = fs::remove_file(&part);
             }
             outcome
+        }
+
+        fn send(
+            &self,
+            handle: &str,
+            from: &Path,
+            progress: &mut dyn FnMut(u64),
+        ) -> Result<u64, String> {
+            let bytes = fs::read(from).map_err(|why| why.to_string())?;
+            progress(bytes.len() as u64);
+            lock(&self.saved).insert(handle.to_owned(), bytes.clone());
+            Ok(bytes.len() as u64)
         }
     }
 }
@@ -567,6 +613,28 @@ mod tests {
             .unwrap()
             .count();
         assert_eq!(left, 0);
+    }
+
+    #[test]
+    fn a_file_of_the_project_is_sent_as_it_is_and_what_is_no_file_is_not() {
+        let (dir, tree) = project();
+        let (transfers, double) = transfers();
+        fs::write(dir.path().join("lantern/docs/a.txt"), b"as it is").unwrap();
+        let mut told = Vec::new();
+        let sent = transfers
+            .send(&tree, "docs/a.txt", "place", &mut |done| told.push(done))
+            .unwrap();
+        assert_eq!(sent, 8);
+        assert_eq!(told, [8]);
+        assert_eq!(
+            double.saved.lock().unwrap().get("place").map(Vec::as_slice),
+            Some(&b"as it is"[..])
+        );
+        assert_eq!(
+            transfers.send(&tree, "docs", "place", &mut |_| {}),
+            Err("docs is not a file".to_owned())
+        );
+        assert!(transfers.send(&tree, "none", "place", &mut |_| {}).is_err());
     }
 
     #[test]

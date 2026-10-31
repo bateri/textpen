@@ -73,6 +73,9 @@ local S = {
 	uploads = {},
 	-- Where files dragged over the page would go: { kind = "tree" | "editor", dir =, count = }.
 	drop = nil,
+	-- The folder the Open panel is for, and the file the Save panel is for.
+	picking = nil,
+	saving = nil,
 }
 
 local SIZE = {

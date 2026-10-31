@@ -1,6 +1,6 @@
 -- The files that change hands: ones the person gives the page (dropped on the tree or on the editor,
--- chosen in the Open panel), which the program receives into a folder of
--- the project, and one of the project's that the person saves where they choose in the Save panel.
+-- chosen in the Open panel), which the program receives into a folder of the project, and one of the
+-- project's that the person saves where they choose in the Save panel.
 --
 -- A file changes hands only by the person's move, the person sees at every moment what goes where,
 -- and can give it up; and no file is written over another unasked. The page holds the person's files
@@ -478,13 +478,21 @@ end
 
 -- --- What the person gave -------------------------------------------------------------------------------------
 
--- Files were given to the page: dropped on it.
+-- Files were given to the page: dropped on it, or chosen in the Open panel.
 function uploads.files(event)
 	S.drop = nil
 	if event.files == nil then
 		-- A terminal that gives no handles: the files are opened where they are, as they were.
 		for _, path in event.paths or {} do
 			act.open_file(path, { focus = true })
+		end
+		return
+	end
+	if event.source == "pick" then
+		local dir = S.picking
+		S.picking = nil
+		if dir and #event.files > 0 then
+			uploads.give(event.files, dir)
 		end
 		return
 	end
@@ -509,6 +517,67 @@ function uploads.files(event)
 	else
 		uploads.give(event.files, target.dir)
 	end
+end
+
+-- --- The panels -----------------------------------------------------------------------------------------
+
+-- The Open panel, for files to go into the folder `dir`. Asked for in the reply to a command, a key
+-- or a press, which the terminal counts as the person's move.
+function uploads.choose(dir)
+	S.picking = dir
+	kit.gather({ pick = { multiple = true } })
+end
+
+-- The Save panel, for the project's file `path`, proposing its name.
+function uploads.save_as(path)
+	S.saving = path
+	kit.gather({ save = { name = text.basename(path) } })
+end
+
+-- The person chose a place in the Save panel (or turned it away): the file is written there.
+function uploads.saving(event)
+	local path = S.saving
+	S.saving = nil
+	if not (event.handle and path) then
+		return
+	end
+	local name = event.name or text.basename(path)
+	S.busy += 1
+	kit.call("download", { path = path, handle = event.handle }, function(_, err)
+		S.busy -= 1
+		if err then
+			kit.toast(err.message or ("Could not download " .. name), "bad", 6)
+		else
+			kit.toast("Downloaded " .. name, "ok")
+		end
+		return true
+	end)
+end
+
+-- The folder a command uploads into: the folder chosen in the tree.
+function uploads.chosen_dir()
+	local entry = S.tree_selection and act.tree_entry(S.tree_selection)
+	if entry and entry.kind == "dir" then
+		return entry.path
+	end
+	return nil
+end
+
+-- The file a command downloads: the file chosen in the tree where the keys are there, else the one
+-- shown; one that is in the project and on its disk.
+function uploads.chosen_file()
+	local path = S.focus == "sidebar" and S.tree_selection or S.active
+	if not path or string.sub(path, 1, 1) == "/" then
+		return nil
+	end
+	local entry = act.tree_entry(path)
+	if entry and entry.kind == "file" and not entry.upload then
+		return path
+	end
+	if not entry and docs.tab_of(path) then
+		return path
+	end
+	return nil
 end
 
 return uploads

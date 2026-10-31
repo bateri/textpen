@@ -61,8 +61,11 @@ a terminal that shows the page at `lua` 2.1, as bateri does.
 its folder, or the room under the rows, which is the project) the place is marked and named, and
 dropped, each file is a faint row there with how far it has got, and a Cancel under the pointer.
 A name that is taken is asked about once, Replace or Keep Both; nothing is written over a file
-unasked, and a file given up leaves no half file. It needs a terminal that shows the page at
-`lua` 2.1, as bateri does.
+unasked, and a file given up leaves no half file. From the keyboard, **Upload Files** (a folder's
+right-click menu, or the command palette with a folder chosen in the tree) asks the terminal for
+the Open panel and puts what you choose in that folder, and **Download** (a file's menu, or the
+palette) asks for the Save panel with the file's name and says "Downloaded foto.png" when it is
+written. It needs a terminal that shows the page at `lua` 2.1, as bateri does.
 
 |                                                              |                                                                    |
 | ------------------------------------------------------------ | ------------------------------------------------------------------ |

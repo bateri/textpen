@@ -267,3 +267,65 @@ fn place_says_whether_a_name_is_taken_and_the_next_free_one() {
     );
     assert!(matches!(answers[4], Answer::Error { .. }));
 }
+
+#[test]
+fn a_file_of_the_project_is_written_to_the_place_the_person_chose_in_the_save_panel() {
+    let pane = Pane::new();
+    let data = bytes(2 * 1024 * 1024 + 7);
+    pane.write("project/docs/photo.bin", &data);
+    std::fs::create_dir_all(pane.path("saved")).unwrap();
+    // The stand-in asks for the Save panel as the view starts, and the person saves in `saved/`
+    // under the name proposed; `$1` is the place's handle.
+    let host = [
+        "--save".to_owned(),
+        "photo copy.bin".to_owned(),
+        "--save-in".to_owned(),
+        pane.path("saved").to_string_lossy().into_owned(),
+    ];
+    let run = script(
+        &[(
+            "download",
+            json!({ "path": "docs/photo.bin", "handle": "$1" }),
+        )],
+        &host,
+    );
+    let log = pane.record(&in_project(&pane, run));
+    let answers = common::answers(&log);
+    assert_eq!(answers[0].result()["size"], json!(data.len()), "{log}");
+    assert_eq!(
+        std::fs::read(pane.path("saved/photo copy.bin")).unwrap(),
+        data
+    );
+    assert_eq!(left_in(&pane, "saved"), ["photo copy.bin"], "no part left");
+    assert_eq!(
+        std::fs::read(pane.path("project/docs/photo.bin")).unwrap(),
+        data
+    );
+}
+
+#[test]
+fn a_download_of_what_is_no_file_is_failed_and_writes_nothing() {
+    let pane = Pane::new();
+    std::fs::create_dir_all(pane.path("project/docs")).unwrap();
+    std::fs::create_dir_all(pane.path("saved")).unwrap();
+    let host = [
+        "--save".to_owned(),
+        "x".to_owned(),
+        "--save-in".to_owned(),
+        pane.path("saved").to_string_lossy().into_owned(),
+    ];
+    let run = script(
+        &[
+            ("download", json!({ "path": "docs", "handle": "$1" })),
+            ("download", json!({ "path": "nowhere.txt", "handle": "$1" })),
+        ],
+        &host,
+    );
+    let answers = pane.ask(&in_project(&pane, run));
+    assert!(
+        answers[0].failed("failed") && answers[1].failed("failed"),
+        "{answers:?}"
+    );
+    assert_eq!(answers[0].message(), "docs is not a file");
+    assert!(left_in(&pane, "saved").is_empty());
+}
