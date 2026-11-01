@@ -87,9 +87,10 @@ local function last_line(hunk)
 	return math.max(hunk.line - 1, 0)
 end
 
--- Where line `line` starts, in characters; the end of the text for a line the text has not.
+-- Where the program's line `line` (from 0) starts, as a place of the editor's text (a byte, from
+-- 1: the editor counts its lines from 1); the end of the text for a line the text has not.
 local function start_of(doc, line)
-	return layout.line_start(doc.id, line) or layout.editor_length(doc.id) or 0
+	return layout.line_start(doc.id, line + 1) or ((layout.editor_length(doc.id) or 0) + 1)
 end
 
 -- The decorations of the file's changes, in the places of its text now.
@@ -160,14 +161,14 @@ function changes.draw(doc)
 	end
 	if shown ~= nil and (shown or doc.drawn) then
 		kit.ask(doc.id, {
-			decorate = MARKS, version = version, from = 0, to = length,
+			decorate = MARKS, version = version, from = 1, to = length + 1,
 			decorations = shown and marks_of(doc) or {},
 		})
 		doc.drawn = shown
 	end
 	local zone = peek_marks(doc)
 	if #zone > 0 or doc.zoned then
-		kit.ask(doc.id, { decorate = PEEK, version = version, from = 0, to = length, decorations = zone })
+		kit.ask(doc.id, { decorate = PEEK, version = version, from = 1, to = length + 1, decorations = zone })
 		doc.zoned = #zone > 0
 	end
 end
@@ -279,7 +280,7 @@ local function new_lines(doc, hunk)
 	local from = start_of(doc, hunk.line)
 	local to = start_of(doc, hunk.line + hunk.count)
 	local length = layout.editor_length(doc.id) or 0
-	local body = layout.editor_text(doc.id, from, math.min(to, length)) or ""
+	local body = layout.editor_text(doc.id, from, math.min(to, length + 1)) or ""
 	body = string.gsub(body, "\n$", "")
 	return string.split(body, "\n")
 end
@@ -351,9 +352,10 @@ end
 
 -- --- Going to a change, and taking it back ----------------------------------------------------------------
 
+-- The line the main caret is on, as the program counts them (from 0): where the editor said it was,
+-- for a place of the caret is of the text it was said for.
 local function caret_line(doc)
-	local range = doc.ranges[doc.main] or doc.ranges[1]
-	return layout.line_of(doc.id, range and range.head or 0) or 0
+	return docs.where(doc).line - 1
 end
 
 -- The hunk the line `line` of `doc` is in (the lines of it, or the edge a deletion is at): its index.
@@ -431,16 +433,20 @@ function changes.revert(doc, index)
 		return
 	end
 	local length = layout.editor_length(doc.id) or 0
-	local broken = length > 0 and layout.editor_text(doc.id, length - 1, length) ~= "\n"
+	-- The place after the text, and whether the text ends without a line break: the last line is
+	-- then not an empty one, which is the line the break would have begun.
+	local finish = length + 1
+	local lines = layout.editor_lines(doc.id) or 1
+	local broken = length > 0 and layout.line_start(doc.id, lines) ~= finish
 	local from = start_of(doc, hunk.line)
 	local to = start_of(doc, hunk.line + hunk.count)
 	local old = table.concat(hunk.old, "\n")
 	local insert = ""
 	if #hunk.old > 0 then
-		if hunk.count == 0 and from >= length and broken then
+		if hunk.count == 0 and from >= finish and broken then
 			-- Lines taken away from the end of a text that has no break at its end: one comes first.
 			insert = "\n" .. old
-		elseif to >= length and broken then
+		elseif to >= finish and broken then
 			-- The change's lines are the last, with no break after them: neither do theirs have.
 			insert = old
 		else

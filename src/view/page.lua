@@ -295,7 +295,7 @@ local function handle(event)
 		reply = true
 	elseif kind == "menu" then
 		if not editor_menu.pick(event) then
-			act.menu_pick(event.index)
+			act.menu_pick(event.entry)
 		end
 		reply = true
 	elseif kind == "terminal_look" then

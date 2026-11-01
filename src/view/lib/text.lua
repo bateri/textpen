@@ -1,8 +1,10 @@
--- Text as the program and the editors count it, in characters (code points), and paths as the
--- program writes them ("/"-separated, relative to the project's root, absolute outside it).
+-- Text as a person reads it, in characters (code points), and paths as the program writes them
+-- ("/"-separated, relative to the project's root, absolute outside it).
 --
--- Lua's own string functions count bytes; every place that crosses to the program or to an editor
--- (an edit, a match, a caret, a column) is a count of characters, so it is read and cut here.
+-- Lua's own string functions count bytes, and so do the places of the editors and of the program's
+-- buffers (an edit, a caret): those need no count of characters. What a person reads in a line (a
+-- column, where a search found its match, how wide a name is) is a count of characters, so it is read
+-- and cut here.
 
 local text = {}
 
@@ -36,21 +38,31 @@ function text.sub(s, from, to)
 	return string.sub(s, text.offset(s, from), text.offset(s, to + 1) - 1)
 end
 
--- `s` cut into pieces of at most `size` characters each (one piece for an empty text).
+-- `s` cut into pieces of at most `size` bytes each, each ending where a character does (one piece
+-- for an empty text; a `size` under four may be passed by a character).
 function text.pieces(s, size)
 	local out = {}
 	local at = 1
-	local count = text.len(s)
+	local count = #s
 	if count == 0 then
 		return { "" }
 	end
-	local done = 0
-	while done < count do
-		local take = math.min(size, count - done)
-		local stop = text.offset(s, done + take + 1)
-		out[#out + 1] = string.sub(s, at, stop - 1)
-		at = stop
-		done += take
+	while at <= count do
+		local stop = math.min(at + size - 1, count)
+		-- A byte that begins no character is the middle of one: the piece ends before it, or, where
+		-- a character is more than the piece may take, after it.
+		local function inside(place)
+			local byte = string.byte(s, place)
+			return byte ~= nil and byte >= 0x80 and byte < 0xC0
+		end
+		while stop < count and stop > at and inside(stop + 1) do
+			stop -= 1
+		end
+		while stop < count and inside(stop + 1) do
+			stop += 1
+		end
+		out[#out + 1] = string.sub(s, at, stop)
+		at = stop + 1
 	end
 	return out
 end

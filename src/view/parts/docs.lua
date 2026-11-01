@@ -10,7 +10,7 @@
 --
 -- The program holds the text as well, and is the one that reads and writes the file. The page
 -- tells it what the person changed (`edit`), as plain replacements made one after another, a moment
--- after the typing stops, cut so that no call carries more than 64 Ki characters; and every text
+-- after the typing stops, cut so that no call carries more than 64 KiB; and every text
 -- that comes from the program (a file opened, read again, a draft taken back) goes into the editor
 -- as a load, the one change the page does not send back. A file's calls go one at a time, each
 -- after the answer to the one before (`lane`): the program answers them in the page's order, and the
@@ -38,18 +38,112 @@ local function text_is_new(doc)
 	end
 end
 
--- The most characters of inserted text one `edit` carries (docs/calls.md).
+-- The most bytes of inserted text one `edit` carries (docs/calls.md).
 local CALL_TEXT = 64 * 1024
 -- How long after the last change the changes go to the program, seconds.
 local SEND_DELAY = 0.35
 -- What the page keeps its editors' documents under, bytes: the terminal's 64 MiB, less room for what
 -- is typed into them.
 local DOCUMENTS_BYTES = 56 * 1024 * 1024
--- How many characters of an editor's text are read at a time (a read answers 1 MiB at most).
-local READ_CHARS = 128 * 1024
+-- How many bytes of an editor's text are read at a time (a read answers 1 MiB at most).
+local READ_BYTES = 256 * 1024
+-- The most bytes of a selection whose characters are counted for the status line; a larger one is
+-- told in bytes (it would take a moment to read, and the person does not count it).
+local COUNT_MOST = 256 * 1024
+-- The most carets whose selections are counted one by one.
+local COUNT_CARETS = 256
 
 local count = 0
 local by_id = {}
+
+-- --- Places ------------------------------------------------------------------------------------------
+--
+-- The editor's places are bytes of its text from 1 (the kit's, counted as `string.find` does), a range
+-- `[from, to)`, and a place must be where a character starts: one inside a character is an error at
+-- the line that reads with it. The program's are bytes from 0 (docs/calls.md), so that a place of the
+-- one is the other's with one added or taken off.
+
+-- Reads at most `size` bytes of the text of `doc`'s editor from the place `from`, up to the place
+-- `limit` (the end of the text, or less), ending where a character ends: the text, and the place
+-- after it. A piece that ends inside a character takes one to three bytes less.
+local function read(doc, from, limit, size)
+	local stop = math.min(from + size, limit)
+	for back = 0, 3 do
+		local ok, piece = pcall(layout.editor_text, doc.id, from, stop - back)
+		if ok and piece then
+			return piece, stop - back
+		end
+	end
+	return nil, from
+end
+
+-- The whole text of the editor, or nil where it could not be read.
+local function read_all(doc)
+	local finish = (layout.editor_length(doc.id) or 0) + 1
+	local pieces, place = {}, 1
+	while place < finish do
+		local piece, after = read(doc, place, finish, READ_BYTES)
+		if not piece or after <= place then
+			return nil
+		end
+		pieces[#pieces + 1] = piece
+		place = after
+	end
+	return table.concat(pieces)
+end
+
+-- The editor's text from its start, at most `most` bytes of it (cut where a character ends), and
+-- whether more follows: read a piece at a time, as a read answers 1 MiB at most.
+function docs.text(doc, most)
+	local finish = (layout.editor_length(doc.id) or 0) + 1
+	local limit = math.min(finish, most + 1)
+	local pieces, place = {}, 1
+	while place < limit do
+		local piece, after = read(doc, place, limit, READ_BYTES)
+		if not piece or after <= place then
+			break
+		end
+		pieces[#pieces + 1] = piece
+		place = after
+	end
+	return table.concat(pieces), place < finish
+end
+
+-- The place `place` brought to one of the editor's text: inside it, where a character starts. One
+-- that is past the text is its end, and one inside a character (a text that was changed under a
+-- place the page kept) is where that character starts.
+local function fit(doc, place)
+	local finish = (layout.editor_length(doc.id) or 0) + 1
+	place = math.clamp(place, 1, finish)
+	for back = 0, 3 do
+		if place - back >= 1 and pcall(layout.line_of, doc.id, place - back) then
+			return place - back
+		end
+	end
+	return 1
+end
+
+-- The text of line `line` (from 1) of the editor and the place it starts at: nil for the text of a
+-- line that is too long to read at once.
+local function line_text(doc, line)
+	local lines = layout.editor_lines(doc.id) or 1
+	line = math.clamp(line, 1, lines)
+	local start = layout.line_start(doc.id, line) or 1
+	local stop = line < lines and (layout.line_start(doc.id, line + 1) - 1) or ((layout.editor_length(doc.id) or 0) + 1)
+	local ok, words = pcall(layout.editor_text, doc.id, start, stop)
+	return ok and words or nil, start, stop
+end
+
+-- The place of character `column` (from 1, in characters) of line `line` (from 1); the end of the line
+-- for a column past it.
+local function place_in(doc, line, column)
+	local words, start, stop = line_text(doc, line)
+	if words == nil then
+		-- A line too long to read: its column is a byte, as far as a character starts.
+		return fit(doc, math.min(start + math.max(column - 1, 0), stop))
+	end
+	return math.min(start + (utf8.offset(words, math.max(column, 1)) or (#words + 1)) - 1, stop)
+end
 
 -- --- The tabs ---------------------------------------------------------------------------------------
 
@@ -227,16 +321,19 @@ local function new_doc(path)
 		lane = {},
 		busy = false,
 		-- What the person changed that the program has not been sent: replacements in order, each on
-		-- the text the one before left ({ from, to, insert }, characters).
+		-- the text the one before left ({ from, to, insert }, bytes from 0: the program's).
 		pending = {},
 		timer = nil,
 		-- A call failed: the next sends the editor's whole text.
 		broken = false,
-		-- Where the carets are, and the lines in view.
-		ranges = { { anchor = 0, head = 0 } },
+		-- Where the carets are (places of the editor: bytes from 1), and the lines in view (from 1;
+		-- `last` is 0 until the editor says).
+		ranges = { { anchor = 1, head = 1 } },
 		main = 1,
-		first = 0,
+		first = 1,
 		last = 0,
+		-- Where the main caret is, as the status line says it (`docs.where`).
+		where = nil,
 		lang = language.plain,
 		syntax = nil,
 		-- Where the caret goes once the text is in: { line =, column =, select =, place =, keep = }.
@@ -255,8 +352,8 @@ local function set_language(doc, lang)
 			kit.ask(doc.id, {
 				decorate = syntax.layer,
 				version = doc.edited,
-				from = 0,
-				to = layout.editor_length(doc.id) or 0,
+				from = 1,
+				to = (layout.editor_length(doc.id) or 0) + 1,
 				decorations = {},
 			})
 		end
@@ -290,40 +387,39 @@ local function arrived(doc)
 	if not arrive then
 		return
 	end
-	local length = layout.editor_length(doc.id) or 0
-	local lines = layout.editor_lines(doc.id) or 1
-	local function clamp(at)
-		return math.clamp(at, 0, length)
-	end
+	-- The version of the editor's document the places are of. An empty text into an empty editor
+	-- changes nothing and is told of by nothing (`deliver`): none was told, and the document is as it
+	-- was made, at version 0. (A version that is not a number is an error of the ask.)
+	local version = doc.edited or 0
 	local anchor, head = nil, nil
 	local center = nil
 	if arrive.select or arrive.line then
-		local line = math.clamp((arrive.select and arrive.select.line or arrive.line) - 1, 0, lines - 1)
-		local start = layout.line_start(doc.id, line) or 0
-		local stop = line + 1 < lines and (layout.line_start(doc.id, line + 1) - 1) or length
+		-- The line (from 1) and the characters of it a match or a command line names.
+		local line = math.clamp(arrive.select and arrive.select.line or arrive.line, 1, layout.editor_lines(doc.id) or 1)
 		if arrive.select then
-			anchor = math.min(start + arrive.select.from, stop)
-			head = math.min(start + arrive.select.to, stop)
+			anchor = place_in(doc, line, arrive.select.from + 1)
+			head = place_in(doc, line, arrive.select.to + 1)
 		else
-			anchor = math.min(start + math.max((arrive.column or 1) - 1, 0), stop)
+			anchor = place_in(doc, line, arrive.column or 1)
 			head = anchor
 		end
 		center = line
 	elseif arrive.place then
-		anchor, head = clamp(arrive.place.anchor), clamp(arrive.place.head)
+		-- What the program kept: bytes from 0 of the text it had.
+		anchor, head = fit(doc, arrive.place.anchor + 1), fit(doc, arrive.place.head + 1)
 	elseif arrive.keep then
 		local ranges = {}
 		for _, range in arrive.keep do
-			ranges[#ranges + 1] = { anchor = clamp(range.anchor), head = clamp(range.head) }
+			ranges[#ranges + 1] = { anchor = fit(doc, range.anchor), head = fit(doc, range.head) }
 		end
-		kit.ask(doc.id, { select = ranges, version = doc.edited, main = math.min(arrive.main or 1, #ranges) })
+		kit.ask(doc.id, { select = ranges, version = version, main = math.min(arrive.main or 1, #ranges) })
 		return
 	end
 	if anchor == nil then
 		return
 	end
-	kit.ask(doc.id, { select = { { anchor = anchor, head = head } }, version = doc.edited, main = 1 })
-	kit.ask(doc.id, { reveal = head, version = doc.edited, align = center and "center" or nil })
+	kit.ask(doc.id, { select = { { anchor = anchor, head = head } }, version = version, main = 1 })
+	kit.ask(doc.id, { reveal = head, version = version, align = center and "center" or nil })
 end
 
 -- Whether the program's text is all in the editor: every piece went, and the editor told of each.
@@ -340,9 +436,9 @@ function docs.arrive_now(doc)
 	arrived(doc)
 end
 
--- Scrolls the editor so that `line` (from 0) is in the middle of what is in view.
+-- Scrolls the editor so that `line` (from 0, as the program counts) is in the middle of what is in view.
 function docs.center(doc, line)
-	local at = layout.line_start(doc.id, line)
+	local at = layout.line_start(doc.id, line + 1)
 	if at and doc.edited ~= nil then
 		kit.ask(doc.id, { reveal = at, version = doc.edited, align = "center" })
 	end
@@ -447,16 +543,12 @@ end
 -- Puts `new` in place of the editor's text as one change that leaves what can be undone as it is:
 -- only the stretch that differs is replaced, so that what was done before it carries over it
 -- (`history = false`: the change is nothing the person did). False where it cannot be done so (the
--- stretch is more than a change carries).
+-- stretch is more than a change carries, or the text could not be read).
 local function swap(doc, new)
-	local length = layout.editor_length(doc.id) or 0
-	local pieces = {}
-	local at = 0
-	while at < length do
-		pieces[#pieces + 1] = layout.editor_text(doc.id, at, math.min(at + READ_CHARS, length)) or ""
-		at += READ_CHARS
+	local old = read_all(doc)
+	if old == nil then
+		return false
 	end
-	local old = table.concat(pieces)
 	if old == new then
 		return true
 	end
@@ -494,10 +586,10 @@ local function swap(doc, new)
 	if #insert > SWAP_MOST then
 		return false
 	end
-	local from = head > 0 and text.len(string.sub(old, 1, head)) or 0
-	local to = text.len(old) - (tail > 0 and text.len(string.sub(old, #old - tail + 1)) or 0)
+	-- The stretch of the old text that goes, as places of the editor: bytes from 1, the end not in it,
+	-- which are where `head` and `tail` leave it (both are where a character starts).
 	kit.ask(doc.id, {
-		change = { { from = from, to = to, insert = insert } },
+		change = { { from = head + 1, to = #old - tail + 1, insert = insert } },
 		base = layout.editor_version(doc.id),
 		history = false,
 		tag = DISK,
@@ -549,16 +641,17 @@ docs.reload = reload
 
 -- --- From the editor to the program -------------------------------------------------------------------
 
--- A change of the person's, after the ones not yet sent: typing goes on one replacement.
+-- A change of the person's, after the ones not yet sent: typing goes on one replacement. `from` and
+-- `to` are bytes from 0, as the program counts them.
 local function push(doc, from, to, insert)
 	local last = doc.pending[#doc.pending]
-	if last and from == to and from == last[1] + text.len(last[3]) then
+	if last and from == to and from == last[1] + #last[3] then
 		last[3] ..= insert
 		return
 	end
-	if last and insert == "" and from >= last[1] and to <= last[1] + text.len(last[3]) and to > from then
+	if last and insert == "" and from >= last[1] and to <= last[1] + #last[3] and to > from then
 		local start, stop = from - last[1], to - last[1]
-		last[3] = text.sub(last[3], 1, start) .. text.sub(last[3], stop + 1)
+		last[3] = string.sub(last[3], 1, start) .. string.sub(last[3], stop + 1)
 		return
 	end
 	doc.pending[#doc.pending + 1] = { from, to, insert }
@@ -569,20 +662,19 @@ end
 local function batches(edits)
 	local pieces = {}
 	for _, edit in edits do
-		local length = text.len(edit[3])
-		if length <= CALL_TEXT then
+		if #edit[3] <= CALL_TEXT then
 			pieces[#pieces + 1] = edit
 		else
 			local at = edit[1]
 			for index, piece in text.pieces(edit[3], CALL_TEXT) do
 				pieces[#pieces + 1] = index == 1 and { edit[1], edit[2], piece } or { at, at, piece }
-				at += text.len(piece)
+				at += #piece
 			end
 		end
 	end
 	local groups, group, size = {}, {}, 0
 	for _, edit in pieces do
-		local weight = text.len(edit[3]) + 16
+		local weight = #edit[3] + 16
 		if #group > 0 and size + weight > CALL_TEXT then
 			groups[#groups + 1] = group
 			group, size = {}, 0
@@ -627,15 +719,22 @@ local function resync(doc, done)
 			return nil
 		end
 		doc.version = opened.version
-		local length = opened.partial and opened.partial.length or text.len(opened.text or "")
-		local total = layout.editor_length(doc.id) or 0
+		local length = opened.partial and opened.partial.length or #(opened.text or "")
+		local finish = (layout.editor_length(doc.id) or 0) + 1
 		local edits = {}
-		local at = 0
+		-- The place of the editor the next piece is read from, and how many bytes the program has by
+		-- then of what was read.
+		local place, sent = 1, 0
 		repeat
-			local piece = layout.editor_text(doc.id, at, math.min(at + READ_CHARS, total)) or ""
-			edits[#edits + 1] = at == 0 and { 0, length, piece } or { at, at, piece }
-			at += READ_CHARS
-		until at >= total
+			local piece, after = read(doc, place, finish, READ_BYTES)
+			if not piece or (after <= place and place < finish) then
+				done({ message = "the editor's text could not be read" })
+				return nil
+			end
+			edits[#edits + 1] = sent == 0 and { 0, length, piece } or { sent, sent, piece }
+			sent += #piece
+			place = after
+		until place >= finish
 		-- What the person changed until now is in the text read.
 		doc.pending = {}
 		send_all(doc, edits, done)
@@ -730,10 +829,11 @@ local function edited(doc, event)
 		return
 	end
 	-- The changes are in the places of the text before them: made from the last to the first, each
-	-- leaves the places of the ones before it where they were.
+	-- leaves the places of the ones before it where they were. The editor's places are from 1, the
+	-- program's from 0.
 	for index = #changes, 1, -1 do
 		local change = changes[index]
-		push(doc, change.from, change.to, change.insert or "")
+		push(doc, change.from - 1, change.to - 1, change.insert or "")
 	end
 	local tab = docs.tab_of(doc.path)
 	if tab and tab.info and not tab.info.dirty then
@@ -748,6 +848,51 @@ local function edited(doc, event)
 		docs.flush(doc)
 		return nil
 	end)
+end
+
+-- --- Where the caret is ------------------------------------------------------------------------------
+
+local NOWHERE = { line = 1, column = 1, selected = 0, big = false, carets = 1 }
+
+-- Where the main caret is, as the status line says it: its line and column (from 1, in characters,
+-- as a screen counts), how much is selected and how many carets. Worked out when the editor tells
+-- of the selection, from the text it is of: the places of a caret are of one text, and read in the
+-- text of another may lie inside a character.
+function docs.where(doc)
+	return doc.where or NOWHERE
+end
+
+local function locate(doc, event)
+	if event.version ~= layout.editor_version(doc.id) then
+		return
+	end
+	local range = event.ranges[event.main] or event.ranges[1]
+	if not range then
+		return
+	end
+	local line = layout.line_of(doc.id, range.head) or 1
+	local start = layout.line_start(doc.id, line) or 1
+	-- A line too long for one read (1 MiB) is counted by its bytes up to the caret.
+	local read_ok, before = pcall(layout.editor_text, doc.id, start, range.head)
+	before = read_ok and before or nil
+	local column = (before and (utf8.len(before) or #before) or (range.head - start)) + 1
+	-- What is selected, in characters; in bytes where it is too much to read for a figure nobody
+	-- reads to the character.
+	local total = 0
+	for _, each in event.ranges do
+		total += math.abs(each.head - each.anchor)
+	end
+	local selected, big = total, true
+	if total <= COUNT_MOST and #event.ranges <= COUNT_CARETS then
+		selected, big = 0, false
+		for _, each in event.ranges do
+			local words = each.head ~= each.anchor
+				and layout.editor_text(doc.id, math.min(each.anchor, each.head), math.max(each.anchor, each.head))
+				or ""
+			selected += utf8.len(words or "") or #(words or "")
+		end
+	end
+	doc.where = { line = line, column = column, selected = selected, big = big, carets = #event.ranges }
 end
 
 -- An event of one of the editors: the doc's own bookkeeping; whether it was one.
@@ -765,6 +910,7 @@ function docs.handle(event)
 	elseif kind == "selection" then
 		doc.ranges, doc.main = event.ranges, event.main
 		doc.composing = event.composing
+		locate(doc, event)
 	elseif kind == "viewport" then
 		doc.first, doc.last = event.first, event.last
 	elseif kind == "editor_ready" then
@@ -927,7 +1073,7 @@ function docs.renamed(doc, path)
 	local before = doc.path
 	doc.path = path
 	if text.extension(before) ~= text.extension(path) or text.basename(before) ~= text.basename(path) then
-		local first = layout.editor_text(doc.id, 0, math.min(layout.editor_length(doc.id) or 0, 400)) or ""
+		local first = read(doc, 1, (layout.editor_length(doc.id) or 0) + 1, 400) or ""
 		local tab = docs.tab_of(path)
 		if not (tab and tab.language) then
 			set_language(doc, language.detect(path, string.match(first, "^[^\n]*") or ""))
@@ -951,13 +1097,14 @@ function docs.changed(info)
 	docs.update_info(info)
 end
 
--- Where the caret is and which line is at the top, for the program to keep (`Place`).
+-- Where the caret is and which line is at the top, for the program to keep (`Place`): bytes from 0,
+-- and the line from 0.
 function docs.place(doc)
 	local range = doc.ranges[doc.main] or doc.ranges[1]
 	if not range then
 		return nil
 	end
-	return { anchor = range.anchor, head = range.head, top = doc.first }
+	return { anchor = range.anchor - 1, head = range.head - 1, top = math.max(doc.first - 1, 0) }
 end
 
 -- The editors of the open files, for the page: the one shown, the others hidden with their

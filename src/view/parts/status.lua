@@ -3,6 +3,7 @@
 -- needed first, as the pane narrows.
 
 local kit = require("../lib/kit")
+local text = require("../lib/text")
 local docs = require("./docs")
 local search = require("./search")
 
@@ -79,16 +80,12 @@ local function item(id, words, tip)
 	return element
 end
 
--- Where the main caret is: its line and column (from 1), how much is selected and how many carets.
+-- Where the main caret is: its line and column (from 1, in characters), how much is selected (in
+-- characters, or in bytes where it is too much to count: `big`) and how many carets. The editor's
+-- places are bytes, so the docs work it out when the selection is told (`docs.where`).
 function status.cursor(doc)
-	local range = doc.ranges[doc.main] or { anchor = 0, head = 0 }
-	local line = layout.line_of(doc.id, range.head) or 0
-	local column = range.head - (layout.line_start(doc.id, line) or 0)
-	local selected = 0
-	for _, each in doc.ranges do
-		selected += math.abs(each.head - each.anchor)
-	end
-	return line + 1, column + 1, selected, #doc.ranges
+	local where = docs.where(doc)
+	return where.line, where.column, where.selected, where.carets, where.big
 end
 
 function status.view()
@@ -129,11 +126,12 @@ function status.view()
 		row:child(b.spacer())
 	end
 	if doc and info then
-		local line, column, selected, carets = status.cursor(doc)
+		local line, column, selected, carets, big = status.cursor(doc)
 		local words = string.format("Ln %d, Col %d", line, column)
 		local place = item("status-line", words, "Go to line " .. kit.keys_of("cmd+l"))
 		if selected > 0 then
-			place:child(b.text(string.format(" (%d selected%s)", selected, carets > 1 and (", " .. carets .. " carets") or ""))
+			local amount = big and text.bytes(selected) or tostring(selected)
+			place:child(b.text(string.format(" (%s selected%s)", amount, carets > 1 and (", " .. carets .. " carets") or ""))
 				:color("quiet"))
 		end
 		row:child(place)

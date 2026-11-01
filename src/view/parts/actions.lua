@@ -438,29 +438,24 @@ end
 
 -- A menu at the pointer for the host to show: `items` are { title, keys, run } (`keys` written as a
 -- command's are: "ctrl+w", "f2", "shift+a") and "-" for a line; the one picked runs (`act.menu_pick`).
-local menu_items = nil
-
+-- A line carries what it does (`run`), and the host tells the pick with the line of the menu the
+-- person was shown, which is not always the one asked for last: a host shows one menu at a time.
 function act.menu(items, at)
-	menu_items = items
-	if act.menu_opened then
-		act.menu_opened()
-	end
 	local entries = {}
 	for _, item in items do
 		if item == "-" then
 			entries[#entries + 1] = "-"
 		else
-			entries[#entries + 1] = { title = item[1], keys = item[2], enabled = item[4] ~= false }
+			entries[#entries + 1] = { title = item[1], keys = item[2], enabled = item[4] ~= false, run = item[3] }
 		end
 	end
 	kit.gather({ menu = { at = { x = at.x, y = at.y }, entries = entries } })
 end
 
-function act.menu_pick(index)
-	local item = menu_items and menu_items[index]
-	menu_items = nil
-	if type(item) == "table" then
-		item[3]()
+-- The pick of a line of a menu (`entry`: the table `act.menu` wrote for it, as the `menu` event has it).
+function act.menu_pick(entry)
+	if type(entry) == "table" and type(entry.run) == "function" then
+		entry.run()
 	end
 end
 

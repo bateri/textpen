@@ -203,7 +203,7 @@ files cross the stream once; after that the terminal keeps them.
   git; `docs/calls.md` is all they say to each other. What the editor sends travels through the
   terminal's input queue, in frames of 511 bytes and messages of at most 1 MiB, so it never sends
   a file: it sends what changed, a few hundred milliseconds of typing at a time, as replacements
-  made on a version of the text the program checks, in places counted in characters; saving is a
+  made on a version of the text the program checks, in places counted in bytes; saving is a
   word to the program. A message the other way is at most 1 MiB too, so a long text, a long folder
   and the files of a big project come to the editor in pieces. Holding the text is also what lets
   it outlive the view — a shell, a restart of the terminal — and become a draft when the program

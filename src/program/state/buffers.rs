@@ -3,8 +3,10 @@
 //! whole file. The text the program holds is also what survives the page — a shell, a restart of
 //! the terminal — and, written to a draft, a ⌃C or a dropped connection.
 //!
-//! Places in a text are code points (`edit`, `slice`, the length of a draft); the text itself is
-//! UTF-8, and a place inside a character cannot be named.
+//! Places in a text are bytes of its UTF-8, counted from 0 (`edit`, `slice`, the length of a text
+//! and of a draft), as the kit's editor says them to a page (from 1, the page takes one off): the page
+//! cannot say how many characters the text it takes out had, and the program, which holds that text,
+//! needs no count of them. A place inside a character is refused, never rounded.
 //!
 //! Plain values in and out: this file knows nothing of the page. An edit made on a version the
 //! program no longer holds, or a buffer that is not open, is [`Error::OutOfSync`]; what the disk
@@ -45,7 +47,7 @@ pub enum Eol {
     Crlf,
 }
 
-/// A draft an earlier textpen left: when, and how long its text is in code points.
+/// A draft an earlier textpen left: when, and how long its text is in bytes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DraftInfo {
     pub at: u64,
@@ -176,7 +178,7 @@ impl Buffer {
             conflict: self.conflict,
             draft: self.draft.as_ref().map(|draft| DraftInfo {
                 at: draft.at,
-                length: draft.text.chars().count(),
+                length: draft.text.len(),
             }),
             readonly: self.readonly,
         }
@@ -199,15 +201,6 @@ impl Buffer {
         self.missing = read.missing;
         self.conflict = false;
     }
-}
-
-/// The byte at which the code point `place` of `text` begins; the length of the text for its end,
-/// none past it.
-fn byte_of(text: &str, place: usize) -> Option<usize> {
-    text.char_indices()
-        .map(|(at, _)| at)
-        .chain(std::iter::once(text.len()))
-        .nth(place)
 }
 
 /// What is left of the buffer name `path` when it is `from` or under it: "" for `from` itself, and
@@ -474,8 +467,10 @@ impl Buffers {
         Opening::Opened(opened)
     }
 
-    /// The piece of a buffer's text that begins at the code point `from` and takes at most `limit`
-    /// bytes (one character at least, so that reading goes on), and where the next piece begins.
+    /// The piece of a buffer's text that begins at the byte `from` and takes at most `limit` bytes
+    /// (one character at least, so that reading goes on, and whole characters), and where the next
+    /// piece begins. A `from` that is past the text or inside a character is the end of nothing: an
+    /// empty piece that ends where it began.
     pub fn slice(
         &mut self,
         path: &str,
@@ -484,26 +479,22 @@ impl Buffers {
         limit: usize,
     ) -> Result<Slice, Error> {
         let content = &self.at(path, version)?.text;
-        let Some(start) = byte_of(content, from) else {
+        if !content.is_char_boundary(from) {
             return Ok(Slice {
                 text: String::new(),
                 end: from,
             });
-        };
-        let (mut used, mut count) = (0, 0);
-        for ch in content.get(start..).unwrap_or_default().chars() {
-            if used + ch.len_utf8() > limit && count > 0 {
+        }
+        let mut used = 0;
+        for ch in content[from..].chars() {
+            if used + ch.len_utf8() > limit && used > 0 {
                 break;
             }
             used += ch.len_utf8();
-            count += 1;
         }
         Ok(Slice {
-            text: content
-                .get(start..start + used)
-                .unwrap_or_default()
-                .to_owned(),
-            end: from + count,
+            text: content[from..from + used].to_owned(),
+            end: from + used,
         })
     }
 
@@ -523,7 +514,8 @@ impl Buffers {
     }
 
     /// Applies the page's edits, made on version `base`, in order: each is `(from, to, insert)` in
-    /// code points of the text the one before left.
+    /// bytes of the text the one before left. An edit that reaches outside the text, or that starts
+    /// or ends inside a character, is [`Error::OutOfSync`] and none is applied.
     pub fn edit(
         &mut self,
         path: &str,
@@ -537,15 +529,10 @@ impl Buffers {
             let (Ok(from), Ok(to)) = (usize::try_from(*from), usize::try_from(*to)) else {
                 return Err(outside());
             };
-            if from > to {
+            if from > to || !content.is_char_boundary(from) || !content.is_char_boundary(to) {
                 return Err(outside());
             }
-            let first = byte_of(&content, from).ok_or_else(outside)?;
-            let after = content
-                .get(first..)
-                .and_then(|rest| byte_of(rest, to - from))
-                .ok_or_else(outside)?;
-            content.replace_range(first..first + after, insert);
+            content.replace_range(from..to, insert);
         }
         buffer.text = content;
         buffer.version += 1;
@@ -788,16 +775,6 @@ impl Buffers {
 mod tests {
     use super::*;
 
-    #[test]
-    fn a_place_is_a_code_point_and_the_end_is_the_length() {
-        let text = "aş😀z";
-        assert_eq!(byte_of(text, 0), Some(0));
-        assert_eq!(byte_of(text, 2), Some(3));
-        assert_eq!(byte_of(text, 3), Some(7));
-        assert_eq!(byte_of(text, 4), Some(8));
-        assert_eq!(byte_of(text, 5), None);
-    }
-
     fn project() -> (tempfile::TempDir, Arc<Mutex<Buffers>>) {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().to_str().unwrap().to_owned();
@@ -806,7 +783,7 @@ mod tests {
     }
 
     #[test]
-    fn edits_count_code_points_and_apply_in_order() {
+    fn edits_count_bytes_and_apply_in_order() {
         let (dir, buffers) = project();
         fs::write(dir.path().join("u.txt"), "\u{feff}aş😀z\r\nlast\r\n").unwrap();
         let mut buffers = buffers.lock().unwrap();
@@ -815,7 +792,8 @@ mod tests {
         };
         assert_eq!(opened.text, "aş😀z\nlast\n");
         assert_eq!((opened.info.eol, opened.info.bom), (Eol::Crlf, true));
-        let edits = [(3, 4, "Z".to_owned()), (2, 3, "<>".to_owned())];
+        // `aş😀z` is `a` (byte 0), `ş` (1 to 3), `😀` (3 to 7) and `z` (7 to 8).
+        let edits = [(7, 8, "Z".to_owned()), (3, 7, "<>".to_owned())];
         let info = buffers.edit("u.txt", 1, &edits).unwrap();
         assert_eq!((info.version, info.dirty), (2, true));
         assert_eq!(
@@ -837,18 +815,50 @@ mod tests {
         );
     }
 
+    /// A place is where a character starts: one inside a character is refused, at either end of an
+    /// edit, and the edits before it in the same call are not applied either.
+    #[test]
+    fn an_edit_that_starts_or_ends_inside_a_character_is_refused_and_changes_nothing() {
+        let (dir, buffers) = project();
+        fs::write(dir.path().join("u.txt"), "aş😀z").unwrap();
+        let mut buffers = buffers.lock().unwrap();
+        buffers.open("u.txt");
+        let refused = Err(Error::OutOfSync(
+            "An edit of u.txt reaches outside it".to_owned(),
+        ));
+        // Inside `ş` (byte 2), inside `😀` (bytes 4 to 6), and the end of the text is a place.
+        for edit in [
+            (2, 2, "x"),
+            (1, 2, "x"),
+            (4, 5, "x"),
+            (3, 5, "x"),
+            (3, 9, "x"),
+        ] {
+            let edits = [(0, 1, "A".to_owned()), (edit.0, edit.1, edit.2.to_owned())];
+            assert_eq!(buffers.edit("u.txt", 1, &edits), refused, "{edit:?}");
+        }
+        assert_eq!(buffers.text("u.txt").unwrap().text, "aş😀z");
+        assert_eq!(buffers.text("u.txt").unwrap().info.version, 1);
+        buffers.edit("u.txt", 1, &[(8, 8, "!".to_owned())]).unwrap();
+        assert_eq!(buffers.text("u.txt").unwrap().text, "aş😀z!");
+    }
+
     #[test]
     fn a_long_text_is_read_in_pieces_that_end_between_characters() {
         let (dir, buffers) = project();
         fs::write(dir.path().join("e.txt"), "😀".repeat(10)).unwrap();
         let mut buffers = buffers.lock().unwrap();
         buffers.open("e.txt");
+        // Ten characters of four bytes: places are bytes.
         let first = buffers.slice("e.txt", 1, 0, 10).unwrap();
-        assert_eq!((first.text.as_str(), first.end), ("😀😀", 2));
-        let next = buffers.slice("e.txt", 1, 2, 3).unwrap();
-        assert_eq!((next.text.as_str(), next.end), ("😀", 3));
-        let past = buffers.slice("e.txt", 1, 12, 10).unwrap();
-        assert_eq!((past.text.as_str(), past.end), ("", 12));
+        assert_eq!((first.text.as_str(), first.end), ("😀😀", 8));
+        let next = buffers.slice("e.txt", 1, 8, 3).unwrap();
+        assert_eq!((next.text.as_str(), next.end), ("😀", 12));
+        let past = buffers.slice("e.txt", 1, 44, 10).unwrap();
+        assert_eq!((past.text.as_str(), past.end), ("", 44));
+        // A place inside a character is the end of nothing.
+        let inside = buffers.slice("e.txt", 1, 6, 10).unwrap();
+        assert_eq!((inside.text.as_str(), inside.end), ("", 6));
         assert!(matches!(
             buffers.slice("e.txt", 2, 0, 10),
             Err(Error::OutOfSync(_))
@@ -856,7 +866,7 @@ mod tests {
     }
 
     #[test]
-    fn a_draft_is_kept_and_offered_with_its_length_in_code_points() {
+    fn a_draft_is_kept_and_offered_with_its_length_in_bytes() {
         let (dir, shared_buffers) = project();
         fs::write(dir.path().join("a.txt"), "world").unwrap();
         {
@@ -873,7 +883,7 @@ mod tests {
         let Opening::Opened(opened) = again.open("a.txt") else {
             panic!("not opened");
         };
-        assert_eq!(opened.info.draft.map(|draft| draft.length), Some(8));
+        assert_eq!(opened.info.draft.map(|draft| draft.length), Some(11));
         let restored = again.draft("a.txt", true).unwrap();
         assert_eq!(
             (restored.text.as_str(), restored.info.version),

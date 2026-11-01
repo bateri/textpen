@@ -73,7 +73,9 @@ function act.find(replacing)
 	if range and range.anchor ~= range.head then
 		local from, to = math.min(range.anchor, range.head), math.max(range.anchor, range.head)
 		if to - from <= 500 then
-			local chosen = layout.editor_text(doc.id, from, to) or ""
+			-- The places are of the text the selection was told of: read where they hold.
+			local ok, chosen = pcall(layout.editor_text, doc.id, from, to)
+			chosen = ok and chosen or ""
 			if chosen ~= "" and not string.find(chosen, "\n", 1, true) then
 				F.query = chosen
 			end

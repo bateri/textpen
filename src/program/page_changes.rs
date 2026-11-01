@@ -298,6 +298,46 @@ fn a_press_on_a_mark_peeks_the_lines_as_they_were_and_revert_puts_them_back() ->
     Ok(())
 }
 
+/// Lines with characters of more than one byte are marked where they are, peeked as they were and put
+/// back, in the middle of a text and at the end of one with no line break after it.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn changes_in_lines_of_wide_characters_are_marked_where_they_are_and_reverted() -> Result<(), Error>
+{
+    let project = Project::new(&[
+        ("a.txt", "héllo 😀\nsecond ünï line\nlast ça\n"),
+        ("b.txt", "ünï\nçà last"),
+    ]);
+    committed(&project);
+    let session = project.session(&["a.txt", "b.txt"]);
+    let mut page = project.open(&session, WIDE)?;
+    // The second line of the first file, changed in its middle.
+    let editor = shown(&page).expect("an editor");
+    let original = text(&page);
+    let place = at(&page, "ünï") + 2;
+    page.caret_to(&editor, place)?;
+    page.type_text("é")?;
+    wait(&mut page, |page| marks(page).len() == 1)?;
+    assert_eq!(marks(&page)[0].2, 1, "the second line: {:?}", marks(&page));
+    page.click_gutter(&editor, "changes", 1, Button::Left)?;
+    assert!(shows(&page, "second ünï line"), "the line as it was");
+    page.click("peek-revert")?;
+    wait(&mut page, |page| text(page) == original)?;
+    wait(&mut page, |page| marks(page).is_empty())?;
+    // The last line of the other, which has no break after it.
+    page.press("ctrl+2")?;
+    wait(&mut page, |page| text(page) == "ünï\nçà last")?;
+    let editor = shown(&page).expect("an editor");
+    let place = at(&page, "last");
+    page.caret_to(&editor, place)?;
+    page.type_text("ü")?;
+    wait(&mut page, |page| marks(page).len() == 1)?;
+    page.press("alt+f5")?;
+    page.click("peek-revert")?;
+    wait(&mut page, |page| text(page) == "ünï\nçà last")?;
+    Ok(())
+}
+
 /// ⌥F5 and ⇧⌥F5 go from change to change round the file, the caret on the first line of each and the
 /// peek open there.
 #[test]

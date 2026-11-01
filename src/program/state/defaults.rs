@@ -111,8 +111,8 @@ pub fn clamp(value: f64, (minimum, maximum): (u32, u32)) -> u32 {
     }
 }
 
-/// Where the cursor and the view of a file were: code points, and the 0-based line at the top. The
-/// numbers are kept as they were given.
+/// Where the cursor and the view of a file were: bytes of its text from 0 (as an `edit` counts), and
+/// the 0-based line at the top. The numbers are kept as they were given.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Place {
     pub anchor: Number,

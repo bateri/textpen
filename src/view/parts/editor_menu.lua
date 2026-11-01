@@ -24,11 +24,10 @@ local reverting = nil
 -- The command that opens the menu at the caret, as the library names it.
 editor_menu.COMMAND = library.EDITOR_MENU_COMMAND
 
--- Opens the menu of the file `doc` at `at` ({ x =, y = }), or under its caret without `at`. `offset`
--- is the place the menu is of: the line it is on is the one Revert Change is offered for.
-local function open(doc, at, offset)
+-- Opens the menu of the file `doc` at `at` ({ x =, y = }), or under its caret without `at`. `line` is
+-- the line the menu is of (from 0, as the program counts them): the one Revert Change is offered for.
+local function open(doc, at, line)
 	local tab = docs.tab_of(doc.path)
-	local line = layout.line_of(doc.id, offset) or 0
 	local index = changes.hunk_of_line(doc, line)
 	reverting = index and { doc = doc, index = index, hunk = doc.hunks[index] } or nil
 	local after = {
@@ -38,7 +37,6 @@ local function open(doc, at, offset)
 		after[#after + 1] = { key = "revert_change", title = "Revert Change", keys = "ctrl+shift+backspace" }
 	end
 	after[#after + 1] = { key = "palette", title = "Command Palette", keys = "f1" }
-	act.menu_opened = editor_menu.forget
 	kit.gather(context:editor_menu(ID, {
 		editor = doc.id,
 		at = at,
@@ -55,7 +53,7 @@ function editor_menu.pressed(event)
 	if not doc or event.button ~= "right" or not doc.loaded then
 		return false
 	end
-	open(doc, { x = event.x, y = event.y }, place.at)
+	open(doc, { x = event.x, y = event.y }, (layout.line_of(doc.id, place.at) or 1) - 1)
 	return true
 end
 
@@ -65,15 +63,8 @@ function editor_menu.at_caret()
 	if not doc or not doc.loaded then
 		return
 	end
-	local range = doc.ranges[doc.main] or doc.ranges[1]
 	act.focus_editor()
-	open(doc, nil, range and range.head or 0)
-end
-
--- The menu the host showed is gone or another is: a pick is no pick of this one.
-function editor_menu.forget()
-	context.asked = nil
-	reverting = nil
+	open(doc, nil, docs.where(doc).line - 1)
 end
 
 local OWN = {

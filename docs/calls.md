@@ -7,9 +7,13 @@ tests hold it to it, and the page's tests hold the page to it.
 
 ## Rules for every call
 
-- **Places are code points.** Every offset, length and range in a text — an edit, a slice, a
-  cursor, a search match, a draft's length — counts Unicode scalar values (what the kit's editor
-  counts), never bytes and never UTF-16 units. A place inside a character cannot happen.
+- **Places in a text are bytes.** Every offset, length and range in a buffer's text — an edit, a
+  slice, a cursor (`Place`), a draft's length — counts bytes of its UTF-8 from 0, as the kit's editor
+  says them to a page (from 1: the page takes one off). The page cannot say how many characters the
+  text an edit takes out had, and the program, which holds that text, needs no count of them. A place
+  inside a character is refused (`out-of-sync` for an edit), never rounded. What a person reads in a
+  line — the column a command line names, a search match in the line shown — counts code points of
+  that line (below), and the page turns it into bytes where it puts the cursor there.
 - **Lines and columns** that come from the command line are 1-based; `Place.top` is a 0-based line.
 - **`null` and absent are different.** A field written `T | null` is always there and may be
   `null`; a field written `?` may be left out and is never `null`. What the page sends is held to
@@ -30,7 +34,7 @@ tests hold it to it, and the page's tests hold the page to it.
   file index and a long search come in pieces or are cut and say so. The program fills a message
   to a quarter of that at most (256 KiB), which the page reads within the time it has for one call
   (250 ms). The page keeps each call it sends to the same quarter, as writing it out takes as long:
-  an `edit` carries at most 64 Ki code points of inserted text (256 KiB at most).
+  an `edit` carries at most 64 KiB of inserted text (the page cuts a longer one).
 - **Buffer calls are answered in the order they were sent.** `open`, `edit`, `slice`, `save`,
   `buffer`, `discard` and `quit` run one at a time, in the page's order (the program's lane for buffers),
   so the page may send an `edit` and then a `save` of the version it will make without waiting.
@@ -57,12 +61,12 @@ BufferInfo  = {
   mtime: number,         -- ms; 0 for a file not on disk yet
   missing: boolean,      -- not on disk: new, or removed while open
   conflict: boolean,     -- changed on disk after it was read, and the buffer has changes of its own
-  draft?: { at: number, length: number },   -- a draft an earlier textpen left: at in ms (Unix time), length in code points
+  draft?: { at: number, length: number },   -- a draft an earlier textpen left: at in ms (Unix time), length in bytes
   readonly: boolean,
 }
 Opened      = BufferInfo & { text: string, partial?: { length: number } }
               -- partial: the text is too long for one message; text is "", and the page reads it
-              -- with `slice` (length in code points).
+              -- with `slice` (length in bytes).
 Unopenable  = { path: string, reason: "binary" | "too-large" | "directory" | "unreadable",
                 size: number, message: string }
 LineNumbers = "on" | "relative" | "off"
@@ -80,7 +84,7 @@ Settings    = {
               -- Gone from the web editor's: vim (no vim mode), fontSize (the terminal's text size
               -- is the page's; textpen has no zoom of its own). A settings file from an older
               -- textpen is read: unknown keys are dropped, `whitespace: true/false` is "all"/"none".
-Place       = { anchor: number, head: number, top: number }   -- code points; top a 0-based line
+Place       = { anchor: number, head: number, top: number }   -- bytes from 0; top a 0-based line
 UiState     = {
   tabs: string[], active: string | null, expanded: string[],
   places: { [path]: Place },
@@ -99,7 +103,7 @@ Boot        = {
   closeQuits: boolean,   -- the command line named the files (as $EDITOR is run): closing the last
                          -- tab ends textpen
   returned?: Returned,
-  focus?: { path: string, line?: number, column?: number },   -- 1-based; column in code points
+  focus?: { path: string, line?: number, column?: number },   -- 1-based; column in code points of the line
   problems: string[],    -- paths on the command line that could not be opened
 }
 Changes     = {
@@ -116,7 +120,7 @@ Hunk        = { line: number, count: number, old: string[], cut?: true }
 Diffed      = { version: number, hunks: Hunk[] | null, more?: true }
               -- of the text at `version`. hunks null: nothing is marked (see `diff`).
 SearchMatch = { line: number, start: number, end: number, text: string, offset: number }
-              -- line 1-based; start/end the match within text, code points; text the line, cut
+              -- line 1-based; start/end the match within text, code points of text; text the line, cut
               -- around the match when long; offset where text begins in the line, code points
 SearchFile  = { path: string, matches: SearchMatch[] }
 SearchResult= { files: SearchFile[], matches: number, searched: number, truncated: boolean, ms: number }
@@ -150,8 +154,8 @@ FilesPage   = { files: string[], truncated: boolean, next: number | null, genera
 | `rename`   | `{ from: string, to: string }`                                                           | `{ path, buffers: BufferInfo[] }`. Open buffers under `from` follow. A rename by case alone is allowed for any letter. `failed` for the project or a directory it is in, however reached (a link on the way), for a directory into itself, and onto the name of an open file with changes not saved.                                                                                                         |
 | `delete`   | `{ path: string }`                                                                       | `{ path }`. `failed` for the project or a directory it is in, however reached.                                                                                                                                                  |
 | `open`     | `{ path: string }`                                                                       | `Opened \| Unopenable`. A file not on disk opens empty, `missing`; a pipe, a socket or a device is `Unopenable` (`unreadable`).                                                                                                                                                             |
-| `edit`     | `{ path, base: integer, edits: [from, to, insert][] }`                                   | `BufferInfo`. Edits made on version `base`, applied in order, each on the text the one before left.                                                                                                                            |
-| `slice`    | `{ path, version: integer, from: integer ≥ 0 }`                                          | `{ text, end }`: the piece of a long text from `from`; the next begins at `end`.                                                                                                                                               |
+| `edit`     | `{ path, base: integer, edits: [from, to, insert][] }`                                   | `BufferInfo`. Edits made on version `base`, applied in order, each on the text the one before left; `from` and `to` are bytes, where a character starts.                                                                                                                            |
+| `slice`    | `{ path, version: integer, from: integer ≥ 0 }`                                          | `{ text, end }`: the piece of a long text from the byte `from`; the next begins at the byte `end`.                                                                                                                                               |
 | `save`     | `{ path, version: integer, force?: boolean }`                                            | `{ saved: boolean, info: BufferInfo }`. A file changed on disk (or made since the buffer opened `missing`) is not overwritten unless `force`: `saved` false and `info.conflict`.                                                                                           |
 | `buffer`   | `{ path, action, discard?: boolean }`                                                    | by `action`: `text` → `Opened`; `revert` → `Opened \| Unopenable`; `keep` → `BufferInfo`; `restore` / `drop` (the draft) → `Opened`; `lf` / `crlf` → `BufferInfo`; `close` → `{ path }` (`failed` if dirty and not `discard`). |
 | `discard`  | `{}`                                                                                     | `{}`. Quitting without saving: nothing unsaved is kept as a draft.                                                                                                                                                             |

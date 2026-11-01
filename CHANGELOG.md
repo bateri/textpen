@@ -95,6 +95,11 @@ change what the previous one did.
   the edge is held the tree makes only the rows in view, and a move that leaves the edge where it
   is draws nothing.
 - The numbers of the lines keep more room to their left, away from the tree.
+- The status line tells a selection of more than 256 KiB, or one over more than 256 carets, in bytes
+  ("1.2 MB selected"), where it counts the characters of what is selected up to that: the editor
+  says its places in bytes, and a text that large is not read to be counted. Where the caret was
+  when a file was left is kept in bytes too: one kept before comes back that many bytes into the
+  file, a little earlier than it was where the text has accents before it.
 - The editor is a page of pencere's kit, in Lua, and the text is in the terminal's own editor, drawn
   in its font, in place of a web page with CodeMirror. It reads 33 languages in place of well over
   a hundred: JavaScript, TypeScript, JSX, TSX, Rust, Go, C, C++, C#, Java, Kotlin, Swift, PHP,
@@ -177,6 +182,12 @@ change what the previous one did.
 - The `vim` and `fontSize` settings, and `⌘+`, `⌘−` and `⌘0`: there is no vim mode, and the text
   is the size the terminal gives it (its own keys make it larger or smaller), with no zoom of
   textpen's own. A settings file that has them is read without them.
+
+### Fixed
+
+- A line picked in a right-click menu is the line of the menu you were shown. The page took it from
+  the menu it had asked for last, and a terminal shows one menu at a time, so a pick could run a line
+  of a menu that was never up.
 
 ## [0.1.0] - 2026-10-22
 

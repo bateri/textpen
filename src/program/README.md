@@ -57,7 +57,7 @@ with no terminal: a hundred edits sent together and made in their order, the pan
 answer that asks for it, and the page shown again told how the shell ended. The ones in `tests/` run
 the program Cargo built in a pane under `pencere-fake-host`, pencere's stand-in terminal, and read
 what the page was told off its record: the calls and their answers, `bad-params`, the order of a
-listing, an exclusive create, places in code points (with characters of two, three and four bytes),
+listing, an exclusive create, places in bytes (with characters of two, three and four bytes, and one inside a character refused),
 git and its time limit, a hangup, the drafts, a long text in pieces, a big directory, the limits of
 a search, the command line, and the shell: its directory, its environment and its first line, the
 editor shown again and told how it ended, a shell that cannot start, a hangup while it has the pane. The stand-in is the one `FAKE_HOST` names, or
@@ -68,8 +68,11 @@ Nothing is skipped.
 
 ## Details that are not what a person would guess
 
-- **Places are code points**: an edit, a slice, a search match, a draft's length. The text is held
-  as UTF-8; a place inside a character cannot be named.
+- **Places in a text are bytes** of its UTF-8, from 0: an edit, a slice, a cursor, a draft's length.
+  The kit's editor says its places in bytes, and the page cannot say how many characters the text an
+  edit takes out had; this program holds that text. A place inside a character is refused. What a
+  person reads in a line (a search match, the column a command line names) is code points of the
+  line shown.
 - **The buffer calls are a lane**, `buffers`: they run one at a time in the order the page sent
   them, so an `edit` and the `save` of the version it makes may go together. The other calls run
   beside them, and beside each other; the open files are behind one lock all the same, which the

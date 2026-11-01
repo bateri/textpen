@@ -75,10 +75,14 @@ fn a_hundred_edits_sent_together_are_made_in_the_order_they_were_sent() {
         .cycle()
         .take(100)
         .collect();
+    // Places are bytes of the text, which the letters from `ş` on make more than one.
+    let mut place = 0;
     for (at, letter) in letters.iter().enumerate() {
-        let edit =
-            json!({ "path": "a.txt", "base": at + 1, "edits": [[at, at, letter.to_string()]] });
+        let edit = json!({
+            "path": "a.txt", "base": at + 1, "edits": [[place, place, letter.to_string()]]
+        });
         send(&mut conversation, 2 + at as u64, "edit", edit);
+        place += letter.len_utf8();
     }
     send(
         &mut conversation,

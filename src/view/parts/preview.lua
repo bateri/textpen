@@ -14,15 +14,12 @@ local pictures = require("./pictures")
 local uploads = require("./uploads")
 
 local b, S, act = kit.b, kit.S, kit.act
-local layout = b.layout
 
 local preview = {}
 
 local BOX = "preview"
--- The most text read for the preview, characters: a file longer than this shows its start.
+-- The most text read for the preview, bytes: a file longer than this shows its start.
 local MOST = 4 * 1024 * 1024
--- How many characters are read from an editor at a time (a read answers 1 MiB at most).
-local PIECE = 128 * 1024
 -- How wide the text of the preview is, at the most, points.
 local COLUMN = 780
 
@@ -32,15 +29,9 @@ local document = markdown.document()
 local held = { id = nil, version = nil, cut = false, waiting = false }
 
 local function read(doc)
-	local length = layout.editor_length(doc.id) or 0
-	local pieces = {}
-	local at = 0
-	while at < math.min(length, MOST) do
-		pieces[#pieces + 1] = layout.editor_text(doc.id, at, math.min(at + PIECE, length, MOST)) or ""
-		at += PIECE
-	end
-	held.id, held.version, held.cut = doc.id, doc.edited, length > MOST
-	document:set(table.concat(pieces))
+	local words, cut = docs.text(doc, MOST)
+	held.id, held.version, held.cut = doc.id, doc.edited, cut
+	document:set(words)
 end
 
 -- The document is of the file shown: read at once the first time, and again a moment after the
@@ -168,13 +159,13 @@ function preview.follow(event)
 	if not (doc and doc.path == S.active and text.index_of(S.preview, doc.path) and held.id == doc.id) then
 		return
 	end
-	local main = event.ranges[event.main]
-	local line = main and layout.line_of(doc.id, main.head)
-	if not line or line == last_line then
+	-- The line the caret is on, from 1, as the docs worked it out from the text the selection is of.
+	local line = docs.where(doc).line
+	if line == last_line then
 		return
 	end
 	last_line = line
-	document:reveal(line + 1)
+	document:reveal(line)
 end
 
 return preview

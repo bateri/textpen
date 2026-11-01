@@ -85,7 +85,8 @@ end
 -- --- The lists ------------------------------------------------------------------------------------------
 
 -- The words of a line of the list as parts of a text of many looks: the characters at `positions`
--- (characters from 1) marked, `from` to `to` of `words` (all of it by default).
+-- (the bytes they start at, from 1, as the fuzzy finder says them) marked, the range `[from, to)` of
+-- bytes of `words` (all of it by default).
 local function marked(words, positions, from, to)
 	return fuzzy.spans(words, positions, nil, from, to)
 end
@@ -135,17 +136,17 @@ local function candidates()
 	return { paths = paths, open = open, rank = rank, index = S.file_index }
 end
 
--- A line of the list for a file; `positions` the characters the query is found at.
+-- A line of the list for a file; `positions` where the query is found (the bytes the characters start at).
 local function file_item(path, positions, pool, place)
-	local total = text.len(path)
-	local name_start = total - text.len(text.basename(path)) + 1
+	-- The place the name starts at, a byte from 1.
+	local name_start = #path - #text.basename(path) + 1
 	local kind = files.kind(path)
 	local state = S.git and S.git.changes and S.git.changes[path]
 	return {
 		id = path,
 		icon = { kind.icon, kind.color },
-		title = marked(path, positions, name_start, total),
-		detail = name_start > 1 and marked(path, positions, 1, name_start - 2) or nil,
+		title = marked(path, positions, name_start, #path + 1),
+		detail = name_start > 1 and marked(path, positions, 1, name_start - 1) or nil,
 		git = state,
 		run = function()
 			act.open_file(path, { focus = true, line = place.line, column = place.column })
@@ -244,11 +245,12 @@ local function command_items(query)
 		local hit = found[position]
 		local command = hit.item
 		local words = command.category .. ": " .. command.title
-		local split = text.len(command.category) + 2
+		-- The byte the title starts after: the category and its colon come before, then a space.
+		local split = #command.category + 2
 		out[#out + 1] = {
 			id = command.id,
-			lead = marked(words, hit.positions, 1, split - 1),
-			title = marked(words, hit.positions, split + 1, text.len(words)),
+			lead = marked(words, hit.positions, 1, split),
+			title = marked(words, hit.positions, split + 1, #words + 1),
 			keys = command.keys or command.shown,
 			run = function()
 				recent_commands = text.without(recent_commands, command.id)
@@ -279,13 +281,12 @@ local function tab_items(query)
 	for _, hit in fuzzy.filter(query, ordered, { path = true }) do
 		local path = hit.item
 		local tab = docs.tab_of(path)
-		local total = text.len(path)
-		local name_start = total - text.len(text.basename(path)) + 1
+		local name_start = #path - #text.basename(path) + 1
 		local kind = files.kind(path)
 		out[#out + 1] = {
 			id = path,
 			icon = { kind.icon, kind.color },
-			title = marked(path, hit.positions, name_start, total),
+			title = marked(path, hit.positions, name_start, #path + 1),
 			detail = name_start > 1 and plain(text.dirname(path)) or nil,
 			current = path == S.active,
 			dirty = tab and tab.info and tab.info.dirty,

@@ -18,7 +18,7 @@ use pencere_view::{Id, MenuEntry, Paint, Point, Shortcut};
 use serde_json::Value;
 
 use crate::options;
-use crate::state::defaults::UiState;
+use crate::state::defaults::{Place, UiState};
 use crate::state::pictures::recorder::Recorder;
 use crate::state::session::Session;
 use crate::state::store::Store;
@@ -128,8 +128,8 @@ impl Project {
 
 /// What the page's module is held to. The tests say what the page shows and does, not how fast a
 /// machine is: a runner under load takes ten times as long as one at rest, so the kit's 250 ms a
-/// call, 2 s to start and 20 s to compile, which are the wall clock's, are far wider here by
-/// default (`GENEROUS_CALL`). With `TEXTPEN_CALL_MS` set (`make check-timing`) a call is held to that
+/// call and 2 s to start, which are the wall clock's, are far wider here by default
+/// (`GENEROUS_CALL`). With `TEXTPEN_CALL_MS` set (`make check-timing`) a call is held to that
 /// many milliseconds, the rest to the kit's own: the page in the time a terminal gives it, or in
 /// half of it (`TEXTPEN_CALL_MS=125`), to see how near it comes. Meant for a machine at rest.
 pub(crate) fn limits(call_ms: Option<u64>) -> pencere_sandbox::ModuleLimits {
@@ -142,7 +142,6 @@ pub(crate) fn limits(call_ms: Option<u64>) -> pencere_sandbox::ModuleLimits {
         None => pencere_sandbox::ModuleLimits {
             call: GENEROUS_CALL,
             start: GENEROUS_CALL * 6,
-            compile: GENEROUS_CALL * 12,
             ..kit
         },
     }
@@ -504,6 +503,252 @@ fn version_of(session: &Session, path: &str) -> i64 {
         .into_iter()
         .find(|info| info.path == path)
         .map_or(0, |info| i64::try_from(info.version).unwrap_or(0))
+}
+
+// --- Characters of more than one byte ----------------------------------------------------------------
+//
+// The editor's places are bytes of its text, from 1; the program's are bytes from 0; what a person
+// reads (a column, a count of what is selected, a match in a line) is counted in characters. These
+// are the crossings, in a text where a character is two, three or four bytes.
+
+const ACCENTS: &str = "çğı İ ş abc\nsecond é😀 line\nlast\n";
+
+/// The program's text of `path`: what it holds, whatever the editor shows.
+fn program_text(session: &Session, path: &str) -> String {
+    session
+        .buffers()
+        .text(path)
+        .map(|opened| opened.text)
+        .unwrap_or_default()
+}
+
+/// A column and what is selected are counted in characters, the editor's places being bytes.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_column_and_what_is_selected_are_counted_in_characters_where_the_editor_counts_bytes()
+-> Result<(), Error> {
+    let project = Project::new(&[("accents.txt", ACCENTS)]);
+    let session = project.session(&["accents.txt"]);
+    let mut page = project.open(&session, WIDE)?;
+    let editor = shown(&page).expect("an editor");
+    // After `çğı İ ş`: seven characters, eleven bytes.
+    page.caret_to(&editor, 7)?;
+    assert!(shows(&page, "Ln 1, Col 8"), "{:?}", page_words(&page));
+    // `çğı İ`: five characters, nine bytes.
+    page.select(&editor, 0, 5)?;
+    assert!(shows(&page, "(5 selected"), "{:?}", page_words(&page));
+    // After the emoji on the second line: the line is twelve characters in, nine within the line.
+    page.caret_to(&editor, 21)?;
+    assert!(shows(&page, "Ln 2, Col 10"), "{:?}", page_words(&page));
+    Ok(())
+}
+
+/// A line and a column the person names, and a match the search found, are characters of a line: the
+/// caret lands after the emoji, not a byte or three bytes before it.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_line_and_a_column_and_a_match_in_a_line_with_wide_characters_are_opened_where_they_are()
+-> Result<(), Error> {
+    let project = Project::new(&[("accents.txt", ACCENTS)]);
+    let session = project.session(&["accents.txt"]);
+    let mut page = project.open(&session, WIDE)?;
+    let editor = shown(&page).expect("an editor");
+    let head = |page: &Page| {
+        page.editor(&editor)
+            .and_then(|buffer| buffer.ranges().first().map(|range| range.head))
+    };
+    page.press("cmd+l")?;
+    page.type_text("2:10")?;
+    page.press("enter")?;
+    assert!(shows(&page, "Ln 2, Col 10"), "{:?}", page_words(&page));
+    assert_eq!(head(&page), Some(21), "the characters before the caret");
+    // The project search opens the match, selected, after the emoji.
+    page.press("cmd+shift+f")?;
+    page.type_text("line")?;
+    page.advance(0.5)?;
+    wait(&mut page, |page| shows(page, "accents.txt"))?;
+    page.press("down")?;
+    page.press("enter")?;
+    let selected = |page: &Page| {
+        let buffer = page.editor(&editor)?;
+        let range = buffer.ranges().first()?;
+        let text: Vec<char> = buffer.text().chars().collect();
+        let (from, to) = (range.anchor.min(range.head), range.anchor.max(range.head));
+        Some(text.get(from..to)?.iter().collect::<String>())
+    };
+    wait(&mut page, |page| selected(page).as_deref() == Some("line"))?;
+    Ok(())
+}
+
+/// Several carets typing at once make one edit of several places, which the program holds as the
+/// editor does, and what a person typed is not lost to a place inside a character.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn an_edit_in_several_places_at_once_is_the_programs_as_it_is_the_editors() -> Result<(), Error> {
+    let project = Project::new(&[("accents.txt", "aé😀 aé😀 aé😀\n")]);
+    let session = project.session(&["accents.txt"]);
+    let mut page = project.open(&session, WIDE)?;
+    let editor = shown(&page).expect("an editor");
+    page.select(&editor, 0, 2)?;
+    page.press("ctrl+g")?;
+    page.press("ctrl+g")?;
+    assert_eq!(
+        page.editor(&editor).map(|buffer| buffer.ranges().len()),
+        Some(3)
+    );
+    page.type_text("şü")?;
+    assert_eq!(text(&page), "şü😀 şü😀 şü😀\n");
+    page.advance(1.0)?;
+    wait(&mut page, |_| {
+        program_text(&session, "accents.txt") == "şü😀 şü😀 şü😀\n"
+    })?;
+    // Backspace takes a character of two bytes and one of four away at every caret.
+    page.press("backspace")?;
+    page.advance(1.0)?;
+    wait(&mut page, |page| {
+        program_text(&session, "accents.txt") == text(page)
+    })?;
+    page.press("cmd+s")?;
+    wait(&mut page, |page| project.read("accents.txt") == text(page))?;
+    Ok(())
+}
+
+/// Where the caret was is told to the program in bytes (every two seconds, and when the view ends),
+/// and comes back, to the next view, at the same character.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_place_kept_for_a_file_comes_back_at_the_same_character() -> Result<(), Error> {
+    let project = Project::new(&[("accents.txt", ACCENTS), ("other.txt", "other\n")]);
+    let session = project.session(&["accents.txt", "other.txt"]);
+    let mut page = project.open(&session, WIDE)?;
+    let editor = shown(&page).expect("an editor");
+    page.caret_to(&editor, 21)?;
+    assert!(shows(&page, "Ln 2, Col 10"), "{:?}", page_words(&page));
+    // The page tells the program where it is every two seconds.
+    page.advance(3.0)?;
+    drop(page);
+    // The next view, as after the terminal came back: the caret is where it was, after the emoji.
+    let mut again = project.open(&session, WIDE)?;
+    wait(&mut again, |page| {
+        shown(page).is_some() && text(page) == ACCENTS
+    })?;
+    again.advance(1.0)?;
+    assert!(shows(&again, "Ln 2, Col 10"), "{:?}", page_words(&again));
+    let editor = shown(&again).expect("an editor");
+    assert_eq!(
+        again
+            .editor(&editor)
+            .and_then(|buffer| buffer.ranges().first().map(|range| range.head)),
+        Some(21)
+    );
+    Ok(())
+}
+
+/// A file that changed on disk in a character, where only its last byte differs, is changed there and
+/// no byte more, and what was done before can be undone.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_file_changed_on_disk_inside_characters_of_more_than_one_byte_is_read_again_in_place()
+-> Result<(), Error> {
+    let project = Project::new(&[("accents.txt", "aé😀b\nçğı\nend\n")]);
+    let session = project.session(&["accents.txt"]);
+    let mut page = project.open(&session, WIDE)?;
+    let editor = shown(&page).expect("an editor");
+    page.caret_to(&editor, 0)?;
+    page.type_text("X")?;
+    page.advance(1.0)?;
+    page.press("cmd+s")?;
+    wait(&mut page, |_| {
+        project.read("accents.txt").starts_with("Xaé")
+    })?;
+    page.advance(1.0)?;
+    // `é` and `ê` share their first byte; the emoji's last byte and `ğ`'s differ from their neighbours'.
+    let on_disk = "Xaê😁b\nçğı\nend\nüç\n";
+    project.write("accents.txt", on_disk);
+    wait(&mut page, |page| text(page) == on_disk)?;
+    page.advance(0.5)?;
+    assert_eq!(shown(&page), Some(editor), "the same editor");
+    page.press("cmd+z")?;
+    page.advance(0.5)?;
+    assert_eq!(text(&page), on_disk.replacen("Xaê", "aê", 1));
+    Ok(())
+}
+
+/// A file named in characters of more than one byte is found and marked in the quick open and its name
+/// is selected, by bytes, in the dialog that renames it.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_name_in_wide_characters_is_marked_in_the_quick_open_and_selected_in_the_rename()
+-> Result<(), Error> {
+    let project = Project::new(&[("notes/çiçek.txt", "çiçek\n"), ("readme.md", "# Hi\n")]);
+    let session = project.session(&["readme.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+k")?;
+    page.type_text("çiçek")?;
+    wait(&mut page, |page| shows(page, "çiçek.txt"))?;
+    page.press("enter")?;
+    wait(&mut page, |page| text(page) == "çiçek\n")?;
+    // The dialog that renames: `çiçek` (seven bytes, five characters) is selected in `notes/çiçek.txt`;
+    // the host's field says it in characters, from the bytes the page gave.
+    page.press("cmd+shift+e")?;
+    // The tree shows the file opened: its folder is open already.
+    wait(&mut page, |page| {
+        page.bounds("row:notes/çiçek.txt").is_some()
+    })?;
+    page.click("row:notes/çiçek.txt")?;
+    page.press("f2")?;
+    assert_eq!(page.field("dialog-input"), Some("notes/çiçek.txt"));
+    assert_eq!(page.field_selection("dialog-input"), Some(6..11));
+    Ok(())
+}
+
+/// A file with nothing in it, or one that is not there (open empty), opens at the place kept for it and
+/// where it is asked to: an empty text into an empty editor is told of by nothing, so the page has no
+/// version of that document to say the caret's place against, and the kit refuses an ask without one.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_file_with_nothing_in_it_opens_where_it_was_left_and_where_it_is_asked_to() -> Result<(), Error>
+{
+    let project = Project::new(&[("empty.txt", ""), ("other.txt", "other\n")]);
+    let session = project.session(&[]);
+    let place = |at: u64| Place {
+        anchor: serde_json::Number::from(at),
+        head: serde_json::Number::from(at),
+        top: serde_json::Number::from(0),
+    };
+    session.keep(UiState {
+        tabs: ["empty.txt", "other.txt", "missing.txt"]
+            .map(str::to_owned)
+            .to_vec(),
+        active: Some("empty.txt".to_owned()),
+        places: [
+            ("empty.txt".to_owned(), place(0)),
+            ("missing.txt".to_owned(), place(3)),
+            ("other.txt".to_owned(), place(2)),
+        ]
+        .into(),
+        ..UiState::default()
+    });
+    let mut page = project.open(&session, WIDE)?;
+    wait(&mut page, |page| shows(page, "Ln 1, Col 1"))?;
+    assert_eq!(text(&page), "");
+    // Another program writes to it: the page changes the editor's text, which has had no change yet.
+    project.write("empty.txt", "now not empty\n");
+    wait(&mut page, |page| text(page) == "now not empty\n")?;
+    // The other tabs come to the front one after another, and the empty ones are asked to a place.
+    page.press("ctrl+2")?;
+    wait(&mut page, |page| text(page) == "other\n")?;
+    assert!(shows(&page, "Ln 1, Col 3"), "{:?}", page_words(&page));
+    page.press("ctrl+3")?;
+    page.advance(0.5)?;
+    assert!(shows(&page, "Ln 1, Col 1"), "{:?}", page_words(&page));
+    go_to(&mut page, "empty.txt:1:1")?;
+    page.press("cmd+l")?;
+    page.type_text("1")?;
+    page.press("enter")?;
+    page.advance(0.5)?;
+    assert!(shows(&page, "Ln 1, Col 1"), "{:?}", page_words(&page));
+    Ok(())
 }
 
 // --- What the program tells of the files -------------------------------------------------------------

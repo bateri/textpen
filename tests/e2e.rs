@@ -337,7 +337,8 @@ fn a_terminal_without_pencere_runs_the_persons_own_editor_with_textpen_passed_ov
 
 #[test]
 fn a_text_too_long_for_one_message_is_read_in_pieces_of_whole_characters() {
-    // A message is 1 MiB at most: 30,000 lines of 99 ş are 5.97 MB and 3,000,000 characters.
+    // A message is 1 MiB at most: 30,000 lines of 99 ş are 5.97 MB (199 bytes a line) and 3,000,000
+    // characters.
     let pane = pane();
     pane.write("a.txt", format!("{}\n", "ş".repeat(99)).repeat(30_000));
     let log = pane.record(
@@ -346,22 +347,23 @@ fn a_text_too_long_for_one_message_is_read_in_pieces_of_whole_characters() {
             .call("slice", json!({ "path": "a.txt", "version": 1, "from": 0 }))
             .call(
                 "slice",
-                json!({ "path": "a.txt", "version": 1, "from": 150_000 }),
+                json!({ "path": "a.txt", "version": 1, "from": 298_500 }),
             ),
     );
     assert_eq!(tally(&log), (3, 0));
     let heard = answers(&log);
     let opened = heard[0].result();
     assert_eq!(opened["text"], json!(""));
-    assert_eq!(opened["partial"], json!({ "length": 3_000_000 }));
-    for (answer, from) in [(&heard[1], 0), (&heard[2], 150_000)] {
+    assert_eq!(opened["partial"], json!({ "length": 5_970_000 }));
+    for (answer, from) in [(&heard[1], 0), (&heard[2], 298_500)] {
         let piece = answer.result();
         let text = piece["text"].as_str().expect("a text");
         let end = piece["end"].as_u64().expect("an end");
-        assert_eq!(end - from, text.chars().count() as u64);
+        // Places are bytes, and a piece ends between two characters.
+        assert_eq!(end - from, text.len() as u64);
         // A piece is a quarter of a message at most (docs/calls.md), and nearly that.
         assert!(text.len() <= 256 * 1024 && text.len() > 250 * 1024);
-        // Character 150,000 begins line 1,500.
+        // Byte 298,500 begins line 1,500.
         assert!(text.starts_with('ş'));
     }
 }

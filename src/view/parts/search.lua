@@ -155,8 +155,9 @@ end
 
 -- The word at the caret, as a word: letters, digits, underscores (and any letter that is not ASCII).
 local function word_at_caret(doc, range)
-	local from, to = layout.word_at(doc.id, range.head)
-	if not from or to <= from or to - from > 200 then
+	-- The caret's place is of the text its selection was told of: read where it holds.
+	local ok, from, to = pcall(layout.word_at, doc.id, range.head)
+	if not ok or not from or to <= from or to - from > 200 then
 		return nil
 	end
 	local word = layout.editor_text(doc.id, from, to) or ""
@@ -173,7 +174,8 @@ function act.search_selection(or_word)
 	if doc then
 		local range = doc.ranges[doc.main]
 		if range and range.anchor ~= range.head and math.abs(range.head - range.anchor) <= 500 then
-			local words = layout.editor_text(doc.id, math.min(range.anchor, range.head), math.max(range.anchor, range.head)) or ""
+			local ok, words = pcall(layout.editor_text, doc.id, math.min(range.anchor, range.head), math.max(range.anchor, range.head))
+			words = ok and words or ""
 			if words ~= "" and not string.find(words, "\n", 1, true) then
 				Q.query = words
 				schedule()

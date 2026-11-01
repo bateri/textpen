@@ -56,7 +56,7 @@ fn sendable(opened: Opened) -> Sent {
     Sent {
         info: opened.info,
         partial: Some(Partial {
-            length: opened.text.chars().count(),
+            length: opened.text.len(),
         }),
         text: String::new(),
     }

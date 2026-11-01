@@ -494,10 +494,10 @@ fn the_settings_an_older_textpen_kept_are_read_as_this_one_has_them() {
 }
 
 #[test]
-fn edits_count_code_points_and_a_file_is_written_as_it_was_read() {
+fn edits_count_bytes_and_a_file_is_written_as_it_was_read() {
     let pane = Pane::new();
-    // "a", then ş (two bytes), then an emoji (four bytes), then "z": one code point each, so the
-    // emoji is at 2..3 and z at 3..4.
+    // "a", then ş (two bytes), then an emoji (four bytes), then "z": places are bytes, so ş is at
+    // 1..3, the emoji at 3..7 and z at 7..8.
     pane.write("u.txt", "\u{feff}aş😀z\r\nlast\r\n");
     let heard = ask(
         &pane,
@@ -505,7 +505,7 @@ fn edits_count_code_points_and_a_file_is_written_as_it_was_read() {
             ("open", json!({ "path": "u.txt" })),
             (
                 "edit",
-                json!({ "path": "u.txt", "base": 1, "edits": [[3, 4, "Z"], [2, 3, "<>"]] }),
+                json!({ "path": "u.txt", "base": 1, "edits": [[7, 8, "Z"], [3, 7, "<>"]] }),
             ),
             (
                 "edit",
@@ -519,7 +519,7 @@ fn edits_count_code_points_and_a_file_is_written_as_it_was_read() {
             ("buffer", json!({ "path": "u.txt", "action": "text" })),
             (
                 "edit",
-                json!({ "path": "u.txt", "base": 2, "edits": [[1, 1, "€"], [8, 8, "𝄞"]] }),
+                json!({ "path": "u.txt", "base": 2, "edits": [[1, 1, "€"], [11, 11, "𝄞"]] }),
             ),
             ("buffer", json!({ "path": "u.txt", "action": "text" })),
         ],
@@ -540,7 +540,7 @@ fn edits_count_code_points_and_a_file_is_written_as_it_was_read() {
         "an edit made on a version that is gone"
     );
     assert_eq!(heard[5].result()["text"], json!("aş<>Z\nlast\n"));
-    // "a€ş<>Z\n" is seven code points: the second edit, on what the first left, is after "l".
+    // "a€ş<>Z\n" is ten bytes: the second edit, on what the first left, is after "l" (byte 11).
     assert_eq!(heard[7].result()["text"], json!("a€ş<>Z\nl𝄞ast\n"));
     assert_eq!(pane.read("u.txt"), "\u{feff}aş<>Z\r\nlast\r\n");
 }
@@ -932,7 +932,7 @@ fn the_changes_topic_tells_the_disk_at_once_then_what_changed_under_a_listed_dir
 }
 
 #[test]
-fn quitting_by_hangup_keeps_what_is_not_saved_as_a_draft_with_its_length_in_code_points() {
+fn quitting_by_hangup_keeps_what_is_not_saved_as_a_draft_with_its_length_in_bytes() {
     let pane = Pane::new();
     pane.write("a.txt", "world\n");
     pane.record(
@@ -957,15 +957,15 @@ fn quitting_by_hangup_keeps_what_is_not_saved_as_a_draft_with_its_length_in_code
             .call("buffer", json!({ "path": "a.txt", "action": "drop" }))
             .args(&["a.txt"]),
     );
-    // "world😀!\n" is eight code points.
-    assert_eq!(heard[0].result()["draft"]["length"], json!(8));
+    // "world😀!\n" is eleven bytes: the emoji is four.
+    assert_eq!(heard[0].result()["draft"]["length"], json!(11));
     assert!(heard[1].result().get("draft").is_none());
     assert_eq!(heard[1].result()["text"], json!("world\n"));
     assert!(pane.drafts().is_empty(), "a dropped draft is gone");
 }
 
 #[test]
-fn a_long_text_of_four_byte_characters_is_read_in_pieces_that_count_code_points() {
+fn a_long_text_of_four_byte_characters_is_read_in_pieces_that_count_bytes() {
     // 300,000 emoji are 1.2 MB: more than a piece holds, and each piece ends between two of them.
     let pane = Pane::new();
     pane.write("e.txt", "😀".repeat(300_000));
@@ -977,25 +977,28 @@ fn a_long_text_of_four_byte_characters_is_read_in_pieces_that_count_code_points(
             ("slice", json!({ "path": "e.txt", "version": 1, "from": 0 })),
             (
                 "slice",
-                json!({ "path": "e.txt", "version": 1, "from": budget / 4 }),
+                json!({ "path": "e.txt", "version": 1, "from": budget }),
             ),
             (
                 "slice",
-                json!({ "path": "e.txt", "version": 1, "from": 300_000 }),
+                json!({ "path": "e.txt", "version": 1, "from": 1_200_000 }),
             ),
+            // A place inside a character is the end of nothing.
+            ("slice", json!({ "path": "e.txt", "version": 1, "from": 2 })),
             ("slice", json!({ "path": "e.txt", "version": 2, "from": 0 })),
         ],
     );
-    assert_eq!(heard[0].result()["partial"], json!({ "length": 300_000 }));
+    assert_eq!(heard[0].result()["partial"], json!({ "length": 1_200_000 }));
     assert_eq!(heard[0].result()["text"], json!(""));
     let first = heard[1].result();
-    assert_eq!(first["end"], json!(budget / 4));
+    assert_eq!(first["end"], json!(budget));
     assert_eq!(first["text"].as_str().unwrap().chars().count(), budget / 4);
     let second = heard[2].result();
-    assert_eq!(second["end"], json!(budget / 2));
+    assert_eq!(second["end"], json!(budget * 2));
     assert_eq!(second["text"].as_str().unwrap(), "😀".repeat(budget / 4));
-    assert_eq!(heard[3].result(), &json!({ "text": "", "end": 300_000 }));
-    assert!(heard[4].failed("out-of-sync"));
+    assert_eq!(heard[3].result(), &json!({ "text": "", "end": 1_200_000 }));
+    assert_eq!(heard[4].result(), &json!({ "text": "", "end": 2 }));
+    assert!(heard[5].failed("out-of-sync"));
 }
 
 /// A PNG that is only the header that says its size, which is all the program reads of it.
