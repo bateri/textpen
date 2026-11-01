@@ -170,6 +170,9 @@ change what the previous one did.
 - A file whose name is not valid UTF-8 is not shown in the tree and is not searched.
 - Search in the project reads the files one at a time, on a thread of its own, in place of
   sixteen at a time.
+- Labels, hints and messages no longer end in an ellipsis: a menu item or a command reads "Rename"
+  or "New File", and a wait says "Searching" or "Reading the folder", the same whole phrase
+  wherever it is shown. A name or a line cut to fit its room still ends in one.
 
 ### Removed
 

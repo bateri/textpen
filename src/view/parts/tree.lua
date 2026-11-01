@@ -320,7 +320,7 @@ function tree.view(width)
 	if error_words then
 		return b.div():p(12):child(b.text(error_words):color("error"):wrap())
 	elseif not S.listings[""] then
-		return b.div():row():gap(8):p(12):child(kit.spinner(14, "quiet")):child(b.text("Reading the folder…"):color("dim"))
+		return b.div():row():gap(8):p(12):child(kit.spinner(14, "quiet")):child(b.text("Reading the folder"):color("dim"))
 	elseif #rows == 0 then
 		return b.div():col():gap(6):p(12)
 			:child(b.text("This folder is empty."):color("dim"))
@@ -464,8 +464,8 @@ function tree.menu(entry, at)
 	local is_dir = entry and entry.kind == "dir"
 	local dir = entry and (is_dir and entry.path or text.dirname(entry.path)) or ""
 	local items = {
-		{ "New File…", "a", function() act.create("file", dir) end },
-		{ "New Folder…", "shift+a", function() act.create("dir", dir) end },
+		{ "New File", "a", function() act.create("file", dir) end },
+		{ "New Folder", "shift+a", function() act.create("dir", dir) end },
 	}
 	if entry and entry.upload then
 		items = { { "Cancel Upload", nil, function() uploads.cancel(entry.upload) end } }
@@ -482,8 +482,8 @@ function tree.menu(entry, at)
 			items[#items + 1] = { "Open", nil, function() act.open_file(entry.path, { focus = true }) end }
 			items[#items + 1] = { "Download", nil, function() uploads.save_as(entry.path) end }
 		end
-		items[#items + 1] = { "Rename…", "r", function() act.rename(entry.path) end }
-		items[#items + 1] = { "Delete…", "d", function() act.remove(entry.path, is_dir) end }
+		items[#items + 1] = { "Rename", "r", function() act.rename(entry.path) end }
+		items[#items + 1] = { "Delete", "d", function() act.remove(entry.path, is_dir) end }
 		items[#items + 1] = "-"
 		items[#items + 1] = { "Copy Path", "y", function() act.copy_path(entry.path, false) end }
 		items[#items + 1] = { "Copy Absolute Path", "shift+y", function() act.copy_path(entry.path, true) end }

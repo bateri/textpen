@@ -1069,7 +1069,7 @@ fn the_tree_makes_renames_and_deletes_files() -> Result<(), Error> {
         page.bounds("row:src/lib/ripe.ts").is_some()
     })?;
     page.right_click("row:src/lib/ripe.ts")?;
-    page.pick_titled("Delete…")?;
+    page.pick_titled("Delete")?;
     assert!(shows(&page, "Delete ripe.ts?"), "{:?}", page_words(&page));
     page.press("d")?;
     wait(&mut page, |_| !project.exists("src/lib/ripe.ts"))?;
@@ -2209,7 +2209,7 @@ fn a_command_is_done_by_each_of_its_keys_and_a_menu_shows_its_keys() -> Result<(
         })
     };
     assert_eq!(keys_of("Close"), Some(Shortcut::parse("ctrl+w")));
-    assert_eq!(keys_of("Rename…"), Some(Shortcut::parse("f2")));
+    assert_eq!(keys_of("Rename"), Some(Shortcut::parse("f2")));
     assert_eq!(keys_of("Copy Path"), Some(None));
     Ok(())
 }

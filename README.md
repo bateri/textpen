@@ -66,7 +66,7 @@ right-click menu, or the command palette with a folder chosen in the tree) asks 
 the Open panel and puts what you choose in that folder, and **Download** (a file's menu, or the
 palette) asks for the Save panel with the file's name and says "Downloaded foto.png" when it is
 written. In a Markdown file, `⌘V` with a picture on the pasteboard puts it beside the file as
-`image.png` (`image-1.png`, `image-2.png`… where the name is taken) and writes `![](image.png)`
+`image.png` (`image-1.png`, `image-2.png` where the name is taken) and writes `![](image.png)`
 at the caret; the preview holds its place until it is whole. A pause of a few seconds leaves the percent where
 it is; with no word for 30 seconds the row says "Upload stalled" and offers **Retry**. It needs a terminal that shows the
 page at `lua` 2.1, as bateri does.
@@ -199,7 +199,7 @@ files cross the stream once; after that the terminal keeps them.
 
 - `src/program/` is textpen's program, in Rust on the [pencere](https://github.com/bateri/pencere)
   crate, and **holds the text of every open file**. The editor asks it with a handful of calls
-  (open, edit, save, list, search…) and hears from it on one topic, what changed on disk and in
+  (open, edit, save, list and search) and hears from it on one topic, what changed on disk and in
   git; `docs/calls.md` is all they say to each other. What the editor sends travels through the
   terminal's input queue, in frames of 511 bytes and messages of at most 1 MiB, so it never sends
   a file: it sends what changed, a few hundred milliseconds of typing at a time, as replacements

@@ -162,7 +162,7 @@ function tabs.menu(path)
 			act.move_tab(1)
 		end },
 		"-",
-		{ "Rename…", "f2", function() act.rename(path) end },
+		{ "Rename", "f2", function() act.rename(path) end },
 		{ "Copy Path", nil, function() act.copy_path(path, false) end },
 		{ "Reveal in Files", nil, function()
 			act.reveal(path)

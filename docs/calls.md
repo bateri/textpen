@@ -135,8 +135,9 @@ Refused     = { refused: "too-large", size: number } | { refused: "not-a-picture
 Place       = { name: string, exists: boolean, free: string }
               -- name: the name as the program takes it (only its last part, nothing a path could be
               -- made of). exists: taken in the folder (a link to nothing too) or by one of `also`.
-              -- free: the first name beside it that is not taken: "foto 2.png", "foto 3.png"…, or
-              -- with `dash` "foto-1.png", "foto-2.png"…; `name` itself where it is not taken.
+              -- free: the first name beside it that is not taken, counting up from 2 ("foto 2.png", then
+              -- "foto 3.png" where that is taken too), or with `dash` from 1 ("foto-1.png", then
+              -- "foto-2.png"); `name` itself where it is not taken.
 FilesPage   = { files: string[], truncated: boolean, next: number | null, generation: number }
 ```
 

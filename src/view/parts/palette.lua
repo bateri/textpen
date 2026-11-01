@@ -26,12 +26,12 @@ local LIMIT = 120
 local shown_rows = MOST_ROWS
 
 local MODES = {
-	files = { label = "Files", icon = "file-search", hint = "Go to file…  (> commands, : line)" },
-	commands = { label = "Commands", icon = "command", hint = "Run a command…" },
+	files = { label = "Files", icon = "file-search", hint = "Go to file  (> commands, : line)" },
+	commands = { label = "Commands", icon = "command", hint = "Run a command" },
 	line = { label = "Line", icon = "hash", hint = "Line number, or line:column" },
-	tabs = { label = "Open", icon = "stack-2", hint = "Switch to an open file…" },
-	language = { label = "Language", icon = "command", hint = "Read this file as…" },
-	indent = { label = "Indent", icon = "command", hint = "Indentation…" },
+	tabs = { label = "Open", icon = "stack-2", hint = "Switch to an open file" },
+	language = { label = "Language", icon = "command", hint = "Choose a language for this file" },
+	indent = { label = "Indent", icon = "command", hint = "Choose spaces or tabs, and the tab size" },
 }
 
 local recent_commands = {}
@@ -560,7 +560,7 @@ function palette.view(size)
 		local words = "Nothing matches"
 		local waiting = false
 		if overlay.mode == "files" and S.file_index == nil then
-			words = "Listing the project…"
+			words = "Listing the project"
 			waiting = true
 		elseif overlay.mode == "line" then
 			words = "Type a line number"

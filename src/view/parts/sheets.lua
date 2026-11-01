@@ -74,7 +74,7 @@ local function help_view(size)
 	local head = b.div():row():items_center():gap(10):h(44):px(14):no_shrink()
 		:child(b.text("Keyboard"):weight(700))
 		:child(b.div():text_field(FILTER):label("Filter the keys"):grow(1):h(28):px(8):rounded(6):bg("background"):border(1, "border")
-			:child(b.text("Filter…")))
+			:child(b.text("Filter the keys")))
 		:child(kit.icon_button("sheet-close", "x", "Close", { keys = "escape" }))
 	local body = b.div():id(HELP_BODY):col():gap(14):px(16):py(12):grow(1):min_h(0):scroll()
 	local groups, order = {}, {}
@@ -100,7 +100,7 @@ local function help_view(size)
 			local keys = kit.keys_all(command.keys or command.shown, "   ")
 			local words = command.title
 			if command.id == "tab-1" then
-				words, keys = "Go to Tab 1–9", kit.keys_of("ctrl+1") .. " … " .. kit.keys_of("ctrl+9")
+				words, keys = "Go to Tab 1–9", kit.keys_of("ctrl+1") .. " to " .. kit.keys_of("ctrl+9")
 			end
 			group:child(line(words, keys))
 		end

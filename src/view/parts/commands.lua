@@ -47,12 +47,12 @@ end
 
 -- --- Going places -------------------------------------------------------------------------------------
 
-add({ id = "files", title = "Go to File…", category = "Go", keys = "cmd+k", run = function() act.open_palette("files") end })
+add({ id = "files", title = "Go to File", category = "Go", keys = "cmd+k", run = function() act.open_palette("files") end })
 add({ id = "commands", title = "Show All Commands", category = "Go", keys = "f1", run = function() act.open_palette("commands") end })
-add({ id = "switch", title = "Switch to Open File…", category = "Go", keys = "cmd+e", when = function() return tab_count() > 0 end,
+add({ id = "switch", title = "Switch to Open File", category = "Go", keys = "cmd+e", when = function() return tab_count() > 0 end,
 	run = function() act.open_palette("tabs") end })
-add({ id = "line", title = "Go to Line…", category = "Go", keys = "cmd+l", when = has_file, run = function() act.open_palette("line") end })
-add({ id = "language", title = "Change Language…", category = "View", when = has_file, run = function() act.open_palette("language") end })
+add({ id = "line", title = "Go to Line", category = "Go", keys = "cmd+l", when = has_file, run = function() act.open_palette("line") end })
+add({ id = "language", title = "Change Language", category = "View", when = has_file, run = function() act.open_palette("language") end })
 
 -- --- Changes against git ---------------------------------------------------------------------------------
 
@@ -96,9 +96,9 @@ add({ id = "save-all", title = "Save All", category = "File", keys = "cmd+alt+s"
 		return false
 	end,
 	run = function() act.save_all() end })
-add({ id = "new-file", title = "New File…", category = "File", keys = "cmd+alt+n", run = function() act.create("file") end })
-add({ id = "new-folder", title = "New Folder…", category = "File", run = function() act.create("dir") end })
-add({ id = "rename", title = "Rename…", category = "File", keys = "f2",
+add({ id = "new-file", title = "New File", category = "File", keys = "cmd+alt+n", run = function() act.create("file") end })
+add({ id = "new-folder", title = "New Folder", category = "File", run = function() act.create("dir") end })
+add({ id = "rename", title = "Rename", category = "File", keys = "f2",
 	when = function() return (S.focus == "sidebar" and S.tree_selection or S.active) ~= nil end,
 	run = function()
 		local path = S.focus == "sidebar" and S.tree_selection or S.active
@@ -106,7 +106,7 @@ add({ id = "rename", title = "Rename…", category = "File", keys = "f2",
 			act.rename(path)
 		end
 	end })
-add({ id = "delete", title = "Delete File…", category = "File", when = function() return S.active ~= nil end,
+add({ id = "delete", title = "Delete File", category = "File", when = function() return S.active ~= nil end,
 	run = function() act.remove(S.active, false) end })
 add({ id = "revert", title = "Revert File", category = "File",
 	when = function()
@@ -237,7 +237,7 @@ add({ id = "preview", title = "Toggle Markdown Preview", category = "View", keys
 	run = function() act.toggle_preview() end })
 add({ id = "diff-decorations", title = "Toggle Changes in the Gutter", category = "View",
 	run = function() act.change_settings({ diffDecorations = not S.settings.diffDecorations }) end })
-add({ id = "indentation", title = "Indentation…", category = "View", run = function() act.open_palette("indent") end })
+add({ id = "indentation", title = "Indentation", category = "View", run = function() act.open_palette("indent") end })
 add({ id = "settings", title = "Settings", category = "textpen", keys = "cmd+,", run = function() act.open_settings() end })
 add({ id = "help", title = "Keyboard Shortcuts", category = "textpen", keys = "cmd+shift+/", run = function() act.open_help() end })
 add({ id = "shell", title = "Open a Shell Here", category = "textpen", keys = "cmd+j",

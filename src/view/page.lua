@@ -59,7 +59,7 @@ local function booting()
 end
 
 local function handing_off()
-	local words = S.handing_off == "shell" and "Handing the pane to a shell…" or "Closing textpen…"
+	local words = S.handing_off == "shell" and "Handing the pane to a shell" or "Closing textpen"
 	local box = b.div()
 		:row()
 		:items_center()
