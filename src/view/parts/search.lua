@@ -156,11 +156,11 @@ end
 -- The word at the caret, as a word: letters, digits, underscores (and any letter that is not ASCII).
 local function word_at_caret(doc, range)
 	-- The caret's place is of the text its selection was told of: read where it holds.
-	local ok, from, to = pcall(layout.word_at, doc.id, range.head)
-	if not ok or not from or to <= from or to - from > 200 then
+	local ok, found = pcall(layout.word_at, doc.id, range.head)
+	if not ok or not found or found.to <= found.from or found.to - found.from > 200 then
 		return nil
 	end
-	local word = layout.editor_text(doc.id, from, to) or ""
+	local word = layout.editor_text(doc.id, found.from, found.to) or ""
 	if word == "" or string.find(word, "[^%w_\128-\255]") then
 		return nil
 	end

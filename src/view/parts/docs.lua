@@ -348,14 +348,9 @@ local function set_language(doc, lang)
 	local syntax = doc.syntax
 	if syntax then
 		kit.syntaxes[doc.id] = nil
-		if doc.edited ~= nil then
-			kit.ask(doc.id, {
-				decorate = syntax.layer,
-				version = doc.edited,
-				from = 1,
-				to = (layout.editor_length(doc.id) or 0) + 1,
-				decorations = {},
-			})
+		-- It colours no more, and what it coloured is taken away.
+		for _, request in syntax:close() do
+			kit.ask(doc.id, request)
 		end
 	end
 	doc.lang = lang
