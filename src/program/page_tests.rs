@@ -2534,9 +2534,6 @@ fn the_editors_menu_has_the_standard_lines_and_textpens_own_and_the_press_puts_t
         menu.entries.iter().find_map(|entry| match entry {
             MenuEntry::Item {
                 title: named, keys, ..
-            }
-            | MenuEntry::Paste {
-                title: named, keys, ..
             } if named == title => Some(*keys),
             _ => None,
         })
