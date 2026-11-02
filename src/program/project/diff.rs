@@ -174,14 +174,10 @@ mod tests {
             (0, 1, 64, true)
         );
         // Past the number of hunks that are told, the rest is not, and it is said.
-        let old: String = (0..HUNK_LIMIT + 10)
-            .map(|n| format!("keep {n}\nold {n}\n"))
-            .collect();
-        let new: String = (0..HUNK_LIMIT + 10)
-            .map(|n| format!("keep {n}\nnew {n}\n"))
-            .collect();
-        let found = hunks(&old, &new).expect("compared");
-        assert_eq!((found.hunks.len(), found.more), (HUNK_LIMIT, true));
+        let old: String = (0..20).map(|n| format!("keep {n}\nold {n}\n")).collect();
+        let new: String = (0..20).map(|n| format!("keep {n}\nnew {n}\n")).collect();
+        let found = hunks_up_to(&old, &new, 10).expect("compared");
+        assert_eq!((found.hunks.len(), found.more), (10, true));
         // A text too long to compare is none.
         assert!(hunks(&"x\n".repeat(TEXT_LIMIT), "y\n").is_none());
     }
