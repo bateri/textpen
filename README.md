@@ -4,14 +4,66 @@ A code editor in the terminal pane: the project's files as a tree, tabs, search 
 them, and the text in the colours and the font of your terminal — with the keyboard or
 the mouse, on your machine or on a server over plain `ssh`.
 
-![textpen: a TypeScript file in a dark terminal's theme, with the project's files and what git says of them](docs/editor.png)
+<img src="docs/editor.png" width="720" alt="textpen: a TypeScript file in a dark terminal's theme, with the project's files and what git says of them">
+
+## Install
+
+textpen is one file, with the editor inside it and nothing else to install, for macOS on Apple
+silicon and Linux on `arm64` and `x86_64`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/bateri/textpen/main/install.sh | sh
+```
+
+To see the editor you need a terminal that hosts pencere views: [bateri](https://github.com/bateri/bateri), from its 0.23. In any
+other terminal textpen opens your own `$EDITOR`.
+
+The installer takes the newest release (or `TEXTPEN_VERSION=0.2.0`), checks it against the
+release's `SHA256SUMS`, and puts it in `~/.local/bin` (`TEXTPEN_INSTALL=<dir>` puts it elsewhere).
+A file a browser downloads is quarantined by macOS; one curl downloads is not.
+
+## Use
 
 textpen is a [pencere](https://github.com/bateri/pencere) program. Run it in a terminal
 that hosts pencere views ([bateri](https://github.com/bateri/bateri)) and the pane becomes
 the editor, the way `vim` takes the screen and gives it back; quit and the shell is where
 it was. Run it anywhere else and your own `$EDITOR` opens instead.
 
+```sh
+textpen                             # the folder you are in
+textpen src/server.ts:42            # a file, at a line (`+42 file` works too)
+textpen ~/projects/lantern          # a folder as the project
+```
+
+With no file named, textpen opens on the folder you are in, with the files that were open
+there the last time. Settings are kept in `~/.config/textpen/`, drafts and each project's
+open files in `~/.local/state/textpen/` (or where `XDG_CONFIG_HOME` and `XDG_STATE_HOME`
+say).
+
+**As your `$EDITOR`.** `export EDITOR=textpen` and `git commit` opens the message in the
+pane: save it and close the tab, and git goes on. Opened on files named on the
+command line, textpen ends when the last of them is closed. In a terminal without pencere it
+passes the file to `$VISUAL` or `$EDITOR` — skipping itself — or to `vi`.
+
+**Over ssh.** Copy the file for the server's system to it and run it there, in a pane of a
+terminal that hosts pencere: nothing listens on a port, the editor travels in the terminal's
+own stream, and it runs on your machine in a sandbox that reaches nothing but its program. Its
+files cross the stream once; after that the terminal keeps them.
+
 ## What it does
+
+<table>
+  <tr>
+    <td width="33%" valign="top"><img src="docs/changes.png" width="100%" alt="A change peeked: the lines as they were and as they are"><br>A change peeked: the lines as they were and as they are</td>
+    <td width="33%" valign="top"><img src="docs/picture.png" width="100%" alt="A picture in its tab: fitted, with its size and its pixels under it"><br>A picture in its tab: fitted, with its size and its pixels under it</td>
+    <td width="33%" valign="top"><img src="docs/palette.png" width="100%" alt="Go to a file"><br>Go to a file</td>
+  </tr>
+  <tr>
+    <td width="33%" valign="top"><img src="docs/search.png" width="100%" alt="Search in the project"><br>Search in the project</td>
+    <td width="33%" valign="top"><img src="docs/preview.png" width="100%" alt="Markdown and its preview, in a light theme"><br>Markdown and its preview, in a light theme</td>
+    <td width="33%" valign="top"><img src="docs/light-80x24.png" width="100%" alt="An 80×24 pane in a light theme"><br>An 80×24 pane in a light theme</td>
+  </tr>
+</table>
 
 **The files of the project**, as a tree with what git says of each — changed, new, in
 conflict — and of the folders that hold them; which files are open and which have changes
@@ -39,8 +91,6 @@ to close it. The original is what git's index keeps of the file, so a change you
 longer marked, and a file git does not keep has no marks. They follow what you type, and the
 setting `Changes in the gutter` (or Toggle Changes in the Gutter) turns them off.
 
-![A change peeked: the lines as they were and as they are](docs/changes.png)
-
 **Every colour is the terminal's.** A terminal gives its view a handful of colours — its
 background and foreground, a dimmed one, an accent, and the colours it says success, danger,
 warning and information with — and textpen draws code with those, as the theme's author
@@ -54,8 +104,6 @@ file; go through them from anywhere with `F4` and `⇧F4`.
 **Pictures**: a PNG, a JPEG or an SVG opens in its tab, fitted into it and not made larger, with its
 size and its pixels under it. A file past 8 MiB or 4096 pixels is not drawn, and says so. It needs
 a terminal that shows the page at `lua` 0.1, as bateri does.
-
-![A picture in its tab: fitted, with its size and its pixels under it](docs/picture.png)
 
 **Drop a file on the tree** to put it in the project: dragged over a folder (or a file, which is
 its folder, or the room under the rows, which is the project) the place is marked and named, and
@@ -71,11 +119,22 @@ at the caret; the preview holds its place until it is whole. A pause of a few se
 it is; with no word for 30 seconds the row says "Upload stalled" and offers **Retry**. It needs a terminal that shows the
 page at `lua` 0.1, as bateri does.
 
-|                                                              |                                                                    |
-| ------------------------------------------------------------ | ------------------------------------------------------------------ |
-| ![Dragged over a folder](docs/upload-over.png)               | ![Two files on their way](docs/upload-going.png)                   |
-| ![A name that is taken](docs/upload-asks.png)                | ![A picture pasted in a Markdown file](docs/upload-paste.png)      |
-| ![An upload that stalled, in an 80×24 pane](docs/upload-stalled-80x24.png) |                                                      |
+<details>
+<summary>Five pictures of an upload</summary>
+
+<table>
+  <tr>
+    <td width="33%" valign="top"><img src="docs/upload-over.png" width="100%" alt="Dragged over a folder"><br>Dragged over a folder</td>
+    <td width="33%" valign="top"><img src="docs/upload-going.png" width="100%" alt="Two files on their way"><br>Two files on their way</td>
+    <td width="33%" valign="top"><img src="docs/upload-asks.png" width="100%" alt="A name that is taken"><br>A name that is taken</td>
+  </tr>
+  <tr>
+    <td width="33%" valign="top"><img src="docs/upload-paste.png" width="100%" alt="A picture pasted in a Markdown file"><br>A picture pasted in a Markdown file</td>
+    <td width="33%" valign="top"><img src="docs/upload-stalled-80x24.png" width="100%" alt="An upload that stalled, in an 80×24 pane"><br>An upload that stalled, in an 80×24 pane</td>
+  </tr>
+</table>
+
+</details>
 
 **A preview of Markdown**, beside the text in a wide pane and in its place in a narrow one,
 read again only where you changed the text, and shown to its end for a long file. The pictures it
@@ -95,10 +154,23 @@ brings the editor back, where you left it, unsaved changes and all.
 dragged where you want it; in a narrow one (80×24) they slide over it with `⌘B`, and the
 status line keeps what still fits.
 
-|                                                                 |                                                           |
-| --------------------------------------------------------------- | --------------------------------------------------------- |
-| ![Go to a file](docs/palette.png)                               | ![Search in the project](docs/search.png)                 |
-| ![Markdown and its preview, in a light theme](docs/preview.png) | ![An 80×24 pane in a light theme](docs/light-80x24.png)   |
+**What it does not do.**
+
+- `--dev` is refused: `make dev` in textpen's checkout runs it from its files and shows the editor
+  again when they change ("Work on it").
+- Search in the project reads the files one after another, on a thread of its own, so a search of
+  a very large project may take longer than if they were read several at a time. Typing and the
+  other calls go on while it runs.
+- A pattern in the project search is a Rust regular expression, not a JavaScript one: `\d`, `\w`
+  and `\b` mean Unicode digits, letters and word edges, and back-references (`\1`), look-ahead
+  and look-behind are refused with a message. In return a search always ends in time linear in
+  the text, whatever the pattern. A whole-word search takes the match the pattern prefers at a
+  place, so `foo\s*` in `foo  bar` is not a whole word. Find and replace in a file is the
+  editor's own.
+- A file whose name is not valid UTF-8 is not shown in the tree and is not searched.
+- Names are ordered with numbers as numbers (`file9` before `file10`) and capitals with small
+  letters, in the tree and in a search alike; letters with accents are not folded (`é` comes
+  after `z`).
 
 ## The keyboard, and the mouse
 
@@ -139,62 +211,6 @@ click does what the key does.
 `⌃C` always reaches textpen and ends it, whatever has the keyboard; what is not saved is
 kept as a draft. The text is the size the terminal draws its own: its own keys make it larger
 or smaller, and textpen has no zoom of its own.
-
-## Run it
-
-textpen is one file, with the editor inside it and nothing else to install, for macOS on Apple
-silicon and Linux on `arm64` and `x86_64`:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/bateri/textpen/main/install.sh | sh
-```
-
-The installer takes the newest release (or `TEXTPEN_VERSION=0.2.0`), checks it against the
-release's `SHA256SUMS`, and puts it in `~/.local/bin` (`TEXTPEN_INSTALL=<dir>` puts it elsewhere).
-A file a browser downloads is quarantined by macOS; one curl downloads is not.
-
-To see the editor you need a terminal that hosts pencere views. bateri is the first, from its
-0.23. In any other
-terminal textpen opens your own `$EDITOR`.
-
-```sh
-textpen                             # the folder you are in
-textpen src/server.ts:42            # a file, at a line (`+42 file` works too)
-textpen ~/projects/lantern          # a folder as the project
-```
-
-With no file named, textpen opens on the folder you are in, with the files that were open
-there the last time. Settings are kept in `~/.config/textpen/`, drafts and each project's
-open files in `~/.local/state/textpen/` (or where `XDG_CONFIG_HOME` and `XDG_STATE_HOME`
-say).
-
-**As your `$EDITOR`.** `export EDITOR=textpen` and `git commit` opens the message in the
-pane: save it and close the tab, and git goes on. Opened on files named on the
-command line, textpen ends when the last of them is closed. In a terminal without pencere it
-passes the file to `$VISUAL` or `$EDITOR` — skipping itself — or to `vi`.
-
-**Over ssh.** Copy the file for the server's system to it and run it there, in a pane of a
-terminal that hosts pencere: nothing listens on a port, the editor travels in the terminal's
-own stream, and it runs on your machine in a sandbox that reaches nothing but its program. Its
-files cross the stream once; after that the terminal keeps them.
-
-**What it does not do.**
-
-- `--dev` is refused: `make dev` in textpen's checkout runs it from its files and shows the editor
-  again when they change ("Work on it").
-- Search in the project reads the files one after another, on a thread of its own, so a search of
-  a very large project may take longer than if they were read several at a time. Typing and the
-  other calls go on while it runs.
-- A pattern in the project search is a Rust regular expression, not a JavaScript one: `\d`, `\w`
-  and `\b` mean Unicode digits, letters and word edges, and back-references (`\1`), look-ahead
-  and look-behind are refused with a message. In return a search always ends in time linear in
-  the text, whatever the pattern. A whole-word search takes the match the pattern prefers at a
-  place, so `foo\s*` in `foo  bar` is not a whole word. Find and replace in a file is the
-  editor's own.
-- A file whose name is not valid UTF-8 is not shown in the tree and is not searched.
-- Names are ordered with numbers as numbers (`file9` before `file10`) and capitals with small
-  letters, in the tree and in a search alike; letters with accents are not folded (`é` comes
-  after `z`).
 
 ## How it works
 
