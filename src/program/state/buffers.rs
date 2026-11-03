@@ -118,6 +118,30 @@ pub struct Slice {
     pub end: usize,
 }
 
+/// The piece of `content` that begins at the byte `from` and takes at most `limit` bytes (one
+/// character at least, so that reading goes on, and whole characters), and where the next piece
+/// begins. A `from` that is past the text or inside a character is an empty piece that ends where it
+/// began.
+pub fn piece(content: &str, from: usize, limit: usize) -> Slice {
+    if !content.is_char_boundary(from) {
+        return Slice {
+            text: String::new(),
+            end: from,
+        };
+    }
+    let mut used = 0;
+    for ch in content[from..].chars() {
+        if used + ch.len_utf8() > limit && used > 0 {
+            break;
+        }
+        used += ch.len_utf8();
+    }
+    Slice {
+        text: content[from..from + used].to_owned(),
+        end: from + used,
+    }
+}
+
 /// What a save did.
 #[derive(Debug, Serialize)]
 pub struct Saved {
@@ -478,24 +502,7 @@ impl Buffers {
         from: usize,
         limit: usize,
     ) -> Result<Slice, Error> {
-        let content = &self.at(path, version)?.text;
-        if !content.is_char_boundary(from) {
-            return Ok(Slice {
-                text: String::new(),
-                end: from,
-            });
-        }
-        let mut used = 0;
-        for ch in content[from..].chars() {
-            if used + ch.len_utf8() > limit && used > 0 {
-                break;
-            }
-            used += ch.len_utf8();
-        }
-        Ok(Slice {
-            text: content[from..from + used].to_owned(),
-            end: from + used,
-        })
+        Ok(piece(&self.at(path, version)?.text, from, limit))
     }
 
     /// What the marks of the gutter compare with git's: the version and the text of an open buffer
@@ -506,6 +513,19 @@ impl Buffers {
             return Ok(None);
         }
         Ok(Some((buffer.version, buffer.text.clone())))
+    }
+
+    /// What a comparison with the last commit holds against it: the version and the text of an open
+    /// buffer, the text none where it is longer than `limit` bytes. A file that is not on disk is
+    /// compared as the buffer holds it (empty, until something is typed).
+    pub fn for_compare(
+        &mut self,
+        path: &str,
+        limit: usize,
+    ) -> Result<(u64, Option<String>), Error> {
+        let buffer = self.get(path)?;
+        let text = (buffer.text.len() <= limit).then(|| buffer.text.clone());
+        Ok((buffer.version, text))
     }
 
     /// The current text of an open buffer.

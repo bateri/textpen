@@ -9,6 +9,7 @@
 
 mod buffers;
 mod changes;
+mod compare;
 mod diff;
 mod files;
 mod params;
@@ -130,6 +131,7 @@ pub fn serve(options: Options, session: &Arc<Session>) -> Options {
     let options = transfers::calls(options, session);
     let options = search::calls(options, session);
     let options = diff::calls(options, session);
+    let options = compare::calls(options, session);
     let options = session::calls(options, session);
     changes::topic(options, session)
 }

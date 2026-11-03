@@ -526,3 +526,246 @@ fn a_link_a_file_outside_the_project_and_a_project_outside_a_repository_have_no_
         Value::Null
     );
 }
+
+/// What `compare` says of `path`.
+fn compared(conversation: &mut Conversation, id: u64, path: &str) -> Value {
+    send(conversation, id, "compare", json!({ "path": path }));
+    answer(conversation).1.expect("an answer")
+}
+
+/// The blocks of an answer as `[oldLine, oldCount, newLine, newCount]`.
+fn blocks_of(answer: &Value) -> Vec<[u64; 4]> {
+    answer["blocks"]
+        .as_array()
+        .expect("blocks")
+        .iter()
+        .map(|block| {
+            ["oldLine", "oldCount", "newLine", "newCount"].map(|key| block[key].as_u64().unwrap())
+        })
+        .collect()
+}
+
+fn open(conversation: &mut Conversation, id: u64, path: &str) {
+    send(conversation, id, "open", json!({ "path": path }));
+    answer(conversation).1.expect("opened");
+}
+
+#[test]
+fn a_file_is_compared_with_the_last_commit_staged_or_not_and_the_blocks_are_where_it_differs() {
+    let (dir, session) = session(&[("a.txt", "one\ntwo\nthree\n")]);
+    let project = dir.path().join("project");
+    git(&project, &["init", "-q"]);
+    git(&project, &["add", "a.txt"]);
+    git(
+        &project,
+        &["commit", "-q", "-m", "First thing\n\nwith a body"],
+    );
+    let mut conversation = conversation(&session);
+    open(&mut conversation, 1, "a.txt");
+    let told = compared(&mut conversation, 2, "a.txt");
+    assert_eq!(told["version"], json!(1));
+    assert_eq!(blocks_of(&told), Vec::<[u64; 4]>::new());
+    assert_eq!(told["commit"]["subject"], json!("First thing"));
+    assert_eq!(told["commit"]["id"].as_str().unwrap().len(), 40);
+    assert_eq!(told["base"]["length"], json!(14));
+    assert_eq!(told["base"]["path"], json!("a.txt"));
+    assert!(told["base"]["id"].as_str().unwrap().len() >= 40);
+    assert!(told.get("why").is_none());
+    // `two` changed and a line added: a pair with its words, then the line added.
+    send(
+        &mut conversation,
+        3,
+        "edit",
+        json!({ "path": "a.txt", "base": 1, "edits": [[4, 7, "TWO"], [14, 14, "four\n"]] }),
+    );
+    answer(&mut conversation).1.unwrap();
+    let told = compared(&mut conversation, 4, "a.txt");
+    assert_eq!(told["version"], json!(2));
+    assert_eq!(blocks_of(&told), vec![[1, 1, 1, 1], [3, 0, 3, 1]]);
+    assert_eq!(told["blocks"][0]["oldWords"], json!([[0, 3]]));
+    assert_eq!(told["blocks"][0]["newWords"], json!([[0, 3]]));
+    // What is staged is no difference for `diff`, and is one here: the commit is what it is against.
+    send(
+        &mut conversation,
+        5,
+        "save",
+        json!({ "path": "a.txt", "version": 2 }),
+    );
+    answer(&mut conversation).1.unwrap();
+    git(&project, &["add", "a.txt"]);
+    let again = compared(&mut conversation, 6, "a.txt");
+    assert_eq!(blocks_of(&again), vec![[1, 1, 1, 1], [3, 0, 3, 1]]);
+    // A commit moves what it is against.
+    git(&project, &["commit", "-q", "-m", "Second"]);
+    let after = compared(&mut conversation, 7, "a.txt");
+    assert!(blocks_of(&after).is_empty());
+    assert_eq!(after["commit"]["subject"], json!("Second"));
+    assert_ne!(after["base"]["id"], told["base"]["id"]);
+    // A file that is not open is a buffer call's failure.
+    send(&mut conversation, 8, "compare", json!({ "path": "no.txt" }));
+    assert_eq!(
+        answer(&mut conversation).1.unwrap_err()["code"],
+        json!("out-of-sync")
+    );
+}
+
+#[test]
+fn a_new_file_a_file_taken_away_and_a_file_renamed_are_compared_with_what_the_commit_has_of_them() {
+    let (dir, session) = session(&[
+        ("old name.txt", "keep\nlines\nof\ntext\n"),
+        ("gone.txt", "x\ny\n"),
+        ("new.txt", "fresh\nfile\n"),
+    ]);
+    let project = dir.path().join("project");
+    // No commit yet: the new file is all added, and no commit is said.
+    git(&project, &["init", "-q"]);
+    let mut conversation = conversation(&session);
+    open(&mut conversation, 1, "new.txt");
+    let told = compared(&mut conversation, 2, "new.txt");
+    assert_eq!(told["commit"], Value::Null);
+    assert_eq!(
+        (told["base"]["id"].clone(), told["base"]["length"].clone()),
+        (Value::Null, json!(0))
+    );
+    assert_eq!(blocks_of(&told), vec![[0, 0, 0, 2]]);
+    git(&project, &["add", "old name.txt", "gone.txt"]);
+    git(&project, &["commit", "-q", "-m", "first"]);
+    // Not in the commit (untracked): the same, with the commit that there is.
+    let told = compared(&mut conversation, 3, "new.txt");
+    assert_eq!(told["commit"]["subject"], json!("first"));
+    assert_eq!(blocks_of(&told), vec![[0, 0, 0, 2]]);
+    // Taken away from the disk: it opens empty, and all of it is taken away.
+    std::fs::remove_file(project.join("gone.txt")).unwrap();
+    open(&mut conversation, 4, "gone.txt");
+    let told = compared(&mut conversation, 5, "gone.txt");
+    assert_eq!(blocks_of(&told), vec![[0, 2, 0, 0]]);
+    assert_eq!(told["base"]["length"], json!(4));
+    // Renamed with git, and a line changed: the left is the file under its old name.
+    git(&project, &["mv", "old name.txt", "renamed.txt"]);
+    std::fs::write(project.join("renamed.txt"), "keep\nlines\nof\nTEXT\n").unwrap();
+    // What git said of the renames a moment ago is not what it says now.
+    session.project.git.forget();
+    open(&mut conversation, 6, "renamed.txt");
+    let told = compared(&mut conversation, 7, "renamed.txt");
+    assert_eq!(told["base"]["path"], json!("old name.txt"));
+    assert_eq!(blocks_of(&told), vec![[3, 1, 3, 1]]);
+}
+
+#[test]
+fn a_binary_file_and_a_file_that_is_no_text_of_the_commit_are_not_compared_and_say_why() {
+    let (dir, session) = session(&[("blob.dat", "text now\n")]);
+    let project = dir.path().join("project");
+    std::fs::write(project.join("blob.dat"), [0u8, 1, 2, 0, 3]).unwrap();
+    git(&project, &["init", "-q"]);
+    git(&project, &["add", "blob.dat"]);
+    git(&project, &["commit", "-q", "-m", "binary"]);
+    std::fs::write(project.join("blob.dat"), "text now\n").unwrap();
+    let mut conversation = conversation(&session);
+    open(&mut conversation, 1, "blob.dat");
+    let told = compared(&mut conversation, 2, "blob.dat");
+    assert_eq!(told["why"], json!("binary"));
+    assert_eq!(told["commit"]["subject"], json!("binary"));
+    assert!(told.get("blocks").is_none() && told.get("base").is_none());
+}
+
+#[test]
+fn a_file_with_crlf_line_ends_and_a_mark_is_not_one_block_against_its_commit() {
+    let (dir, session) = session(&[]);
+    let project = dir.path().join("project");
+    std::fs::write(project.join("w.txt"), "\u{feff}a\r\nb\r\nc\r\n").unwrap();
+    git(&project, &["init", "-q"]);
+    git(&project, &["-c", "core.autocrlf=false", "add", "w.txt"]);
+    git(&project, &["commit", "-q", "-m", "first"]);
+    let mut conversation = conversation(&session);
+    open(&mut conversation, 1, "w.txt");
+    let told = compared(&mut conversation, 2, "w.txt");
+    assert!(blocks_of(&told).is_empty());
+    assert_eq!(told["base"]["length"], json!(6));
+}
+
+#[test]
+fn a_link_a_file_outside_the_project_and_a_project_outside_a_repository_are_outside() {
+    let (dir, session) = session(&[("real.txt", "a\n")]);
+    let project = dir.path().join("project");
+    let mut conversation = conversation(&session);
+    open(&mut conversation, 1, "real.txt");
+    let told = compared(&mut conversation, 2, "real.txt");
+    assert_eq!(
+        (told["why"].clone(), told["commit"].clone()),
+        (json!("outside"), Value::Null)
+    );
+    git(&project, &["init", "-q"]);
+    git(&project, &["add", "real.txt"]);
+    git(&project, &["commit", "-q", "-m", "first"]);
+    std::os::unix::fs::symlink("real.txt", project.join("link.txt")).unwrap();
+    open(&mut conversation, 3, "link.txt");
+    assert_eq!(
+        compared(&mut conversation, 4, "link.txt")["why"],
+        json!("outside")
+    );
+    let outside = dir.path().join("outside.txt");
+    std::fs::write(&outside, "o\n").unwrap();
+    let outside = outside.to_str().unwrap();
+    open(&mut conversation, 5, outside);
+    assert_eq!(
+        compared(&mut conversation, 6, outside)["why"],
+        json!("outside")
+    );
+}
+
+#[test]
+fn the_text_of_the_commit_comes_in_pieces_that_make_the_whole_and_only_for_the_blob_that_was_told()
+{
+    // 900 KB of lines with characters of more than a byte: past a message's room.
+    let text: String = (0..28_000)
+        .map(|n| format!("línea {n} — ünï çödé ok\n"))
+        .collect();
+    assert!(text.len() > 3 * super::pieces::WIRE_BUDGET);
+    let (dir, session) = session(&[("big.txt", &text)]);
+    let project = dir.path().join("project");
+    git(&project, &["init", "-q"]);
+    git(&project, &["add", "big.txt"]);
+    git(&project, &["commit", "-q", "-m", "big"]);
+    let mut conversation = conversation(&session);
+    open(&mut conversation, 1, "big.txt");
+    let told = compared(&mut conversation, 2, "big.txt");
+    assert_eq!(told["base"]["length"], json!(text.len()));
+    let id = told["base"]["id"].as_str().unwrap().to_owned();
+    let mut joined = String::new();
+    let (mut from, mut pieces) = (0u64, 0);
+    loop {
+        let params = json!({ "path": "big.txt", "id": id, "from": from });
+        send(&mut conversation, 10 + pieces, "compare-base", params);
+        let piece = answer(&mut conversation).1.expect("a piece");
+        let part = piece["text"].as_str().unwrap();
+        if part.is_empty() {
+            break;
+        }
+        assert!(
+            part.len() <= super::pieces::WIRE_BUDGET,
+            "a piece fits a message"
+        );
+        joined.push_str(part);
+        from = piece["end"].as_u64().unwrap();
+        pieces += 1;
+    }
+    assert!(pieces >= 3);
+    assert_eq!(joined, text);
+    // The blob of another file, and one the commit no longer has, are out of sync.
+    for wrong in ["0123456789012345678901234567890123456789", "not an id"] {
+        let params = json!({ "path": "big.txt", "id": wrong, "from": 0 });
+        send(&mut conversation, 100, "compare-base", params);
+        assert_eq!(
+            answer(&mut conversation).1.unwrap_err()["code"],
+            json!("out-of-sync")
+        );
+    }
+    std::fs::write(project.join("big.txt"), "changed\n").unwrap();
+    git(&project, &["commit", "-q", "-a", "-m", "changed"]);
+    let params = json!({ "path": "big.txt", "id": id, "from": 0 });
+    send(&mut conversation, 101, "compare-base", params);
+    assert_eq!(
+        answer(&mut conversation).1.unwrap_err()["code"],
+        json!("out-of-sync")
+    );
+}

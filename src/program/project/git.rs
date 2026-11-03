@@ -10,7 +10,7 @@ use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -24,6 +24,12 @@ const INDEX_LIMIT: usize = super::diff::TEXT_LIMIT + super::diff::TEXT_LIMIT / 4
 
 /// How much of what git writes on its error output is kept, for the words of a failure.
 const STDERR_LIMIT: u64 = 16 * 1024;
+
+/// What `run` says of output past the limit it was given.
+const SAID_TOO_MUCH: &str = "git said too much";
+
+/// How long what git said of the renames is used when a file is looked for under its old name.
+const RENAME_AGE: Duration = Duration::from_millis(2500);
 
 /// What git says of a file that is not as it was committed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -47,6 +53,40 @@ pub struct GitInfo {
     /// When git's index file was last written, milliseconds since 1970 (0 where it cannot be said):
     /// what is staged or unstaged moves it, and the lines marked as differing from the index with it.
     pub index: u64,
+    /// The commit the project is at (`# branch.oid`): empty before the first commit. A commit moves
+    /// it, and the files shown against the last commit are compared again.
+    pub head: String,
+    /// For a file git has renamed or copied, the path it had, both under the project's root.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub renames: BTreeMap<String, String>,
+}
+
+/// The last commit: its id and the first line of its message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Commit {
+    pub id: String,
+    pub subject: String,
+}
+
+/// A file as the last commit keeps it.
+pub struct Committed {
+    /// Its path in the commit, from the project's root: the one it had before git renamed it.
+    pub path: String,
+    /// Its blob; none where the commit has no such file (the text is then empty).
+    pub id: Option<String>,
+    /// Its text as textpen holds a buffer's: line ends `\n`, no byte order mark.
+    pub text: Arc<String>,
+}
+
+/// What the last commit keeps of a file, for comparing.
+pub enum Kept {
+    /// A path outside the project, or a project git cannot say of.
+    Outside,
+    /// Not text.
+    Binary,
+    /// Longer than is read.
+    TooLarge,
+    Text(Committed),
 }
 
 /// git, with its time limit and a limit on what it may say. The output is bytes: names are ended by
@@ -83,7 +123,7 @@ fn run(args: &[&str], cwd: &str, max_output: usize) -> Result<Vec<u8>, String> {
     };
     if out.len() > max_output {
         end(&mut child);
-        return Err("git said too much".to_owned());
+        return Err(SAID_TOO_MUCH.to_owned());
     }
     let status = loop {
         match child.try_wait() {
@@ -166,7 +206,11 @@ fn parse_status(out: &[u8], prefix: &str) -> GitInfo {
         behind: 0,
         changes: BTreeMap::new(),
         index: 0,
+        head: String::new(),
+        renames: BTreeMap::new(),
     };
+    let mut renames = BTreeMap::new();
+    let mut head = String::new();
     // git names paths from the top of the repository; the page names them from the root, and is
     // not told of what lies outside it. A name that is not UTF-8 is left out, as a listing leaves it.
     let mut note = |path: &str, state: GitState| {
@@ -189,6 +233,9 @@ fn parse_status(out: &[u8], prefix: &str) -> GitInfo {
             if branch.is_empty() {
                 branch = oid.chars().take(7).collect();
             }
+            if oid != "(initial)" {
+                oid.clone_into(&mut head);
+            }
         } else if let Some(counts) = record.strip_prefix("# branch.ab ") {
             let mut counts = counts.split(' ').map(|count| {
                 count
@@ -204,9 +251,17 @@ fn parse_status(out: &[u8], prefix: &str) -> GitInfo {
             }
         } else if record.starts_with("2 ") {
             // The path it had follows, as a record of its own.
-            records.next();
+            let from = records
+                .next()
+                .and_then(|from| std::str::from_utf8(from).ok());
             if let (Some(xy), Some(path)) = (record.get(2..4), rest_of(record, 9)) {
                 note(path, state_of(xy));
+                if let (Some(to), Some(from)) = (
+                    path.strip_prefix(prefix),
+                    from.and_then(|from| from.strip_prefix(prefix)),
+                ) {
+                    renames.insert(to.to_owned(), from.to_owned());
+                }
             }
         } else if record.starts_with("u ") {
             if let Some(path) = rest_of(record, 10) {
@@ -219,7 +274,24 @@ fn parse_status(out: &[u8], prefix: &str) -> GitInfo {
     info.branch = branch;
     info.ahead = ahead;
     info.behind = behind;
+    info.head = head;
+    info.renames = renames;
     info
+}
+
+/// A file's bytes as textpen holds a buffer's text: none for one that is not UTF-8 text.
+fn normalized(bytes: Vec<u8>) -> Option<String> {
+    if super::tree::is_binary(&bytes) {
+        return None;
+    }
+    let text = String::from_utf8(bytes).ok()?;
+    let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
+    Some(text.replace("\r\n", "\n").replace('\r', "\n"))
+}
+
+/// A path under the project's root that git can be asked of.
+fn under_root(path: &str) -> bool {
+    !(path.is_empty() || path.starts_with('/') || path.split('/').any(|part| part == ".."))
 }
 
 /// When git's index was last written: the time of the file `git rev-parse --git-path index` names,
@@ -275,6 +347,9 @@ pub struct Git {
     /// Held while git is asked, so that the callers who ask at once wait for one answer.
     said: Mutex<Option<Said>>,
     forgotten: AtomicU64,
+    /// The text of the last blob read, by its id: a file compared again as it is typed in is not read
+    /// from git every time.
+    blobs: Mutex<Option<(String, Arc<String>)>>,
 }
 
 impl Git {
@@ -284,6 +359,7 @@ impl Git {
             repository: Mutex::new(None),
             said: Mutex::new(None),
             forgotten: AtomicU64::new(0),
+            blobs: Mutex::new(None),
         }
     }
 
@@ -332,19 +408,109 @@ impl Git {
     /// where git cannot say. What is in the index and not what was committed: a change that is
     /// staged is not a difference, as VS Code's.
     pub fn index_text(&self, path: &str) -> Option<String> {
-        if path.is_empty() || path.starts_with('/') || path.split('/').any(|part| part == "..") {
-            return None;
-        }
-        if !self.is_repository() {
+        if !under_root(path) || !self.is_repository() {
             return None;
         }
         let bytes = run(&["show", &format!(":./{path}")], &self.root, INDEX_LIMIT).ok()?;
-        if super::tree::is_binary(&bytes) {
+        normalized(bytes)
+    }
+
+    /// The blob the last commit keeps `path` as, none where it keeps no file of that name.
+    fn blob_of(&self, path: &str) -> Option<String> {
+        let said = run(
+            &[
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                &format!("HEAD:./{path}"),
+            ],
+            &self.root,
+            1 << 16,
+        )
+        .ok()?;
+        let id = text_of(&said);
+        (!id.is_empty() && id.chars().all(|ch| ch.is_ascii_hexdigit())).then_some(id)
+    }
+
+    /// What the last commit (HEAD) keeps of `path` (relative to the project's root), staged or not:
+    /// the file under the name git renamed it from where there is no file of this name in the commit.
+    /// Where the commit keeps none the text is empty and the blob none.
+    pub fn committed(&self, path: &str) -> Kept {
+        if !under_root(path) || !self.is_repository() {
+            return Kept::Outside;
+        }
+        let mut at = path.to_owned();
+        let mut blob = self.blob_of(path);
+        if blob.is_none() {
+            let renamed = self
+                .status(RENAME_AGE)
+                .and_then(|info| info.renames.get(path).cloned());
+            if let Some(from) = renamed {
+                if let Some(found) = self.blob_of(&from) {
+                    at = from;
+                    blob = Some(found);
+                }
+            }
+        }
+        let Some(id) = blob else {
+            return Kept::Text(Committed {
+                path: at,
+                id: None,
+                text: Arc::new(String::new()),
+            });
+        };
+        let mut kept = self.blobs.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some((known, text)) = kept.as_ref() {
+            if *known == id {
+                return Kept::Text(Committed {
+                    path: at,
+                    id: Some(id),
+                    text: Arc::clone(text),
+                });
+            }
+        }
+        match run(&["cat-file", "blob", &id], &self.root, INDEX_LIMIT) {
+            Ok(bytes) => match normalized(bytes) {
+                Some(text) => {
+                    let text = Arc::new(text);
+                    *kept = Some((id.clone(), Arc::clone(&text)));
+                    Kept::Text(Committed {
+                        path: at,
+                        id: Some(id),
+                        text,
+                    })
+                }
+                None => Kept::Binary,
+            },
+            Err(why) if why == SAID_TOO_MUCH => Kept::TooLarge,
+            Err(_) => Kept::Outside,
+        }
+    }
+
+    /// The last commit, none before the first or where git cannot say.
+    pub fn last_commit(&self) -> Option<Commit> {
+        if !self.is_repository() {
             return None;
         }
-        let text = String::from_utf8(bytes).ok()?;
-        let text = text.strip_prefix('\u{feff}').unwrap_or(&text);
-        Some(text.replace("\r\n", "\n").replace('\r', "\n"))
+        let said = run(
+            &[
+                "log",
+                "-1",
+                "--no-show-signature",
+                "--encoding=UTF-8",
+                "--format=%H%x00%s",
+                "HEAD",
+            ],
+            &self.root,
+            1 << 20,
+        )
+        .ok()?;
+        let said = String::from_utf8_lossy(&said);
+        let (id, subject) = said.trim_end().split_once('\0')?;
+        Some(Commit {
+            id: id.to_owned(),
+            subject: subject.to_owned(),
+        })
     }
 
     /// What git says of the project: its branch and changed files, none outside a repository or
@@ -390,6 +556,8 @@ mod tests {
             "1 D. N... 100644 000000 000000 a b sub/gone.txt",
             "2 R. N... 100644 100644 100644 a b R100 sub/to.txt",
             "sub/from.txt",
+            "2 R. N... 100644 100644 100644 a b R100 sub/away.txt",
+            "elsewhere/from.txt",
             "u UU N... 100644 100644 100644 100644 a b c sub/both.txt",
             "? sub/untracked.txt",
             "? outside.txt",
@@ -399,6 +567,14 @@ mod tests {
         let info = parse_status(out.as_bytes(), "sub/");
         assert_eq!(info.branch, "trunk");
         assert_eq!((info.ahead, info.behind), (2, 3));
+        assert_eq!(info.head, "0123456789abcdef");
+        // Where a file was renamed from, if that is under the root as well.
+        let renames: Vec<(&str, &str)> = info
+            .renames
+            .iter()
+            .map(|(to, from)| (to.as_str(), from.as_str()))
+            .collect();
+        assert_eq!(renames, [("to.txt", "from.txt")]);
         let changes: Vec<(&str, GitState)> = info
             .changes
             .iter()
@@ -407,6 +583,7 @@ mod tests {
         assert_eq!(
             changes,
             [
+                ("away.txt", GitState::Renamed),
                 ("both.txt", GitState::Conflict),
                 ("gone.txt", GitState::Deleted),
                 ("kept file.txt", GitState::Modified),
@@ -421,6 +598,12 @@ mod tests {
     fn a_branch_with_no_name_is_its_commit() {
         let info = parse_status(b"# branch.oid 0123456789abcdef\0", "");
         assert_eq!(info.branch, "0123456");
+    }
+
+    #[test]
+    fn a_project_with_no_commit_has_no_head() {
+        let info = parse_status(b"# branch.oid (initial)\0# branch.head main\0", "");
+        assert_eq!((info.branch.as_str(), info.head.as_str()), ("main", ""));
     }
 
     /// A repository that was unpacked here, not cloned, brings its own config: what it names to run
@@ -448,5 +631,53 @@ mod tests {
         let info = read(root.to_str().unwrap()).unwrap();
         assert!(info.changes.contains_key("a.txt"));
         assert!(!marker.exists(), "the repository's own command was run");
+    }
+
+    /// A file the last commit keeps that is too long to read is said to be, one it keeps as text is
+    /// read once for as long as it is the same blob, and one it does not keep is empty.
+    #[test]
+    fn what_the_last_commit_keeps_of_a_file_is_its_text_or_the_word_for_why_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let git = |args: &[&str]| {
+            let made = Command::new("git")
+                .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+                .args(["-c", "commit.gpgsign=false"])
+                .args(args)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_SYSTEM", "/dev/null")
+                .current_dir(&root)
+                .output()
+                .unwrap();
+            assert!(made.status.success(), "{args:?}: {made:?}");
+        };
+        git(&["init", "-q"]);
+        std::fs::write(root.join("long.txt"), "x".repeat(INDEX_LIMIT + 1)).unwrap();
+        std::fs::write(root.join("text.txt"), "\u{feff}one\r\ntwo\r\n").unwrap();
+        std::fs::write(root.join("bin.dat"), [1u8, 0, 2]).unwrap();
+        git(&["add", "."]);
+        git(&["commit", "-q", "-m", "all"]);
+        let project = Git::new(root.to_str().unwrap());
+        assert!(matches!(project.committed("long.txt"), Kept::TooLarge));
+        assert!(matches!(project.committed("bin.dat"), Kept::Binary));
+        assert!(matches!(project.committed("../x"), Kept::Outside));
+        assert!(matches!(project.committed("/etc/hosts"), Kept::Outside));
+        let Kept::Text(text) = project.committed("text.txt") else {
+            panic!("text");
+        };
+        assert_eq!(
+            (text.path.as_str(), text.text.as_str()),
+            ("text.txt", "one\ntwo\n")
+        );
+        let Kept::Text(again) = project.committed("text.txt") else {
+            panic!("text");
+        };
+        assert!(Arc::ptr_eq(&text.text, &again.text), "read from git once");
+        let Kept::Text(none) = project.committed("nothing.txt") else {
+            panic!("text");
+        };
+        assert_eq!((none.id, none.text.as_str()), (None, ""));
+        let last = project.last_commit().expect("a commit");
+        assert_eq!((last.subject.as_str(), last.id.len()), ("all", 40));
     }
 }

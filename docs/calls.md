@@ -49,9 +49,12 @@ Entry       = { name: string, path: string, kind: "file" | "dir", link?: true, s
               -- link: a symbolic link, followed (kind is what it points to).
 Listing     = { dir: string, entries: Entry[], truncated: boolean }
 GitInfo     = { branch: string, ahead: number, behind: number, changes: { [path]: GitState },
-              index: number }
+              index: number, head: string, renames?: { [path]: string } }
               -- index: when git's index file was last written (ms; 0 if not said): staging or unstaging
               -- moves it, so the page asks `diff` again for the files it marks.
+              -- head: the commit the project is at (git's `# branch.oid`; "" before the first commit): a
+              -- commit moves it, and the page asks `compare` again for the files it shows against it.
+              -- renames: for a file git has renamed (or copied), the path it had, both under the root.
 Eol         = "lf" | "crlf"
 BufferInfo  = {
   path: string,          -- relative to the root, or absolute outside it; also the buffer's id
@@ -119,6 +122,28 @@ Hunk        = { line: number, count: number, old: string[], cut?: true }
               -- cut: some of old is not told.
 Diffed      = { version: number, hunks: Hunk[] | null, more?: true }
               -- of the text at `version`. hunks null: nothing is marked (see `diff`).
+Commit      = { id: string, subject: string }
+              -- the last commit (HEAD): its full id and the first line of its message.
+Block       = { oldLine: number, oldCount: number, newLine: number, newCount: number,
+                oldWords?: [number, number][], newWords?: [number, number][] }
+              -- one place the file differs from the last commit, lines from 0. oldLine and oldCount are
+              -- the lines the commit has there, newLine and newCount the lines of the buffer. The side
+              -- that has no lines (count 0) is where they would stand: oldCount 0 is lines only added,
+              -- newCount 0 lines only taken away; with both the lines were changed, and where the counts
+              -- differ the side with fewer lines is shorter by that many. A run of changed lines is
+              -- cut into blocks, so that a line that was changed is paired with the line it became
+              -- (the likest, in order; one line that became one is always a pair) and lines with no
+              -- likeness to one on the other side are blocks of their own. A pair is a block of one line
+              -- either side; its oldWords and newWords are the words that differ, `[from, to)` in bytes
+              -- of that line (from 0, on characters' edges): a word is a run of letters and digits, a run
+              -- of white space or any other character alone. Left out where the line is long (2 000
+              -- bytes) or the message is full.
+Compared    = { version: number, commit: Commit | null,
+                why?: "binary" | "too-large" | "too-many" | "outside",
+                base?: { id: string | null, length: number, path: string },
+                blocks?: Block[] }
+              -- of the text at `version`. With `why`, there is no comparison (see `compare`); else `base`
+              -- and `blocks` are there.
 SearchMatch = { line: number, start: number, end: number, text: string, offset: number }
               -- line 1-based; start/end the match within text, code points of text; text the line, cut
               -- around the match when long; offset where text begins in the line, code points
@@ -162,6 +187,8 @@ FilesPage   = { files: string[], truncated: boolean, next: number | null, genera
 | `discard`  | `{}`                                                                                     | `{}`. Quitting without saving: nothing unsaved is kept as a draft.                                                                                                                                                             |
 | `quit`     | `{}`                                                                                     | `{}`, or no answer: the program closes its view once the buffer calls sent before it are done, and textpen ends, what is not saved kept as drafts (none after `discard`). `failed` where the terminal cannot close the view.     |
 | `diff`     | `{ path: string }`                                                                       | `Diffed`: where the open buffer `path` differs from `git show :path`, the file as git's **index** keeps it (a change staged is not a difference, as VS Code's). Both texts are the program's buffer text: line ends `\n`, no byte order mark, so a file with CRLF line ends or a mark is not one hunk. `hunks` is `null`, and nothing is marked, for a file outside the project, a symbolic link, one git does not keep (untracked), a project that is not in a repository, a file that is not UTF-8 text, one that is not on disk yet, or a text of more than 2 MiB or 50 000 lines on either side; `out-of-sync` where `path` is not open. What is told fits one message: at most 2 000 hunks (`more`), and of each at most 64 lines (8 Ki code points) of `old`, 192 Ki code points together (`cut`: the hunk is marked, its old lines are not all there). It runs beside the buffer calls and not in their lane: the page asks after its edit was answered, and takes the answer only when `version` is the buffer's. |
+| `compare`  | `{ path: string }`                                                                       | `Compared`: the open buffer `path` against the file as the last commit (HEAD) keeps it, staged and unstaged changes alike. `base.id` is the commit's blob (null where HEAD has no such file: new, untracked, or no commit yet, and the old text is empty), `base.length` the bytes of its text and `base.path` the path it has in HEAD (the one it had before a rename git knows of; else `path`). Both texts are the program's buffer text: line ends `\n`, no byte order mark. A file that is not on disk (`missing`) is compared as it is, empty. `why`: `binary` (the commit's file is not UTF-8 text), `too-large` (a text of more than 2 MiB or 50 000 lines on either side), `too-many` (more than 2 000 blocks, or blocks that do not fit one message: no part of the comparison is told), `outside` (a file outside the project, a symbolic link, or a project that is not in a repository). `commit` is null before the first commit (and for `outside`). Words are told as long as the blocks and the words fit 256 KiB together; past that the blocks go on without them. `out-of-sync` where `path` is not open. It runs beside the buffer calls and not in their lane: the page asks after its edit was answered, and takes the answer only when `version` is the buffer's. |
+| `compare-base` | `{ path: string, id: string, from: integer ≥ 0 }`                                    | `{ text, end }`, as `slice`: the piece of the commit's text of `path` (the old text of `compare`, whose `base.id` is `id`) from the byte `from`, at most 256 KiB of whole characters; the next begins at the byte `end`. `out-of-sync` where the commit's file is no longer the blob `id` (a commit was made since: the page asks `compare` again). |
 | `picture`  | `{ path: string, owner: string, from?: string }`                                         | `Picture \| Refused`. The picture at `path` (the project's, or absolute) is read, measured and given to the terminal to hold, for `owner` (a tab: a path), and the page draws it by `name`; the bytes never reach the page. With `from`, a Markdown file's path, `path` is as that file wrote it: relative to its folder, `%20` read, `?` and `#` cut, and only a file in the project, links followed, is read (an address, a path from the top of the disk, or one that climbs out of the project is `not-a-picture`). `failed` where the terminal holds no files for the view (the page is not at `lua` 0.1): the page then opens the file as any other. It runs beside the buffer calls and not in their lane. |
 | `release`  | `{ owner: string }`                                                                      | `{}`. `owner` holds no picture any more: the files nobody else holds are let go. Asked of an owner that holds none, it does nothing. |
 | `place`    | `{ dir: string, name: string, also?: string[], dash?: boolean }`                          | `Place`. Whether `name` is taken in the folder `dir` (a folder of the project; `failed` for any other), or by one of `also` (the names of uploads under way), and the next free name. |
