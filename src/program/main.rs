@@ -21,6 +21,8 @@ mod api;
 #[cfg(test)]
 mod page_changes;
 #[cfg(test)]
+mod page_compare;
+#[cfg(test)]
 mod page_shots;
 #[cfg(test)]
 mod page_tests;

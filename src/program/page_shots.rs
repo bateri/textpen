@@ -15,6 +15,7 @@ use pencere_drive::headless::{Error, InProcess};
 use pencere_drive::shot::{Fonts, Palette};
 
 use crate::options;
+use crate::page_compare::{drawn, left_of};
 use crate::page_tests::{
     PANE, Page, Project, go_to, lantern, open_holding, open_with, pictures_drawn, png, recording,
     shown, shows, wait,
@@ -257,6 +258,46 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
         &fonts,
     )?;
     save(&page, &fonts, Palette::Light, "light-80x24.png");
+    Ok(())
+}
+
+/// The project made a repository, and the file the comparison is shown on changed as a person
+/// working in it would have left it: a line changed, a line made into three, two added at the top and
+/// two taken away.
+fn with_changed_server(project: &Project) {
+    with_git(project);
+    let server = project.read("src/server.ts").replace(
+        "  send(res, 404, { error: `no route for ${req.method}` });\n",
+        "  // Nothing else is served.\n  const known = false;\n  send(res, 404, { error: `no route for ${req.method}`, known });\n",
+    );
+    project.write("src/server.ts", &server);
+}
+
+/// The file shown beside what the last commit keeps of it, in a dark and a light terminal, wide and
+/// in an 80×24 pane, for the eye (`target/shots/`).
+#[test]
+#[ignore = "shots: draws the page in the fonts of this machine into target/shots/"]
+fn the_pictures_of_the_comparison() -> Result<(), Error> {
+    let fonts = fonts();
+    let out = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/shots");
+    std::fs::create_dir_all(&out).expect("the folder");
+    for (name, size, palette) in [
+        ("compare-dark-wide", (1280.0, 800.0), Palette::Dark),
+        ("compare-light-wide", (1280.0, 800.0), Palette::Light),
+        ("compare-dark-80x24", PANE, Palette::Dark),
+        ("compare-light-80x24", PANE, Palette::Light),
+    ] {
+        let project = lantern();
+        with_changed_server(&project);
+        let mut page = open(&project, &["src/server.ts"], size, &fonts)?;
+        page.press("cmd+shift+d")?;
+        wait(&mut page, drawn)?;
+        page.advance(1.0)?;
+        page.settle()?;
+        assert!(left_of(&page).is_some());
+        let png = page.shot_in(&fonts, palette).expect("a picture");
+        std::fs::write(out.join(format!("{name}.png")), png).expect("the picture written");
+    }
     Ok(())
 }
 

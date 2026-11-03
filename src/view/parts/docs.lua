@@ -31,6 +31,8 @@ local docs = {}
 docs.on_text = nil
 -- And the pointer in a column of the gutter of a doc's editor, which the same part answers.
 docs.on_gutter = nil
+-- Called with a doc that is gone (its tab closed, or its editor set aside).
+docs.on_forget = nil
 
 local function text_is_new(doc)
 	if docs.on_text and not doc.closed then
@@ -444,7 +446,8 @@ local function held()
 	local sum = 0
 	for _, doc in by_id do
 		if not doc.closed then
-			sum += doc.bytes
+			-- `extra`: what the editor beside it holds of the same file (the last commit's text).
+			sum += doc.bytes + (doc.extra or 0)
 		end
 	end
 	return sum
@@ -464,7 +467,7 @@ local function make_room(size)
 		local tab = docs.tab_of(path)
 		local doc = tab and tab.doc
 		if doc and path ~= S.active and doc.loaded and #doc.pending == 0 and not doc.busy
-			and not (tab.info and tab.info.dirty) then
+			and not (tab.info and tab.info.dirty) and not tab.compare then
 			docs.forget(doc)
 			tab.doc = nil
 			tab.status = "loading"
@@ -475,6 +478,7 @@ local function make_room(size)
 	end
 	return held() + size <= DOCUMENTS_BYTES
 end
+docs.make_room = make_room
 
 -- Opens the tab's file in an editor of its own: the program reads it, the page loads it.
 -- `arrive` is where the caret goes once it is in.
@@ -1055,6 +1059,9 @@ end
 
 -- The doc is gone: its editor leaves the page, its language stops.
 function docs.forget(doc)
+	if docs.on_forget then
+		docs.on_forget(doc)
+	end
 	doc.closed = true
 	if doc.timer then
 		doc.timer:cancel()

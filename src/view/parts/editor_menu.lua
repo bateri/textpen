@@ -8,6 +8,7 @@
 local kit = require("../lib/kit")
 local docs = require("./docs")
 local changes = require("./changes")
+local compare = require("./compare")
 local library = require("@pencere/ui")
 
 local b, S, act = kit.b, kit.S, kit.act
@@ -28,7 +29,8 @@ editor_menu.COMMAND = library.EDITOR_MENU_COMMAND
 -- the line the menu is of (from 0, as the program counts them): the one Revert Change is offered for.
 local function open(doc, at, line)
 	local tab = docs.tab_of(doc.path)
-	local index = changes.hunk_of_line(doc, line)
+	-- Beside the last commit the marks of the index are not shown, and no change is taken back by them.
+	local index = not (tab and tab.compare) and changes.hunk_of_line(doc, line) or nil
 	reverting = index and { doc = doc, index = index, hunk = doc.hunks[index] } or nil
 	local after = {
 		{ key = "find_in_project", title = "Find in Project", keys = "cmd+shift+f" },

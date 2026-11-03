@@ -6,6 +6,7 @@ local kit = require("../lib/kit")
 local text = require("../lib/text")
 local docs = require("./docs")
 local marks = require("./changes")
+local compare = require("./compare")
 local pictures = require("./pictures")
 local uploads = require("./uploads")
 
@@ -559,6 +560,8 @@ local function apply(changes)
 		S.git = changes.git
 		-- What differs from git's index may have: asked again for the files open.
 		marks.refresh_all()
+		-- And what differs from the last commit, for the files shown beside it.
+		compare.refresh_all()
 	end
 	if changes.handoffFailed then
 		S.handing_off = nil

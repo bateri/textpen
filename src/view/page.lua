@@ -23,6 +23,7 @@ local preview = require("./parts/preview")
 local welcome = require("./parts/welcome")
 local sheets = require("./parts/sheets")
 local changes = require("./parts/changes")
+local compare = require("./parts/compare")
 local editor_menu = require("./parts/editor_menu")
 local uploads = require("./parts/uploads")
 
@@ -129,7 +130,8 @@ end
 local function settle()
 	tabs.reveal()
 	local wider = sidebar.settle()
-	return preview.settle() or wider
+	local aligned = compare.settle()
+	return preview.settle() or wider or aligned
 end
 
 -- --- What the person does -------------------------------------------------------------------------------
@@ -150,7 +152,7 @@ local function click(id, event)
 	if dialogs.dismiss(id) then
 		return
 	end
-	local _ = tabs.press(id, event) or status.press(id) or area.press(id) or changes.press(id) or find.press(id)
+	local _ = tabs.press(id, event) or status.press(id) or area.press(id) or changes.press(id) or compare.press(id) or find.press(id)
 		or search.press(id, event) or welcome.press(id) or sidebar.press(id, event)
 end
 
@@ -248,9 +250,12 @@ local function handle(event)
 	local reply = nil
 	if event.editor ~= nil then
 		docs.handle(event)
+		compare.editor_event(event)
 		find.editor_event(event)
 		preview.follow(event)
-		reply = kind ~= "viewport" or nil
+		reply = (kind ~= "viewport" or compare.moved(event)) or nil
+	elseif kind == "scrolled" then
+		compare.scrolled(event)
 	elseif kind == "move" then
 		reply = moved(event)
 	elseif kind == "leave" then

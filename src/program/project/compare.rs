@@ -79,6 +79,11 @@ fn weight(block: &Block) -> usize {
 /// that are a pair are told within `budget` bytes of a message: the words that do not fit are left
 /// out, and blocks that do not fit are [`Why::TooMany`].
 pub fn blocks(old: &str, new: &str, budget: usize) -> Result<Vec<Block>, Why> {
+    blocks_up_to(old, new, budget, HUNK_LIMIT)
+}
+
+/// The same, telling at most `most` blocks.
+fn blocks_up_to(old: &str, new: &str, budget: usize, most: usize) -> Result<Vec<Block>, Why> {
     if old.len() > TEXT_LIMIT || new.len() > TEXT_LIMIT {
         return Err(Why::TooLarge);
     }
@@ -98,7 +103,7 @@ pub fn blocks(old: &str, new: &str, budget: usize) -> Result<Vec<Block>, Why> {
         .iter()
         .filter(|op| !matches!(op, DiffOp::Equal { .. }))
         .count();
-    if changes > HUNK_LIMIT {
+    if changes > most {
         return Err(Why::TooMany);
     }
     let mut out = Vec::new();
@@ -129,7 +134,7 @@ pub fn blocks(old: &str, new: &str, budget: usize) -> Result<Vec<Block>, Why> {
                 &mut pairs,
             ),
         }
-        if out.len() > HUNK_LIMIT {
+        if out.len() > most {
             return Err(Why::TooMany);
         }
     }
@@ -508,13 +513,14 @@ mod tests {
             blocks(&"x\n".repeat(LINE_LIMIT + 1), "y\n", BUDGET),
             Err(Why::TooLarge)
         );
-        let old: String = (0..=HUNK_LIMIT)
-            .map(|n| format!("keep {n}\nold {n}\n"))
-            .collect();
-        let new: String = (0..=HUNK_LIMIT)
-            .map(|n| format!("keep {n}\nnew {n}\n"))
-            .collect();
-        assert_eq!(blocks(&old, &new, BUDGET), Err(Why::TooMany));
+        // More changes than are told (the limit is lower here: a text with 2 000 takes a second).
+        let old: String = (0..11).map(|n| format!("keep {n}\nold {n}\n")).collect();
+        let new: String = (0..11).map(|n| format!("keep {n}\nnew {n}\n")).collect();
+        assert_eq!(blocks_up_to(&old, &new, BUDGET, 10), Err(Why::TooMany));
+        assert_eq!(
+            blocks_up_to(&old, &new, BUDGET, 11).map(|b| b.len()),
+            Ok(11)
+        );
         // Blocks that do not fit a message are too many, however few they are.
         assert_eq!(blocks("a\nb\n", "a\nc\n", 20), Err(Why::TooMany));
         assert_eq!(Why::TooMany.word(), "too-many");

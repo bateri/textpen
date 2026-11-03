@@ -12,6 +12,7 @@ local kit = require("../lib/kit")
 local text = require("../lib/text")
 local docs = require("./docs")
 local changes = require("./changes")
+local compare = require("./compare")
 local editor_menu = require("./editor_menu")
 local uploads = require("./uploads")
 
@@ -57,16 +58,33 @@ add({ id = "language", title = "Change Language", category = "View", when = has_
 -- --- Changes against git ---------------------------------------------------------------------------------
 
 local function has_changes()
+	if compare.active() then
+		local tab = docs.tab_of(S.active)
+		return tab ~= nil and tab.compare ~= nil and #tab.compare.groups > 0
+	end
 	local doc = docs.active()
 	return doc ~= nil and doc.hunks ~= nil and #doc.hunks > 0
 end
 
+-- The change before and after: in the comparison with the last commit those of it, else those of the
+-- index (which open the peek).
+local function go(step)
+	if compare.active() then
+		compare.go(step)
+	else
+		changes.go(step)
+	end
+end
+
+add({ id = "compare", title = "Compare with Last Commit", category = "View", keys = "cmd+shift+d",
+	when = function() return compare.active() or docs.active() ~= nil end,
+	run = function() compare.toggle(S.active) end })
 add({ id = "next-change", title = "Go to Next Change", category = "Go", keys = "alt+f5", when = has_changes,
-	run = function() changes.go(1) end })
+	run = function() go(1) end })
 add({ id = "previous-change", title = "Go to Previous Change", category = "Go", keys = "alt+shift+f5", when = has_changes,
-	run = function() changes.go(-1) end })
+	run = function() go(-1) end })
 add({ id = "revert-change", title = "Revert Change", category = "Edit", keys = "ctrl+shift+backspace",
-	when = function() return changes.peeking() or changes.at_caret() ~= nil end,
+	when = function() return not compare.active() and (changes.peeking() or changes.at_caret() ~= nil) end,
 	run = function()
 		local doc, index = changes.at_caret()
 		if S.peek then
@@ -77,8 +95,21 @@ add({ id = "revert-change", title = "Revert Change", category = "Edit", keys = "
 			changes.revert(doc, index)
 		end
 	end })
-add({ id = "close-peek", title = "Close the Peek of a Change", category = "Go", keys = "escape", when = changes.peeking,
-	hidden = true, run = function() changes.close() end })
+-- Esc closes the peek of a change, or, with none open and the keys in the editor, the comparison with
+-- the last commit (one command: two with the same key would be one the host cannot tell apart).
+add({ id = "close-peek", title = "Close the Peek of a Change or the Comparison", category = "Go", keys = "escape",
+	when = function()
+		return changes.peeking()
+			or (compare.active() and S.overlay == nil and S.focus == "editor" and not S.find.open)
+	end,
+	hidden = true,
+	run = function()
+		if changes.peeking() then
+			changes.close()
+		else
+			compare.exit(S.active)
+		end
+	end })
 
 add({ id = "editor-menu", title = editor_menu.COMMAND.title, category = "Edit", keys = editor_menu.COMMAND.keys,
 	when = has_file, run = function() editor_menu.at_caret() end })

@@ -7,6 +7,19 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Added
+
+- **A file beside the last commit.** `⌘⇧D`, the button at the end of the tab strip (on a file git
+  says is changed) or Compare with Last Commit in the palette shows the file in two columns: what the
+  last commit keeps of it on the left (it cannot be changed), the file itself on the right, with
+  the lines that differ in colour (red taken away, green added, blue changed, and in a changed line the
+  words that differ). A side with fewer lines has a hatched gap, so the same lines stand at the same
+  height, and the two scroll together, down and across. The right side is the file's own editor: type,
+  undo and save as ever. The header names the commit, counts the changes (`1 of 5`), and has the arrows
+  for the change before and after (`⌥F5`, `⇧⌥F5`) and a button that closes it, as Esc does. Where
+  there is nothing to lay out so (a binary file, one outside a git repository, too many lines) it says
+  why. The program has the calls `compare` and `compare-base` for it (`docs/calls.md`).
+
 ## [0.2.0] - 2026-11-03
 
 ### Added

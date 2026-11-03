@@ -6,6 +6,7 @@ local kit = require("../lib/kit")
 local text = require("../lib/text")
 local files = require("../lib/files")
 local docs = require("./docs")
+local compare = require("./compare")
 
 local b, S, SIZE, act = kit.b, kit.S, kit.SIZE, kit.act
 
@@ -134,6 +135,13 @@ function tabs.view(docked)
 	bar:child(strip)
 	local right = b.div():row():items_center():gap(2):px(5):no_shrink()
 	local active = S.active
+	-- The file against the last commit: on a file git says is changed, and while it is shown so.
+	local changed = active and S.git ~= nil and S.git.changes ~= nil and S.git.changes[active] ~= nil
+	if active and (changed or compare.active(active)) then
+		local on = compare.active(active)
+		right:child(kit.icon_button("toggle-compare", "file-diff", on and "Close Comparison" or "Compare with Last Commit",
+			{ keys = "cmd+shift+d", pressed = on }))
+	end
 	if active and act.is_markdown(active) then
 		local on = text.index_of(S.preview, active) ~= nil
 		right:child(kit.icon_button("toggle-preview", on and "eye-off" or "eye", on and "Hide preview" or "Preview",

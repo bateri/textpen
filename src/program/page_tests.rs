@@ -228,10 +228,14 @@ pub(crate) fn open_patiently(
 /// The name of the editor shown (an editor is named by its tab: `doc:3`).
 pub(crate) fn shown(page: &Page) -> Option<String> {
     let laid = page.laid()?;
-    let room = laid.editors().into_iter().find(|room| !room.hidden)?;
-    (1..500)
-        .map(|n| format!("doc:{n}"))
-        .find(|name| Id::named(name) == room.id)
+    // The editors of a comparison with the last commit stand beside the file's (`compare:N`): the one
+    // shown is the first of a file that is not hidden.
+    let rooms = laid.editors();
+    (1..500).map(|n| format!("doc:{n}")).find(|name| {
+        rooms
+            .iter()
+            .any(|room| !room.hidden && room.id == Id::named(name))
+    })
 }
 
 /// The text of the editor shown.

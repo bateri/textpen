@@ -6,6 +6,7 @@ local kit = require("../lib/kit")
 local text = require("../lib/text")
 local docs = require("./docs")
 local changes = require("./changes")
+local compare = require("./compare")
 local pictures = require("./pictures")
 local uploads = require("./uploads")
 local terminal = require("@pencere/terminal")
@@ -16,8 +17,12 @@ local area = {}
 
 -- What the editor is told, from the settings and the file's language; its caret and its selection
 -- as the person's terminal draws them, where the terminal says how (textpen writes none of them).
-function area.options(tab, doc)
+function area.options(tab, doc, side)
 	local settings = S.settings
+	-- Beside what the last commit keeps of the file: no wrap (a line's rows are not known to the page,
+	-- and the two sides stand by their lines), none of the gutter's columns that fold, and the
+	-- language folds nothing (the page's own decide, and none yet).
+	local comparing = tab.compare ~= nil
 	local config = doc.lang.config
 	local numbers = "absolute"
 	if settings.lineNumbers == "relative" then
@@ -26,17 +31,17 @@ function area.options(tab, doc)
 		numbers = "hidden"
 	end
 	return terminal.editor({
-		wrap = settings.wrap,
+		wrap = settings.wrap and not comparing,
 		tab_width = math.clamp(settings.tabSize, 1, 16),
 		hard_tabs = config.hard_tabs == true or not settings.insertSpaces,
 		numbers = numbers,
-		gutters = changes.gutters(),
-		read_only = (tab.info and tab.info.readonly) or false,
+		gutters = comparing and compare.gutters(side) or changes.gutters(),
+		read_only = side == "left" or (tab.info and tab.info.readonly) or false,
 		whitespace = settings.whitespace,
 		indent_guides = settings.indentGuides,
 		comment = config.comment,
 		indent = config.indent,
-		folds = config.folds or "page",
+		folds = comparing and "page" or config.folds or "page",
 		pairs = config.pairs,
 		-- The right button puts the caret as a text view does and the page opens the editor's menu.
 		gestures = { ["right+press"] = "context" },
@@ -151,13 +156,36 @@ function area.view(size)
 	end
 	local row = b.div():row():grow(1):min_h(0)
 	local markdown = tab and act.is_markdown(tab.path)
-	local previewing = markdown and tab.doc and tab.doc.loaded and text.index_of(S.preview, tab.path) ~= nil
+	local previewing = markdown and tab.doc and tab.doc.loaded and tab.compare == nil
+		and text.index_of(S.preview, tab.path) ~= nil
 	local only = previewing and S.layout ~= "wide"
 	local shown = false
 	for _, entry in docs.editors(area.options) do
 		local editor = entry.element:grow(1):min_w(0):h_full():bg("background")
 		local front = entry.tab == tab and entry.doc.loaded and not only
-		if front then
+		local compared = entry.tab.compare ~= nil and entry.doc.loaded
+		-- Two columns, or, where the program says there is nothing to lay out so, one sentence.
+		local columns = compared and compare.columns(entry.tab)
+		local alone = front and compared and entry.tab.compare.result ~= nil and not columns
+		if columns then
+			local left = b.editor(entry.tab.compare.left, area.options(entry.tab, entry.doc, "left"))
+				:grow(1):min_w(0):h_full():bg("background")
+			if front then
+				column:child(compare.header(entry.tab))
+				left = compare.gaps(entry.tab, "left", left)
+				editor = compare.gaps(entry.tab, "right", editor)
+			else
+				left:hidden()
+			end
+			row:child(left)
+			if front then
+				row:child(kit.rule_y())
+			end
+		end
+		if alone then
+			editor:hidden()
+			row:child(compare.why(entry.tab))
+		elseif front then
 			shown = true
 			local peek = changes.peek(entry.doc)
 			if peek then

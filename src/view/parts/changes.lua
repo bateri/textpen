@@ -36,6 +36,13 @@ local function enabled()
 	return S.settings ~= nil and S.settings.diffDecorations == true
 end
 
+-- Whether the file is shown beside what the last commit keeps of it (`compare`): its marks and its peek
+-- are not there then, and what differs from the index is not asked.
+local function comparing(doc)
+	local tab = docs.tab_of(doc.path)
+	return tab ~= nil and tab.compare ~= nil
+end
+
 -- The marks and the peek of a file, drawn or taken off.
 local function sync(doc)
 	changes.draw(doc)
@@ -105,6 +112,12 @@ local function marks_of(doc)
 		out[#out + 1] = { from = start_of(doc, from), to = start_of(doc, to), ruler = COLOR[kind], lane = "left" }
 	end
 	local function triangle(line, below, index, words)
+		-- A mark at the very end of the text is not in the range a layer is told for, so it would stay
+		-- when the layer is told again: the edge above the empty line the last break makes is the edge
+		-- below the line before it.
+		if not below and line > 0 and start_of(doc, line) > (layout.editor_length(doc.id) or 0) then
+			line, below = line - 1, true
+		end
 		out[#out + 1] = {
 			from = start_of(doc, line), to = start_of(doc, line), gutter = COLOR.deleted, column = COLUMN,
 			shape = below and "below" or "above", id = "hunk:" .. index, label = words,
@@ -153,7 +166,7 @@ function changes.draw(doc)
 	if version == nil or length == nil then
 		return
 	end
-	local shown = enabled() and doc.hunks ~= nil
+	local shown = enabled() and doc.hunks ~= nil and not comparing(doc)
 	-- While what was typed is on its way to the program the marks stay as the editor carries them
 	-- over the typing; the next answer draws them again.
 	if shown and docs.unsent(doc) then
@@ -175,7 +188,7 @@ end
 
 -- Asks the program what differs in `doc`, and draws it.
 function changes.refresh(doc)
-	if doc.closed or not doc.loaded then
+	if doc.closed or not doc.loaded or comparing(doc) then
 		return
 	end
 	if not enabled() then
@@ -295,7 +308,7 @@ end
 -- room and as tall as the zone's gap; nil where this file has none.
 function changes.peek(doc)
 	local shown, hunk, index = peeked()
-	if shown ~= doc then
+	if shown ~= doc or comparing(doc) then
 		return nil
 	end
 	local height = changes.peek_height(hunk)

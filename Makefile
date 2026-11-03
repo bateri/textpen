@@ -48,20 +48,20 @@ test:
 	FAKE_HOST="$(FAKE_HOST)" cargo test --locked
 
 # The page's tests: src/view/ run as a terminal runs it, on pencere's host with no screen
-# (pencere-drive), with the program's own handlers in the same process (src/program/page_tests.rs, page_uploads.rs for the files that change hands, and page_changes.rs for the marks of git's changes).
+# (pencere-drive), with the program's own handlers in the same process (src/program/page_tests.rs, page_uploads.rs for the files that change hands, page_changes.rs for the marks of git's changes and page_compare.rs for the comparison with the last commit).
 # Each compiles and runs the kit's interpreter, so they are `cargo test`'s ignored ones, run here; a
 # few at a time. A call of the page is held to 10 s here, not to the kit's 250 ms, which is the wall
 # clock's: a runner under load takes many times what one at rest does, and a test of what the page
 # does should not fail for that. check-timing is the strict one (below).
 test-page:
-	cargo test --locked --bin textpen -- page_tests:: page_uploads:: page_changes:: --ignored --test-threads=2
+	cargo test --locked --bin textpen -- page_tests:: page_uploads:: page_changes:: page_compare:: --ignored --test-threads=2
 
 # check-timing runs the page's tests with every call of the page held to the kit's 250 ms
 # (CALL_MS=125 for half of it), as a terminal holds it. Not part of the gate: it measures the
 # machine as much as the page, so run it on one at rest.
 CALL_MS ?= 250
 check-timing:
-	TEXTPEN_CALL_MS=$(CALL_MS) cargo test --locked --bin textpen -- page_tests:: page_uploads:: page_changes:: --ignored --test-threads=2
+	TEXTPEN_CALL_MS=$(CALL_MS) cargo test --locked --bin textpen -- page_tests:: page_uploads:: page_changes:: page_compare:: --ignored --test-threads=2
 
 # shots draws the pictures of docs/ from the page as it is, in the fonts of this machine (macOS: SF
 # Mono, or Menlo, and SF): not part of the gate, which needs no font of the system.
