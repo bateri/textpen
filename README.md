@@ -53,7 +53,7 @@ file; go through them from anywhere with `F4` and `⇧F4`.
 
 **Pictures**: a PNG, a JPEG or an SVG opens in its tab, fitted into it and not made larger, with its
 size and its pixels under it. A file past 8 MiB or 4096 pixels is not drawn, and says so. It needs
-a terminal that shows the page at `lua` 2.1, as bateri does.
+a terminal that shows the page at `lua` 0.1, as bateri does.
 
 ![A picture in its tab: fitted, with its size and its pixels under it](docs/picture.png)
 
@@ -69,7 +69,7 @@ written. In a Markdown file, `⌘V` with a picture on the pasteboard puts it bes
 `image.png` (`image-1.png`, `image-2.png` where the name is taken) and writes `![](image.png)`
 at the caret; the preview holds its place until it is whole. A pause of a few seconds leaves the percent where
 it is; with no word for 30 seconds the row says "Upload stalled" and offers **Retry**. It needs a terminal that shows the
-page at `lua` 2.1, as bateri does.
+page at `lua` 0.1, as bateri does.
 
 |                                                              |                                                                    |
 | ------------------------------------------------------------ | ------------------------------------------------------------------ |

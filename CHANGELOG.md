@@ -21,7 +21,7 @@ change what the previous one did.
   the file you gave before it is all in. A file dropped on the editor is uploaded beside the file
   shown, the same on this machine as over ssh. The program has
   the calls `place` and `upload` for it (`docs/calls.md`), and the page needs a terminal that opens
-  it at `lua` 2.1 (bateri does).
+  it at `lua` 0.1 (bateri does).
 - **Upload Files and Download from the keyboard.** The right-click menu of a folder in the tree, and
   the command palette where a folder is chosen in the tree, have Upload Files: the terminal's Open
   panel, and what you choose goes into that folder as a dropped file does. A file's menu, and the
@@ -56,7 +56,7 @@ change what the previous one did.
   cut short, an SVG that says no size) opens as it did, and so does any other picture format. The
   program reads and measures the file (the sizes are in the first bytes, no library is added) and
   gives it to the terminal to hold while the tab is open, which needs a terminal that opens the
-  page at `lua` 2.1 (bateri does; with one that does not, a picture is the placeholder it was). The
+  page at `lua` 0.1 (bateri does; with one that does not, a picture is the placeholder it was). The
   program has the calls `picture` and `release` for it (`docs/calls.md`).
 - **A Markdown preview draws the pictures it names.** `![](docs/x.png)` is the picture, fitted to the
   width of the text, where `docs/x.png` is a PNG, a JPEG or an SVG in the project, found from the

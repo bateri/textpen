@@ -4,13 +4,14 @@
 # Nothing here needs Node but the release steps, which run tools/release.mjs.
 .PHONY: pin fmt lint test test-page check-timing shots check build pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
 
-# pencere is pinned in one place, Cargo.lock (Cargo.toml names the commit): the crate the program is
+# pencere is pinned in one place, Cargo.lock (Cargo.toml names the release): the crate the program is
 # built on is of it, and so are the `pencere` command `make dev` runs textpen under and the stand-in
 # terminal the program's tests run it in, which are built from it in .cache/pencere. To work against
 # a checkout you are changing, say so; one that is not at Cargo.lock's ref is said to be so, and used:
 #
 #   make dev PENCERE_SRC=../pencere
-PENCERE_REF = $(shell sed -n 's|^source = "git+https://github.com/bateri/pencere?rev=[0-9a-f]*\#\([0-9a-f]\{40\}\)"$$|\1|p' Cargo.lock | head -n 1)
+# The ref is the commit Cargo.lock takes it at, or the tag of the crates' release it takes.
+PENCERE_REF = $(shell awk '/^name = "pencere"$$/ { getline v; getline s; gsub(/version = |"/, "", v); if (s ~ /^source = "registry/) print "crates-v" v; else { sub(/.*\#/, "", s); sub(/"$$/, "", s); print s } exit }' Cargo.lock)
 PENCERE_CACHE = .cache/pencere
 PENCERE_SRC ?= $(PENCERE_CACHE)
 PENCERE ?= $(PENCERE_SRC)/target/release/pencere
@@ -22,14 +23,14 @@ PENCERE_GIT = https://github.com/bateri/pencere
 #   make fake-host && make check FAKE_HOST=.cache/pencere/target/debug/pencere-fake-host
 FAKE_HOST ?= ../pencere/target/debug/pencere-fake-host
 
-# pin: main is built on a pencere anyone can fetch, the commit Cargo.lock names. A branch that waits
+# pin: main is built on a pencere anyone can fetch, the release Cargo.lock names. A branch that waits
 # for a pencere not pushed yet takes it from a checkout on this machine with a [patch] of Cargo.toml;
 # that section is refused on main and on what is to be merged into it.
 pin:
 	@if grep -q '^\[patch' Cargo.toml; then \
 		branch="$$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"; \
 		if [ "$$branch" = main ] || [ "$${GITHUB_REF:-}" = refs/heads/main ] || [ "$${GITHUB_BASE_REF:-}" = main ]; then \
-			echo "pin: Cargo.toml takes pencere from a [patch]: main is built on a pushed pencere (move the rev in Cargo.toml, drop the patch)"; exit 1; \
+			echo "pin: Cargo.toml takes pencere from a [patch]: main is built on a pushed pencere (move the version in Cargo.toml, drop the patch)"; exit 1; \
 		fi; \
 		echo "pin: Cargo.toml takes pencere from a [patch] ($$branch): main will refuse it"; \
 	fi
@@ -78,7 +79,7 @@ build:
 # moved to another ref when Cargo.lock moves, so that cargo builds again only what changed).
 pencere-src:
 	@command -v cargo >/dev/null || { echo "pencere: cargo is not installed: pencere is built from its source (https://rustup.rs)"; exit 1; }
-	@ref="$(PENCERE_REF)"; test -n "$$ref" || { echo "pencere: Cargo.lock takes no pencere from $(PENCERE_GIT) at a commit"; exit 1; }; \
+	@ref="$(PENCERE_REF)"; test -n "$$ref" || { echo "pencere: Cargo.lock takes no pencere"; exit 1; }; \
 	if [ "$(PENCERE_SRC)" = "$(PENCERE_CACHE)" ]; then \
 		if [ "$$(cat $(PENCERE_CACHE).ref 2>/dev/null)" != "$$ref" ]; then \
 			echo "pencere: fetching $(PENCERE_GIT) at $$ref into $(PENCERE_CACHE)"; \
@@ -89,7 +90,8 @@ pencere-src:
 		fi; \
 	else \
 		head=$$(git -C "$(PENCERE_SRC)" rev-parse HEAD 2>/dev/null); \
-		[ "$$head" = "$$ref" ] || \
+		want=$$(git -C "$(PENCERE_SRC)" rev-parse -q --verify "$$ref^{commit}" 2>/dev/null); \
+		[ -n "$$head" ] && [ "$$head" = "$$want" ] || \
 			echo "pencere: $(PENCERE_SRC) is at $${head:-no commit}, not at $$ref (Cargo.lock) that textpen is built with"; \
 	fi
 

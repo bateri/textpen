@@ -25,8 +25,8 @@ Each of the three files is the Rust program with its page (`src/view/`) and pict
   and Linux on `arm64` and on `x86_64`, each with its target added (`rustup target add
   aarch64-unknown-linux-musl`, and so on) and, on Linux, `musl-tools`. Each file is built where it
   runs, as sqlpen's are: no emulation and no cross toolchain.
-- pencere as `Cargo.lock` takes it: cargo builds it into each file from that source, a commit of
-  `bateri/pencere` while textpen needs what no release of it has. Nothing of pencere's is
+- pencere as `Cargo.lock` takes it: cargo builds it into each file from that source, its release on
+  crates.io. Nothing of pencere's is
   downloaded ready-made.
 - Node, for `tools/release.mjs`: it is the one step of a release that is not cargo's. (The other
   Node file, `tools/icon.mjs`, draws the icons and is not part of a release.)
