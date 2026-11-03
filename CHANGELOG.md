@@ -19,6 +19,8 @@ change what the previous one did.
   for the change before and after (`⌥F5`, `⇧⌥F5`) and a button that closes it, as Esc does. Where
   there is nothing to lay out so (a binary file, one outside a git repository, too many lines) it says
   why. The program has the calls `compare` and `compare-base` for it (`docs/calls.md`).
+  The colour of a change crosses from one side to the other between them, in a curve where the two
+  sides have different numbers of lines, and a thin line marks the place on the side without its lines.
 - **Fold what did not change, and take a change back.** Beside the last commit the long stretches
   both sides have the same are folded on both sides alike, three lines kept either side of a change and
   `N unchanged lines` at the end of the line each folds from, so that the two stay as tall as each other.

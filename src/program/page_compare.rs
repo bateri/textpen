@@ -9,7 +9,7 @@
 use std::process::Command;
 
 use pencere_drive::headless::{Error, Focus};
-use pencere_view::{Id, MenuEntry};
+use pencere_view::{Id, MenuEntry, Paint};
 use similar::{DiffOp, TextDiff};
 
 use crate::page_changes::committed;
@@ -250,6 +250,158 @@ fn a_block_of_five_hundred_lines_is_as_tall_on_the_other_side_and_the_end_of_the
     assert!(
         extent(&page, &left).1 > 100.0
             && (extent(&page, &left).1 - extent(&page, &right).1).abs() < 0.5
+    );
+    Ok(())
+}
+
+/// A long file with six lines added in it and, further on, six taken away, committed before they were.
+fn a_long_file_changed_far_down(project: &Project) {
+    let lines: Vec<String> = (0..600)
+        .map(|n| format!("export const line{n} = {n};\n"))
+        .collect();
+    project.write("src/long.ts", &lines.concat());
+    committed(project);
+    let mut changed = lines;
+    changed.drain(340..346);
+    for n in 0..6 {
+        changed.insert(300, format!("export const added{n} = {n};\n"));
+    }
+    project.write("src/long.ts", &changed.concat());
+}
+
+/// The hatching of a gap shows wherever the sides were scrolled to, on the side the wheel is on and on
+/// the one that follows it, and not only at the top of a file, where a picture of it would be taken.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_gaps_are_hatched_on_both_sides_far_down_a_file() -> Result<(), Error> {
+    let project = lantern();
+    a_long_file_changed_far_down(&project);
+    let session = project.session(&["src/long.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let (left, right) = compared(&mut page)?;
+    page.press("ctrl+alt+]")?;
+    page.advance(0.5)?;
+    page.settle()?;
+    let row = extent(&page, &right).0 / 600.0;
+    page.wheel(&right, 0.0, 300.0 * row)?;
+    page.advance(0.5)?;
+    page.settle()?;
+    for name in [&left, &right] {
+        let room = page.bounds(name).expect("the side's box");
+        let list = page.list();
+        let hatched: Vec<_> = list
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Paint::Figure(figure)
+                    if figure.rect.x < room.x + room.w
+                        && figure.rect.x + figure.rect.w > room.x
+                        && figure.rect.y < room.y + room.h
+                        && figure.rect.y + figure.rect.h > room.y =>
+                {
+                    Some(figure.clip.intersect(figure.rect))
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(!hatched.is_empty(), "no hatching on {name}");
+        for shows in hatched {
+            assert!(
+                shows.w > 0.0 && shows.h > 0.0,
+                "the hatching on {name} is cut away: {shows:?}"
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Each side's bands stand where their changes do: lines added and then a line changed start at the same
+/// place of the left side, and the second band is below the first one's gap, on the lines it colours.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_band_stands_on_its_lines_where_two_changes_start_at_the_same_place() -> Result<(), Error> {
+    let project = lantern();
+    let lines: Vec<String> = (0..40)
+        .map(|n| format!("export const line{n} = {n};\n"))
+        .collect();
+    let old = lines.concat();
+    project.write("src/long.ts", &old);
+    committed(&project);
+    let mut changed = lines;
+    changed[14] =
+        "export const first = 1;\nexport const second = 2;\nexport const third = 3;\n".to_owned();
+    project.write("src/long.ts", &changed.concat());
+    let session = project.session(&["src/long.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let (left, right) = compared(&mut page)?;
+    assert_aligned(&page, &left, &right, &old, &changed.concat(), 5);
+    let line = page
+        .gutter_cell(&left, "numbers", 14)
+        .expect("the line changed, in view");
+    let room = page.bounds(&left).expect("the side");
+    let bands: Vec<_> = page
+        .list()
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Paint::Quad(quad)
+                if quad.fill.is_some()
+                    && quad.rect.x == room.x
+                    && quad.rect.w < 100.0
+                    && (quad.rect.h - line.h).abs() < 0.5 =>
+            {
+                Some(quad.rect.y)
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(
+        bands.iter().any(|y| (y - line.y).abs() < 0.5),
+        "no band on line 14 at {}: {bands:?}",
+        line.y
+    );
+    Ok(())
+}
+
+/// A gap taller than a canvas should be is hatched too, where it shows.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_tall_gap_is_hatched_where_it_shows() -> Result<(), Error> {
+    let project = lantern();
+    let lines: Vec<String> = (0..300)
+        .map(|n| format!("export const line{n} = {n};\n"))
+        .collect();
+    project.write("src/long.ts", &lines.concat());
+    committed(&project);
+    let mut changed = lines;
+    for n in 0..150 {
+        changed.insert(100, format!("export const added{n} = {n};\n"));
+    }
+    project.write("src/long.ts", &changed.concat());
+    let session = project.session(&["src/long.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let (left, right) = compared(&mut page)?;
+    page.press("ctrl+alt+]")?;
+    page.advance(0.5)?;
+    page.settle()?;
+    let height = extent(&page, &right).0;
+    page.wheel(&right, 0.0, height / 3.0)?;
+    page.advance(0.5)?;
+    page.settle()?;
+    let room = page.bounds(&left).expect("the side");
+    let shows = page.list().items.iter().any(|item| match item {
+        Paint::Figure(figure) => {
+            let cut = figure.clip.intersect(figure.rect);
+            figure.rect.x <= room.x + 1.0
+                && figure.rect.w > 100.0
+                && cut.y <= room.y + 1.0
+                && cut.y + cut.h >= room.y + room.h - 1.0
+        }
+        _ => false,
+    });
+    assert!(
+        shows,
+        "the left side's gap, all of the room, is not hatched"
     );
     Ok(())
 }

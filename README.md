@@ -100,7 +100,8 @@ Last Commit in the palette shows the file in two columns, as a git client does: 
 commit keeps of it on the left, which cannot be changed, and the file itself on the right, which is
 its own editor, so that you type, undo and save as ever. The lines that differ are in colour (red
 taken away, green added, blue changed, and in a changed line the words that differ); the side that
-has fewer lines has a hatched gap, so that the same lines stand at the same height, and the two
+has fewer lines has a hatched gap, so that the same lines stand at the same height, the colour of
+a change crosses from one side to the other between them, and the two
 scroll together, down and across. The long stretches that did not change are folded on both
 sides, three lines kept either side of a change, and the arrows beside one open it (`⌘⌥]` at the
 caret, `⌃⌥]` shows every line, `⌃⌥[` folds them again); a caret that goes into one, with Find or Go

@@ -15,6 +15,10 @@
 -- measures (an anchor on a line and its box), for the zones to be a whole number of rows; and the
 -- editors' own scrolling is made to agree by telling the one the other's place, where a place that
 -- was told is not told back (the editor says it scrolled to the place it was sent to).
+--
+-- Between the sides: the first column of the right-hand gutter carries each change across, its colour
+-- running from the lines on the left to the lines on the right (`band`). It stands in a zone with no
+-- height at the top of the change, so that it goes up and down with the text in the same frame.
 
 local kit = require("../lib/kit")
 local text = require("../lib/text")
@@ -35,8 +39,15 @@ local ANCHOR = "compare-row"
 local MARKS = "compare-marks"
 local FOLDS = "compare-folds"
 local NUMBERS = { name = "numbers", pad = 14 }
--- The column of the right-hand gutter that takes a change back (and opens a folded stretch).
-local APPLY = { name = "apply", width = 18 }
+-- The column of the right-hand gutter that takes a change back (and opens a folded stretch), and that
+-- the colour of a change crosses from one side to the other.
+local APPLY = { name = "apply", width = 28 }
+-- The editors' `padding`: how far before a line's text its ground starts.
+local TEXT_PADDING = 6
+-- How thick the line is that says where a change goes on the side without its lines, and how tall a
+-- change is drawn with a curve between the sides (taller, a figure that size is a cost for no shape to see).
+local PLACE_LINE = 1
+local CURVED = 2000
 -- How many unchanged lines stay either side of a change when the rest is folded, and the fewest lines a
 -- fold hides (a fold of fewer is no gain).
 local CONTEXT = 3
@@ -47,9 +58,14 @@ local MIN_HIDDEN = 5
 local ZONE_ROWS = 200
 local ZONE_POINTS = 4096
 -- How many lines either side of what is in view a gap has an element for, how many gaps are hatched
--- at once, and how many words are marked on one side (a layer holds 20 000 decorations).
+-- at once, how tall a gap is hatched whole, how far beyond the room a taller one is (a canvas is drawn
+-- anew with each frame, whether it shows or not), and how many words are marked on one side (a layer
+-- holds 20 000 decorations).
 local WINDOW = 60
 local HATCHED = 40
+local HATCHED_WHOLE = 400
+local HATCH_BEYOND = 300
+local HATCH_STEP = 9
 local WORDS_MOST = 6000
 -- How many places told to a side are kept, to tell its echoes from what the person does.
 local ECHOES = 32
@@ -60,12 +76,31 @@ local FAILED_AGAIN = 2
 local by_left = {}
 local made = 0
 
+-- The colours of what differs. Terminals lay colours over one another in linear light, where the same
+-- opacity of a theme's green is loud on a dark ground and nearly grey on a light one: a colour pulled
+-- toward the pure one, at a small opacity, adds to its own channel on the dark and takes from the
+-- others on the light, and reads as the same pale tint on both.
+local PURE = { red = "#ff1f3d", green = "#00ff5a", blue = "#1f7aff" }
+
+local function tint(kind, opacity)
+	return b.alpha(b.mix(kind, PURE[kind], 0.75), opacity)
+end
+
 local function tones()
-	return {
-		red = b.alpha("red", 0.16),
-		green = b.alpha("green", 0.16),
-		blue = b.alpha("blue", 0.14),
-	}
+	return { red = tint("red", 0.1), green = tint("green", 0.1), blue = tint("blue", 0.1) }
+end
+
+-- The ground of a gap: where the side has no lines to stand against the other's.
+local function gap_ground()
+	return b.alpha("foreground", 0.025)
+end
+
+-- What a change is called by its colour: lines added, lines taken away, lines changed.
+local function kind_of(block)
+	if block.oldCount == 0 then
+		return "green"
+	end
+	return block.newCount == 0 and "red" or "blue"
 end
 
 -- --- Places -----------------------------------------------------------------------------------------------
@@ -183,6 +218,7 @@ function compare.enter(path, how)
 		asking = false,
 		again = false,
 		bucket = nil,
+		tall = {},
 		closed = false,
 	}
 	tab.compare = cmp
@@ -511,15 +547,14 @@ end
 -- on the overview ruler, and the words of a pair that differ.
 local function ground(which, id, blocks)
 	local grounds = tones()
-	local word_ground = b.alpha(which == "left" and "red" or "green", 0.34)
+	local word_ground = tint(which == "left" and "red" or "green", 0.16)
 	local out, words = {}, 0
 	for _, block in blocks do
 		local line, count = block.newLine, block.newCount
-		local kind = block.oldCount == 0 and "green" or "blue"
+		local kind = kind_of(block)
 		local marked = block.newWords
 		if which == "left" then
 			line, count = block.oldLine, block.oldCount
-			kind = block.newCount == 0 and "red" or "blue"
 			marked = block.oldWords
 		end
 		if count > 0 then
@@ -541,6 +576,10 @@ local function zone_name(which, index, part)
 	return "gap:" .. which .. ":" .. index .. ":" .. part
 end
 
+local function band_name(which, index)
+	return "band:" .. which .. ":" .. index
+end
+
 -- The gaps of the two sides: where each is (the line it is by, from 0, and whether it is above that
 -- line or below), how many rows tall. A block puts a gap of the lines it has more on one side after its
 -- last line on the other, or, where that side has none of its lines, at the edge they would stand at.
@@ -548,25 +587,25 @@ local function gaps_of(cmp, rid, blocks)
 	local lines = { left = layout.editor_lines(cmp.left) or 1, right = layout.editor_lines(rid) or 1 }
 	local out = { left = {}, right = {} }
 	local rows = { left = 0, right = 0 }
-	local function put(which, count, line, have, side)
+	local function put(which, count, line, have, index)
 		if count <= 0 then
 			return
 		end
 		local list = out[which]
 		local place
 		if have > 0 then
-			place = { line = line + have - 1, side = "below", rows = count }
+			place = { line = line + have - 1, side = "below", rows = count, block = index }
 		elseif line < lines[which] then
-			place = { line = line, side = "above", rows = count }
+			place = { line = line, side = "above", rows = count, block = index }
 		else
-			place = { line = lines[which] - 1, side = "below", rows = count }
+			place = { line = lines[which] - 1, side = "below", rows = count, block = index }
 		end
 		list[#list + 1] = place
 		rows[which] += count
 	end
-	for _, block in blocks do
-		put("left", block.newCount - block.oldCount, block.oldLine, block.oldCount)
-		put("right", block.oldCount - block.newCount, block.newLine, block.newCount)
+	for index, block in blocks do
+		put("left", block.newCount - block.oldCount, block.oldLine, block.oldCount, index)
+		put("right", block.oldCount - block.newCount, block.newLine, block.newCount, index)
 	end
 	-- What is left over is a line a text that ends with a line break has beyond its last line, which
 	-- the other may not have.
@@ -579,21 +618,25 @@ local function gaps_of(cmp, rid, blocks)
 	return out
 end
 
--- The zones of the gaps of one side, each as tall as its rows, in the parts one zone may be.
-local function zones(which, id, gaps, row)
+-- The zones of one side, in the order they stand in, for the editor keeps that order at one place: for
+-- each change the band's, with no height, at its top, and its gap, as tall as its rows, in the parts one
+-- zone may be. Two changes can start at the same place of a side (lines added, then a line changed): the
+-- second band stands below the first one's gap.
+local function zones(which, id, gaps, blocks, row)
 	local most = math.max(1, math.min(ZONE_ROWS, math.floor(ZONE_POINTS / row)))
 	local finish = (layout.editor_length(id) or 0) + 1
 	local out = {}
-	for index, gap in gaps do
-		local line, side = gap.line, gap.side
+	-- A mark at the very end of the text is not in the range a layer is told for, so it would stay when the
+	-- layer is told again: what stands above the empty line the last break makes is below the line before it.
+	local function placed(line, side)
 		local at = start_of(id, line)
 		if at >= finish and finish > 1 and line > 0 then
-			-- A mark at the very end of the text is not in the range a layer is told for, so it would stay
-			-- when the layer is told again: a gap above the empty line the last break makes is the gap
-			-- below the line before it.
-			line, side = line - 1, "below"
-			at = start_of(id, line)
+			return start_of(id, line - 1), "below"
 		end
+		return at, side
+	end
+	local function gap_zones(index, gap)
+		local at, side = placed(gap.line, gap.side)
 		local left, part = gap.rows, 0
 		while left > 0 do
 			local take = math.min(left, most)
@@ -602,6 +645,26 @@ local function zones(which, id, gaps, row)
 				from = at, to = at, zone = zone_name(which, index, part), height = take * row, side = side,
 			}
 			left -= take
+		end
+	end
+	local of_block = {}
+	for index, gap in gaps do
+		if gap.block then
+			of_block[gap.block] = index
+		end
+	end
+	for index, block in blocks do
+		local at, side = placed(which == "left" and block.oldLine or block.newLine, "above")
+		out[#out + 1] = { from = at, to = at, zone = band_name(which, index), height = 0, side = side }
+		local gap = of_block[index]
+		if gap then
+			gap_zones(gap, gaps[gap])
+		end
+	end
+	-- What a text that ends with a line break has beyond its last line.
+	for index, gap in gaps do
+		if not gap.block then
+			gap_zones(index, gap)
 		end
 	end
 	return out
@@ -749,6 +812,12 @@ function compare.update(tab)
 	if docs.unsent(doc) or result.version ~= doc.version then
 		return
 	end
+	-- The numbers grew or shrank by a digit: the gutters are another width, which the anchors say.
+	local digits = #tostring(layout.editor_lines(doc.id) or 1) .. ":" .. #tostring(layout.editor_lines(cmp.left) or 1)
+	if cmp.digits ~= digits then
+		cmp.digits = digits
+		cmp.row = nil
+	end
 	-- How tall a row is, measured on a line. Where neither side has one there is nothing to line up: the
 	-- first line that comes is measured.
 	if not cmp.on or not cmp.row then
@@ -771,7 +840,7 @@ function compare.update(tab)
 		kit.ask(id, { decorate = GROUND, version = version, from = from, to = to, decorations = ground(which, id, blocks) })
 		kit.ask(id, {
 			decorate = GAPS, version = version, from = from, to = to,
-			decorations = zones(which, id, cmp.gaps[which], cmp.row),
+			decorations = zones(which, id, cmp.gaps[which], blocks, cmp.row),
 		})
 		kit.ask(id, {
 			decorate = FOLDS, version = version, from = from, to = to,
@@ -854,26 +923,30 @@ function compare.anchor(tab)
 		cmp.dirty = true
 		return
 	end
-	local finish = (layout.editor_length(id) or 0) + 1
-	local line = (id == doc.id and doc.first or cmp.first) or 1
-	local from = layout.line_start(id, line) or 1
-	if from >= finish then
-		from = 1
-	end
-	-- The line's first character alone: a range that takes in the line break is as tall as two rows.
-	local to = from + 1
-	for size = 1, 4 do
-		if from + size <= finish and pcall(layout.editor_text, id, from, from + size) then
-			to = from + size
-			break
-		end
-	end
 	cmp.on = id
 	cmp.row = nil
-	kit.ask(id, {
-		decorate = ROW, version = layout.editor_version(id), from = 1, to = (layout.editor_length(id) or 0) + 1,
-		decorations = { { from = from, to = to, anchor = ANCHOR } },
-	})
+	for _, side in { { doc.id, doc.first }, { cmp.left, cmp.first } } do
+		local on, line = side[1], side[2] or 1
+		local finish = (layout.editor_length(on) or 0) + 1
+		if finish > 1 then
+			local from = layout.line_start(on, line) or 1
+			if from >= finish then
+				from = 1
+			end
+			-- The line's first character alone: a range that takes in the line break is as tall as two rows.
+			local to = from + 1
+			for size = 1, 4 do
+				if from + size <= finish and pcall(layout.editor_text, on, from, from + size) then
+					to = from + size
+					break
+				end
+			end
+			kit.ask(on, {
+				decorate = ROW, version = layout.editor_version(on), from = 1, to = finish,
+				decorations = { { from = from, to = to, anchor = ANCHOR } },
+			})
+		end
+	end
 	kit.gather(true)
 end
 
@@ -885,6 +958,38 @@ local function row_now(cmp)
 		return layout.bounds(b.range_of(cmp.on, ANCHOR))
 	end)
 	return ok and box and box.h and box.h > 0 and box.h or nil
+end
+
+-- How wide the gutter of the editor `id` is, as its anchor says: nil where the anchor is not on a line
+-- in view, or the text is scrolled across.
+local function gutter_now(id)
+	local ok, box = pcall(function()
+		return layout.bounds(b.range_of(id, ANCHOR))
+	end)
+	local room = layout.bounds(id)
+	local _, across = layout.scroll_offset(id)
+	if not (ok and box and box.x and room and room.x) or (across or 0) ~= 0 then
+		return nil
+	end
+	return box.x - room.x - TEXT_PADDING
+end
+
+-- Whether a tall gap shows where its hatching is not: the page is drawn again, with the part that shows.
+local function hatching_behind(cmp, doc)
+	for which, list in cmp.tall do
+		local room = layout.bounds(which == "left" and cmp.left or (doc and doc.id))
+		for _, part in list do
+			local box = layout.bounds(part.name .. "/e")
+			if room and room.y and box and box.y then
+				local from = math.max(room.y - box.y, 0)
+				local to = math.min(room.y + room.h - box.y, part.height)
+				if to > from and (from < part.top or to > part.bottom) then
+					return true
+				end
+			end
+		end
+	end
+	return false
 end
 
 -- The page was laid out: how tall a row is, read again, and the gaps written again where it changed.
@@ -902,6 +1007,19 @@ function compare.settle()
 			compare.update(tab)
 			return nil
 		end)
+		return true
+	end
+	-- The bands colour the gutters as far as the text.
+	local wider = false
+	cmp.gutter = cmp.gutter or {}
+	for _, side in { { "left", cmp.left }, { "right", tab.doc and tab.doc.id } } do
+		local width = side[2] and gutter_now(side[2])
+		if width and (not cmp.gutter[side[1]] or math.abs(width - cmp.gutter[side[1]]) > 0.25) then
+			cmp.gutter[side[1]] = width
+			wider = true
+		end
+	end
+	if wider or hatching_behind(cmp, tab.doc) then
 		return true
 	end
 	-- Folded alone (a side opened a stretch by itself), the two stand out of line: the folds are put as
@@ -1036,53 +1154,168 @@ end
 
 -- --- Elements -------------------------------------------------------------------------------------------------------------
 
-local function hatch(width, height)
+-- Lines across a box, from `start` points on: what says that a gap is no lines at all.
+local function hatch(width, height, start)
 	local path = b.path()
 	local at = -height
 	while at < width do
-		path:move_to(at, height)
-		path:line_to(at + height, 0)
-		at += 9
+		if at + height > start then
+			if at < start then
+				path:move_to(start, height - (start - at))
+			else
+				path:move_to(at, height)
+			end
+			path:line_to(at + height, 0)
+		end
+		at += HATCH_STEP
 	end
 	path:stroke(1, b.alpha("foreground", 0.09))
 	return b.canvas({ path }):size(width, height)
 end
 
--- The elements that stand in the gaps of one side, children of its editor's element: a pale ground,
--- hatched where it is small, for the gaps in or near view.
+-- The part of a gap's height to hatch, from its top: the whole of one that is small, of a taller one what is
+-- in or near the room, where the gap's element stood last. The part starts on a whole step of the lines,
+-- so that they stay where they are as it moves.
+local function hatched_part(name, height, room)
+	if height <= HATCHED_WHOLE then
+		return 0, height
+	end
+	local box = layout.bounds(name .. "/e")
+	if not (box and box.y and room and room.y) then
+		return 0, math.min(height, HATCHED_WHOLE)
+	end
+	local top = math.max(0, room.y - HATCH_BEYOND - box.y)
+	top = math.floor(top / HATCH_STEP) * HATCH_STEP
+	return top, math.min(height, room.y + room.h + HATCH_BEYOND - box.y)
+end
+
+-- A box at `x` points across the top of a band.
+local function band_box(x, width, height, color)
+	return b.div():absolute():inset(0, nil, nil, x):w(width):h(height):bg(color)
+end
+
+-- The colour of a change between the sides: as tall at its left edge as the change is on the left, and at
+-- its right edge as it is on the right, the two joined by a curve. On the left a gap goes on under it.
+local function crossing(width, old, new, tone)
+	local tall = math.max(old, new)
+	if old == new or tall > CURVED then
+		return band_box(0, width, tall, tone)
+	end
+	local middle = width / 2
+	local paths = {}
+	if old < new then
+		local under = b.path()
+		under:move_to(0, old)
+		under:cubic_to(middle, old, middle, new, width, new)
+		under:line_to(0, new)
+		under:close()
+		under:fill(gap_ground())
+		paths[#paths + 1] = under
+	end
+	local path = b.path()
+	path:move_to(0, 0)
+	path:line_to(width, 0)
+	path:line_to(width, new)
+	path:cubic_to(middle, new, middle, old, 0, old)
+	path:close()
+	path:fill(tone)
+	paths[#paths + 1] = path
+	return b.canvas(paths):size(width, tall):absolute():inset(0, nil, nil, 0)
+end
+
+-- What stands at the top of a change on one side: the colour of its lines over the numbers (the kit colours
+-- a line from its text on), or, on the side without its lines, a thin line at the place they go; and on the
+-- right, in the first column of the gutter, the colour crossing over from the left.
+local function band(cmp, which, index, block, width)
+	local kind = kind_of(block)
+	local tone = tones()[kind]
+	local old, new = block.oldCount * cmp.row, block.newCount * cmp.row
+	local name = band_name(which, index)
+	local zone = b.div():id(name .. "/e"):zone(name):h(0)
+	local start = which == "right" and APPLY.width or 0
+	local here = which == "left" and old or new
+	if here > 0 then
+		local gutter = cmp.gutter and cmp.gutter[which]
+		if gutter and gutter > start then
+			zone:child(band_box(start, gutter - start, here, tone))
+		end
+	else
+		zone:child(band_box(start, width, PLACE_LINE, b.alpha(kind, 0.7)))
+	end
+	if which == "right" then
+		zone:child(crossing(APPLY.width, old, new, tone))
+	end
+	return zone
+end
+
+-- The elements that stand in the zones of one side, children of its editor's element, for what is in or
+-- near view: in a gap a pale ground, hatched, and the band of each change. The right side's hatching
+-- starts after the column the bands cross in.
+--
+-- A gap's element does not cut what is in it: the canvas is its height, the room cuts its width, and an
+-- element that cuts is laid out before the kit puts the zone in place, where what it holds comes out
+-- cut away unless the side happens to be near the top of the text.
 function compare.gaps(tab, which, editor)
 	local cmp, doc = tab.compare, tab.doc
 	if not (cmp and cmp.drawn and cmp.row and doc) then
 		return editor
 	end
-	local list = cmp.gaps[which]
-	if not list or #list == 0 then
-		return editor
+	-- What is near the view is read from the lines of a change where they are: a side whose room is all gap
+	-- has no lines in view to go by, and the other has.
+	local function near(line, count, first, last)
+		first = first or 1
+		last = last or 0
+		if last < first then
+			last = first + 80
+		end
+		return line + count + 1 >= first - WINDOW and line + 1 <= last + WINDOW
 	end
-	local first = which == "left" and cmp.first or doc.first or 1
-	local last = which == "left" and cmp.last or doc.last or 0
-	if last < first then
-		last = first + 80
+	local function block_near(block)
+		return near(block.oldLine, block.oldCount, cmp.first, cmp.last)
+			or near(block.newLine, block.newCount, doc.first, doc.last)
 	end
+	local blocks = (cmp.result and cmp.result.blocks) or {}
 	local width = math.ceil(S.width / 2) + 8
+	local start = which == "right" and APPLY.width or 0
 	local most = math.max(1, math.min(ZONE_ROWS, math.floor(ZONE_POINTS / cmp.row)))
 	local hatched = 0
-	for index, gap in list do
-		if gap.line + 1 >= first - WINDOW and gap.line + 1 <= last + WINDOW then
+	local room = layout.bounds(which == "left" and cmp.left or doc.id)
+	local tall = {}
+	cmp.tall[which] = tall
+	for index, gap in cmp.gaps[which] or {} do
+		local block = gap.block and blocks[gap.block]
+		local shows
+		if block then
+			shows = block_near(block)
+		elseif which == "left" then
+			shows = near(gap.line, 0, cmp.first, cmp.last)
+		else
+			shows = near(gap.line, 0, doc.first, doc.last)
+		end
+		if shows then
 			local left, part = gap.rows, 0
 			while left > 0 do
 				local take = math.min(left, most)
 				part += 1
 				local name = zone_name(which, index, part)
 				local height = take * cmp.row
-				local zone = b.div():id(name .. "/e"):zone(name):h(height):clip():bg(b.alpha("foreground", 0.025))
-				if height <= 400 and hatched < HATCHED then
+				local zone = b.div():id(name .. "/e"):zone(name):h(height):bg(gap_ground())
+				local top, bottom = hatched_part(name, height, room)
+				if height > HATCHED_WHOLE then
+					tall[#tall + 1] = { name = name, height = height, top = top, bottom = bottom }
+				end
+				if bottom > top and hatched < HATCHED then
 					hatched += 1
-					zone:child(hatch(width, height))
+					zone:child(hatch(width, bottom - top, start):absolute():inset(top, nil, nil, 0))
 				end
 				editor:child(zone)
 				left -= take
 			end
+		end
+	end
+	for index, block in blocks do
+		if block_near(block) then
+			editor:child(band(cmp, which, index, block, width))
 		end
 	end
 	return editor
