@@ -830,3 +830,242 @@ fn in_a_narrow_pane_the_panel_is_a_drawer_that_closes_on_the_comparison_and_the_
     page.press("escape")?;
     Ok(())
 }
+
+// --- Folds, and taking a change back -------------------------------------------------------------------
+
+/// Eighty lines, as they are committed, and as they are when the page opens them: one changed, two taken
+/// away and two added, so that what is the same is long stretches between.
+fn long_old() -> String {
+    (0..80).map(|n| format!("const v{n} = {n};\n")).collect()
+}
+
+fn long_new() -> String {
+    let mut out = String::new();
+    for n in 0..80 {
+        match n {
+            10 => out.push_str("const v10 = 1000;\n"),
+            40 | 41 => {}
+            _ => out.push_str(&format!("const v{n} = {n};\n")),
+        }
+        if n == 70 {
+            out.push_str("// added a\n// added b\n");
+        }
+    }
+    out
+}
+
+fn long_project() -> Project {
+    let project = lantern();
+    project.write("src/long.ts", &long_old());
+    committed(&project);
+    project.write("src/long.ts", &long_new());
+    project
+}
+
+/// The lines (from 0) the right editor has a marker of its column `apply` on whose id starts with
+/// `kind`.
+fn markers(page: &Page, kind: &str) -> Vec<usize> {
+    use pencere_view::edit::Mark;
+    let name = shown(page).expect("an editor");
+    let buffer = page.editor(&name).expect("the editor");
+    let mut found: Vec<usize> = buffer
+        .decorations_in(0, buffer.len_chars())
+        .into_iter()
+        .filter_map(|(_, decoration)| match &decoration.mark {
+            Mark::Gutter(mark)
+                if mark.column == "apply"
+                    && mark.id.as_deref().is_some_and(|id| id.starts_with(kind)) =>
+            {
+                Some(buffer.line_of(decoration.from))
+            }
+            _ => None,
+        })
+        .collect();
+    found.sort_unstable();
+    found
+}
+
+/// The unchanged stretches are folded on both sides alike, so that the two are as tall as each other
+/// and the same lines are at the same height; a press on the chevron of one opens it on both; the page's
+/// own keys fold them all and show them all; and the next change is never one folded away.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn what_is_the_same_is_folded_on_both_sides_alike_and_a_stretch_opens_on_both_together()
+-> Result<(), Error> {
+    use pencere_view::Button;
+    let project = long_project();
+    let session = project.session(&["src/long.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let (left, right) = compared(&mut page)?;
+    let (old, new) = (long_old(), long_new());
+    let folded = extent(&page, &right).0;
+    assert!(
+        folded < 45.0 * 21.0,
+        "{folded} points: far from the 90 lines there are"
+    );
+    assert_aligned(&page, &left, &right, &old, &new, 4);
+    // The first line of a stretch is in view; the lines it hides stand where it does.
+    let y = |name: &str, line: usize| page.gutter_cell(name, "numbers", line).map(|cell| cell.y);
+    assert!(y(&right, 13).is_some());
+    assert_eq!(y(&right, 20), y(&right, 14), "folded away");
+    assert_eq!(y(&left, 20), y(&left, 14), "folded away");
+    // Each says how many lines it hides, at the end of the line it folds from.
+    for name in [&left, &right] {
+        let buffer = page.editor(name).expect("the editor");
+        let widgets = buffer
+            .decorations_in(0, buffer.len_chars())
+            .into_iter()
+            .filter(|(_, decoration)| {
+                matches!(decoration.mark, pencere_view::edit::Mark::Widget(_))
+            })
+            .count();
+        assert_eq!(widgets, 4, "{name}: a note for each stretch");
+    }
+    // The chevron of the stretch opens it on both sides, and the other stretches stay folded.
+    let opens = markers(&page, "open:");
+    assert!(opens.contains(&13), "{opens:?}");
+    page.click_gutter(&right, "apply", 13, Button::Left)?;
+    page.advance(0.5)?;
+    page.settle()?;
+    let (l, r) = (extent(&page, &left), extent(&page, &right));
+    assert!((l.0 - r.0).abs() < 0.5, "{} and {} points", l.0, r.0);
+    assert!(r.0 > folded + 20.0 * 21.0, "{} points after {folded}", r.0);
+    let y = |name: &str, line: usize| page.gutter_cell(name, "numbers", line).map(|cell| cell.y);
+    assert_ne!(y(&right, 20), y(&right, 14), "open");
+    assert_ne!(y(&left, 20), y(&left, 14), "open");
+    assert_aligned(&page, &left, &right, &old, &new, 8);
+    // Fold them all again (a key of the page's: the editor's own would fold one side), then show them all.
+    page.focus_editor(&right)?;
+    page.press("cmd+alt+[")?;
+    page.advance(0.5)?;
+    page.settle()?;
+    let again = extent(&page, &right).0;
+    assert!((again - folded).abs() < 0.5, "{again} and {folded}");
+    assert_aligned(&page, &left, &right, &old, &new, 4);
+    page.press("cmd+alt+]")?;
+    page.advance(0.5)?;
+    page.settle()?;
+    let (l, r) = (extent(&page, &left), extent(&page, &right));
+    assert!(
+        (l.0 - r.0).abs() < 0.5 && r.0 > 80.0 * 20.0,
+        "{} and {}",
+        l.0,
+        r.0
+    );
+    page.press("cmd+alt+[")?;
+    page.advance(0.5)?;
+    page.settle()?;
+    // The next change: where it goes is in view.
+    page.caret_to(&right, 0)?;
+    let line_of = |page: &Page| {
+        page_words(page)
+            .iter()
+            .find_map(|word| word.strip_prefix("Ln "))
+            .and_then(|rest| rest.split(',').next())
+            .and_then(|line| line.parse::<usize>().ok())
+            .expect("the line in the status")
+    };
+    for _ in 0..3 {
+        page.press("alt+f5")?;
+        page.advance(0.5)?;
+        page.settle()?;
+        let line = line_of(&page);
+        assert!(
+            page.gutter_cell(&right, "numbers", line - 1).is_some(),
+            "line {line} is in view"
+        );
+    }
+    Ok(())
+}
+
+/// A change is taken back with the chevron at its first line: a line changed, lines taken away and lines
+/// added, at the top, in the middle and at the end of the text, as one edit that is undone with ⌘Z, the
+/// two sides lined up again at once.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_change_is_taken_back_with_its_chevron_as_one_edit_that_can_be_undone() -> Result<(), Error> {
+    use pencere_view::Button;
+    let project = changed_project();
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let (left, right) = compared(&mut page)?;
+    let lines = markers(&page, "apply:");
+    assert_eq!(lines.len(), 4, "{lines:?}: a chevron for each change");
+    // The first: the two lines added at the top.
+    page.click_gutter(&right, "apply", lines[0], Button::Left)?;
+    wait(&mut page, |page| !text(page).starts_with("#!"))?;
+    assert_eq!(
+        text(&page),
+        CHANGED
+            .split_once("import")
+            .map(|(_, rest)| format!("import{rest}"))
+            .unwrap()
+    );
+    wait(&mut page, |page| markers(page, "apply:").len() == 3)?;
+    page.advance(0.5)?;
+    page.settle()?;
+    assert_aligned(
+        &page,
+        &left,
+        &right,
+        lantern_server_committed(),
+        &text(&page),
+        4,
+    );
+    // One ⌘Z brings it back, and the sides are lined up with it.
+    page.press("cmd+z")?;
+    wait(&mut page, |page| {
+        text(page) == CHANGED && markers(page, "apply:").len() == 4
+    })?;
+    page.advance(0.5)?;
+    page.settle()?;
+    assert_aligned(&page, &left, &right, lantern_server_committed(), CHANGED, 6);
+    // All of them, from the end of the text back: the file is as it was committed.
+    for _ in 0..4 {
+        let last = *markers(&page, "apply:").last().expect("a chevron");
+        let before = text(&page);
+        page.click_gutter(&right, "apply", last, Button::Left)?;
+        wait(&mut page, |page| text(page) != before)?;
+        wait(&mut page, |page| drawn(page) && !shows(page, "Revert"))?;
+        page.advance(0.5)?;
+        page.settle()?;
+    }
+    assert_eq!(text(&page), lantern_server_committed());
+    wait(&mut page, |page| shows(page, "No changes"))?;
+    Ok(())
+}
+
+/// The ends of a text, with a line break at its end and without: lines added at the end, lines taken away
+/// from it and the last line changed are taken back to what the commit has, to the byte.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_change_at_the_end_of_the_text_is_taken_back_to_the_byte() -> Result<(), Error> {
+    use pencere_view::Button;
+    for (old, new) in [
+        ("a\nb\nc\n", "a\nb\nc\nd\ne\n"),
+        ("a\nb\nc\nd\n", "a\nb\n"),
+        ("a\nb\nc\nd\n", "a\nb\nX\nd\n"),
+        ("a\nb\nc", "a\nb\nX"),
+        ("a\nb\nc", "a\nb\nc\nd\ne"),
+        ("a\nb\nc\nd", "a\nb"),
+        ("a\nb\nc\n", "a\nb\nc"),
+        ("", "a\nb\n"),
+    ] {
+        let project = lantern();
+        project.write("eof.txt", old);
+        committed(&project);
+        project.write("eof.txt", new);
+        let session = project.session(&["eof.txt"]);
+        let mut page = project.open(&session, WIDE)?;
+        let (_, right) = compared(&mut page)?;
+        let lines = markers(&page, "apply:");
+        assert_eq!(lines.len(), 1, "{old:?} to {new:?}: {lines:?}");
+        page.click_gutter(&right, "apply", lines[0], Button::Left)?;
+        wait(&mut page, |page| text(page) != new)?;
+        assert_eq!(text(&page), old, "{old:?} was changed to {new:?}");
+        // As one edit: it is undone at once.
+        page.press("cmd+z")?;
+        wait(&mut page, |page| text(page) == new)?;
+    }
+    Ok(())
+}

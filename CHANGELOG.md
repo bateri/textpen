@@ -19,6 +19,13 @@ change what the previous one did.
   for the change before and after (`⌥F5`, `⇧⌥F5`) and a button that closes it, as Esc does. Where
   there is nothing to lay out so (a binary file, one outside a git repository, too many lines) it says
   why. The program has the calls `compare` and `compare-base` for it (`docs/calls.md`).
+- **Fold what did not change, and take a change back.** Beside the last commit the long stretches
+  both sides have the same are folded on both sides alike, three lines kept either side of a change and
+  `N unchanged lines` at the end of the line each folds from, so that the two stay as tall as each other.
+  A chevron in the gutter opens a stretch (on both sides); the button in the header, `⌘⌥]` and `⌘⌥[`
+  show all lines and fold them again. A chevron at the first line of a change takes it back: the lines
+  as the commit has them replace it, as one edit that `⌘Z` undoes, and the line break at the end of the
+  text comes out as the commit's does.
 - **A panel of the changed files.** The sidebar has a third panel beside Files and Search, Changes
   (`⌘⇧G`): the files git says are changed, and, below them, those it does not keep, each with its
   icon, its name, its folder and its letter. A press on one shows it beside the last commit (a file

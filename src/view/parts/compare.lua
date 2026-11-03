@@ -32,7 +32,15 @@ local GROUND = "compare"
 local GAPS = "compare-gaps"
 local ROW = "compare-row"
 local ANCHOR = "compare-row"
+local MARKS = "compare-marks"
+local FOLDS = "compare-folds"
 local NUMBERS = { name = "numbers", pad = 14 }
+-- The column of the right-hand gutter that takes a change back (and opens a folded stretch).
+local APPLY = { name = "apply", width = 18 }
+-- How many unchanged lines stay either side of a change when the rest is folded, and the fewest lines a
+-- fold hides (a fold of fewer is no gain).
+local CONTEXT = 3
+local MIN_HIDDEN = 5
 
 -- The most rows one zone is told to hold (the kit's, 200) and the most points (4096, past which the kit
 -- cuts a zone short): a gap that is taller is several zones one after the other.
@@ -157,6 +165,12 @@ function compare.enter(path, how)
 		-- The layers are to be told again.
 		dirty = false,
 		drawn = false,
+		-- The unchanged stretches are folded (on both sides, together: the page alone folds), except the
+		-- ones the person opened, by the line they begin at on the left; and how many times the folds were
+		-- put right after the two sides came to differ in height.
+		collapsed = true,
+		opened = {},
+		repairs = 0,
 		-- The gaps made, by side; the groups of blocks that are one change, for going to the next.
 		gaps = { left = {}, right = {} },
 		groups = {},
@@ -192,7 +206,7 @@ function compare.exit(path)
 	local doc = tab.doc
 	-- What the layers put in the file's editor is taken off before the left one goes.
 	if doc and not doc.closed and doc.mounted and doc.loaded then
-		for _, layer in { GROUND, GAPS, ROW } do
+		for _, layer in { GROUND, GAPS, ROW, MARKS, FOLDS } do
 			local version, from, to = whole(doc.id)
 			kit.ask(doc.id, { decorate = layer, version = version, from = from, to = to, decorations = {} })
 		end
@@ -200,6 +214,9 @@ function compare.exit(path)
 	compare.forget_tab(tab)
 	if doc and not doc.closed then
 		doc.extra = nil
+		if cmp.folded and doc.mounted and doc.loaded then
+			kit.ask(doc.id, { command = "unfold_all" })
+		end
 		changes.refresh(doc)
 		changes.draw(doc)
 		if tab.path == S.active then
@@ -542,6 +559,112 @@ local function zones(which, id, gaps, row)
 	return out
 end
 
+-- The lines a text has, not counting the empty one a last line break makes after its last line.
+local function real_lines(id)
+	local lines = layout.editor_lines(id) or 1
+	local finish = (layout.editor_length(id) or 0) + 1
+	if finish == 1 then
+		return 0
+	end
+	if lines > 1 and (layout.line_start(id, lines) or 0) >= finish then
+		return lines - 1
+	end
+	return lines
+end
+
+-- The stretches of lines the two texts have the same, that are folded: for each, where it begins in
+-- the old text and in the new, the lines it keeps in view (the first of them is the line it folds from)
+-- and how many it hides. The lines either side of a change stay in view, and so does the last line.
+local function stretches(cmp, rid, blocks)
+	local old_lines, new_lines = real_lines(cmp.left), real_lines(rid)
+	local out = {}
+	local function add(old_at, new_at, count, first, last)
+		-- Kept in view: CONTEXT lines next to a change, and at an end of the text the one line it folds from.
+		local top = first and 1 or CONTEXT
+		local bottom = last and 0 or CONTEXT
+		local hidden = count - top - bottom
+		if hidden >= MIN_HIDDEN then
+			out[#out + 1] = { old_at = old_at, new_at = new_at, top = top, bottom = bottom, hidden = hidden, count = count }
+		end
+	end
+	local o, n = 0, 0
+	for index, block in blocks do
+		local count = block.oldLine - o
+		if count > 0 and count == block.newLine - n then
+			add(o, n, count, index == 1 and o == 0, false)
+		end
+		o, n = block.oldLine + block.oldCount, block.newLine + block.newCount
+	end
+	local count = math.min(old_lines - o, new_lines - n)
+	if count > 0 then
+		add(o, n, count, #blocks == 0, true)
+	end
+	return out
+end
+
+-- The decorations of the folds of one side: each stretch a region that folds from its last line in view,
+-- with how many lines it hides said at that line's end; the stretches the person opened are not there.
+local function folds(which, id, list, opened)
+	local out = {}
+	for _, stretch in list do
+		if not opened[stretch.old_at] then
+			local base = which == "left" and stretch.old_at or stretch.new_at
+			local at = start_of(id, base + stretch.top - 1)
+			-- A region folds the lines from the one `from` is on to the one `to` is on: `to` is the end of
+			-- the last line it hides, not the start of the one after.
+			local to = start_of(id, base + stretch.count - stretch.bottom) - 1
+			if to > at then
+				out[#out + 1] = { from = at, to = to, fold = true }
+				local line_end = start_of(id, base + stretch.top) - 1
+				if line_end > at then
+					out[#out + 1] = {
+						from = line_end, to = line_end, widget = stretch.hidden .. " unchanged lines", side = "end",
+						color = "quiet", label = stretch.hidden .. " unchanged lines are folded",
+					}
+				end
+			end
+		end
+	end
+	return out
+end
+
+-- The markers of the right-hand gutter: a chevron on the first line of each change, which takes it back,
+-- and on each folded stretch, which opens it (on both sides).
+local function marks(cmp, tab, rid, list)
+	local out = {}
+	local finish = (layout.editor_length(rid) or 0) + 1
+	local function mark(line, id, image, label)
+		local from = start_of(rid, line)
+		if from >= finish and finish > 1 and line > 0 then
+			line = line - 1
+			from = start_of(rid, line)
+		end
+		local to = start_of(rid, line + 1)
+		if to < from then
+			to = from
+		end
+		out[#out + 1] = {
+			from = from, to = to, gutter = "accent", column = APPLY.name, shape = "image", image = image,
+			id = id, label = label, cursor = "pointer",
+		}
+	end
+	local editable = not (tab.info and (tab.info.readonly or tab.info.missing))
+	if editable then
+		for index, group in cmp.groups do
+			mark(group.line, "apply:" .. index, "assets/icons/chevrons-right.svg", "Revert Change")
+		end
+	end
+	if cmp.collapsed then
+		for _, stretch in list do
+			if not cmp.opened[stretch.old_at] then
+				mark(stretch.new_at + stretch.top - 1, "open:" .. stretch.old_at, "assets/icons/chevron-down.svg",
+					"Show " .. stretch.hidden .. " unchanged lines")
+			end
+		end
+	end
+	return out
+end
+
 -- Tells both editors what differs and where the gaps are, as the program last said, in the places of the
 -- text they have now. Once the program's text and the editor's are the same, the left text is in, and
 -- how tall a row is is known.
@@ -571,6 +694,7 @@ function compare.update(tab)
 	cmp.dirty = false
 	local blocks = result.blocks or {}
 	cmp.gaps = gaps_of(cmp, doc.id, blocks)
+	cmp.stretches = cmp.collapsed and stretches(cmp, doc.id, blocks) or {}
 	for _, side in { { "left", cmp.left }, { "right", doc.id } } do
 		local which, id = side[1], side[2]
 		local version, from, to = whole(id)
@@ -579,6 +703,26 @@ function compare.update(tab)
 			decorate = GAPS, version = version, from = from, to = to,
 			decorations = zones(which, id, cmp.gaps[which], cmp.row),
 		})
+		kit.ask(id, {
+			decorate = FOLDS, version = version, from = from, to = to,
+			decorations = folds(which, id, cmp.stretches, cmp.opened),
+		})
+		-- The page folds and unfolds both sides alike: a side folded alone would stand out of line.
+		if cmp.collapsed and #cmp.stretches > 0 then
+			cmp.folded = true
+			kit.ask(id, { command = "unfold_all" })
+			kit.ask(id, { command = "fold_all" })
+		elseif cmp.folded then
+			kit.ask(id, { command = "unfold_all" })
+		end
+	end
+	local version, from, to = whole(doc.id)
+	kit.ask(doc.id, {
+		decorate = MARKS, version = version, from = from, to = to,
+		decorations = marks(cmp, tab, doc.id, cmp.stretches),
+	})
+	if not cmp.collapsed or #cmp.stretches == 0 then
+		cmp.folded = false
 	end
 	cmp.drawn = true
 	kit.gather(true)
@@ -689,6 +833,26 @@ function compare.settle()
 		end)
 		return true
 	end
+	-- Folded alone (a side opened a stretch by itself), the two stand out of line: the folds are put as
+	-- they were meant, a few times at most.
+	local doc = tab.doc
+	if cmp.drawn and not cmp.dirty and not cmp.asking and doc and cmp.result and cmp.result.version == doc.version
+		and not docs.unsent(doc) and cmp.row then
+		local l, r = layout.scroll_extent(cmp.left), layout.scroll_extent(doc.id)
+		if l and r then
+			if math.abs(l.content - r.content) <= cmp.row * 0.5 then
+				cmp.repairs = 0
+			elseif cmp.repairs < 3 then
+				cmp.repairs += 1
+				cmp.dirty = true
+				kit.after(0, function()
+					compare.update(tab)
+					return nil
+				end)
+				return true
+			end
+		end
+	end
 	return false
 end
 
@@ -790,9 +954,13 @@ end
 
 -- --- What the editors are told ---------------------------------------------------------------------------------------
 
--- The gutter of either side: the numbers.
-function compare.gutters()
-	return { NUMBERS }
+-- The gutter of a side: the numbers, and on the file's side, before them, the column that takes a
+-- change back.
+function compare.gutters(side)
+	if side == "left" then
+		return { NUMBERS }
+	end
+	return { APPLY, "numbers" }
 end
 
 -- --- Elements -------------------------------------------------------------------------------------------------------------
@@ -879,6 +1047,12 @@ function compare.header(tab)
 	else
 		right:child(b.text("No changes"):color("quiet"):no_shrink())
 	end
+	local tab_cmp = cmp
+	if tab_cmp.collapsed and #(tab_cmp.stretches or {}) > 0 then
+		right:child(kit.icon_button("compare-fold", "arrows-vertical", "Show All Lines", { keys = "cmd+alt+]", size = 24 }))
+	elseif not tab_cmp.collapsed then
+		right:child(kit.icon_button("compare-fold", "fold", "Collapse Unchanged", { keys = "cmd+alt+[", size = 24 }))
+	end
 	right:child(kit.icon_button("compare-previous", "arrow-up", "Previous Change",
 		{ keys = "alt+shift+f5", size = 24, disabled = #groups == 0 }))
 	right:child(kit.icon_button("compare-next", "arrow-down", "Next Change",
@@ -950,11 +1124,99 @@ function compare.go(step)
 	kit.gather(true)
 end
 
+-- --- Taking a change back, and the folds --------------------------------------------------------------------------
+
+-- Puts the lines as the last commit has them in place of the lines of change `index` (the group of blocks
+-- that touch): an edit as any other, which can be undone, so that the program is told and the two sides
+-- are laid out again as it answers.
+function compare.revert(tab, index)
+	local cmp, doc = tab.compare, tab.doc
+	local group = cmp and cmp.groups[index]
+	if not (group and doc and doc.loaded) or docs.unsent(doc) or tab.info and (tab.info.readonly or tab.info.missing) then
+		return
+	end
+	local old = {}
+	if group.old_end > group.old_line then
+		local from = start_of(cmp.left, group.old_line)
+		local to = math.min(start_of(cmp.left, group.old_end), (layout.editor_length(cmp.left) or 0) + 1)
+		local body = layout.editor_text(cmp.left, from, to) or ""
+		body = string.gsub(body, "\n$", "")
+		old = string.split(body, "\n")
+	end
+	-- Where the lines are the last of both texts, the text ends as the commit's does.
+	local ends = nil
+	if group.old_end >= real_lines(cmp.left) and group.new_end >= real_lines(doc.id) then
+		local length = layout.editor_length(cmp.left) or 0
+		ends = (length > 0 and layout.editor_text(cmp.left, length, length + 1) == "\n") and "break" or "none"
+	end
+	changes.put_back(doc, group.line, group.new_end - group.line, old, "revert-change", ends)
+	act.focus_editor()
+	kit.gather(true)
+end
+
+-- Folds every unchanged stretch (`on`), or shows every line: on both sides together.
+function compare.collapse(path, on)
+	local tab = docs.tab_of(path or S.active)
+	local cmp = tab and tab.compare
+	if not cmp then
+		return
+	end
+	cmp.collapsed = on
+	cmp.opened = {}
+	cmp.repairs = 0
+	cmp.dirty = true
+	compare.update(tab)
+	kit.gather(true)
+end
+
+-- Opens the stretch that begins at the line `key` of the old text, on both sides.
+function compare.open_stretch(tab, key)
+	local cmp = tab.compare
+	if not cmp then
+		return
+	end
+	cmp.opened[key] = true
+	cmp.repairs = 0
+	cmp.dirty = true
+	compare.update(tab)
+	kit.gather(true)
+end
+
+-- The pointer in the column of the right-hand gutter that takes changes back: a press on a chevron takes
+-- its change back, on one that opens a stretch opens it.
+local was_gutter = docs.on_gutter
+docs.on_gutter = function(doc, event)
+	if was_gutter then
+		was_gutter(doc, event)
+	end
+	if event.column ~= APPLY.name or event.kind ~= "press" or event.button ~= "left" or not event.marker then
+		return
+	end
+	local tab = docs.tab_of(doc.path)
+	if not (tab and tab.compare) then
+		return
+	end
+	local id = event.marker.id or ""
+	local index = tonumber(string.match(id, "^apply:(%d+)$"))
+	if index then
+		compare.revert(tab, index)
+		return
+	end
+	local key = tonumber(string.match(id, "^open:(%d+)$"))
+	if key then
+		compare.open_stretch(tab, key)
+	end
+end
+
 -- --- Presses -------------------------------------------------------------------------------------------------------------
 
 function compare.press(id)
 	if id == "compare-close" or id == "toggle-compare" then
 		compare.toggle(S.active)
+	elseif id == "compare-fold" then
+		local tab = docs.tab_of(S.active)
+		local cmp = tab and tab.compare
+		compare.collapse(S.active, cmp ~= nil and not cmp.collapsed)
 	elseif id == "compare-next" then
 		compare.go(1)
 	elseif id == "compare-previous" then

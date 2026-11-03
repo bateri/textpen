@@ -435,6 +435,43 @@ function changes.go(step)
 	changes.open(doc, index)
 end
 
+-- Puts `old` (lines, none with a line end) in place of the `count` lines of the file from the line `line`
+-- (from 0): an edit as any other, which can be undone. Where the lines are the last of a text that has no
+-- line break at its end, neither do the ones put there have it; `ends` ("break" or "none") says how the
+-- text ended where `old` is its end too.
+function changes.put_back(doc, line, count, old, tag, ends)
+	local length = layout.editor_length(doc.id) or 0
+	-- The place after the text, and whether the text ends without a line break: the last line is
+	-- then not an empty one, which is the line the break would have begun.
+	local finish = length + 1
+	local lines = layout.editor_lines(doc.id) or 1
+	local broken = length > 0 and layout.line_start(doc.id, lines) ~= finish
+	local from = start_of(doc, line)
+	local to = start_of(doc, line + count)
+	local joined = table.concat(old, "\n")
+	local insert = ""
+	if #old > 0 then
+		if count == 0 and from >= finish and broken then
+			-- Lines taken away from the end of a text that has no break at its end: one comes first.
+			insert = "\n" .. joined
+		elseif to >= finish and broken then
+			-- The change's lines are the last, with no break after them: neither do theirs have.
+			insert = joined
+		else
+			insert = joined .. "\n"
+		end
+		-- Where the lines the text had end it too, how it ended is as it was.
+		if ends and to >= finish then
+			insert = joined .. (ends == "break" and "\n" or "")
+		end
+	end
+	kit.ask(doc.id, {
+		change = { { from = from, to = to, insert = insert } },
+		base = layout.editor_version(doc.id),
+		tag = tag or "revert-change",
+	})
+end
+
 -- Puts the lines as they were in place of the change: an edit as any other, which can be undone.
 function changes.revert(doc, index)
 	local hunk = doc.hunks and doc.hunks[index]
@@ -445,33 +482,8 @@ function changes.revert(doc, index)
 		kit.toast("Only some of the lines as they were are kept here: take this change back with git", "warn")
 		return
 	end
-	local length = layout.editor_length(doc.id) or 0
-	-- The place after the text, and whether the text ends without a line break: the last line is
-	-- then not an empty one, which is the line the break would have begun.
-	local finish = length + 1
-	local lines = layout.editor_lines(doc.id) or 1
-	local broken = length > 0 and layout.line_start(doc.id, lines) ~= finish
-	local from = start_of(doc, hunk.line)
-	local to = start_of(doc, hunk.line + hunk.count)
-	local old = table.concat(hunk.old, "\n")
-	local insert = ""
-	if #hunk.old > 0 then
-		if hunk.count == 0 and from >= finish and broken then
-			-- Lines taken away from the end of a text that has no break at its end: one comes first.
-			insert = "\n" .. old
-		elseif to >= finish and broken then
-			-- The change's lines are the last, with no break after them: neither do theirs have.
-			insert = old
-		else
-			insert = old .. "\n"
-		end
-	end
 	S.peek = nil
-	kit.ask(doc.id, {
-		change = { { from = from, to = to, insert = insert } },
-		base = layout.editor_version(doc.id),
-		tag = "revert-change",
-	})
+	changes.put_back(doc, hunk.line, hunk.count, hunk.old)
 	act.focus_editor()
 	changes.draw(doc)
 	kit.gather(true)

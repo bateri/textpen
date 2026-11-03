@@ -79,6 +79,15 @@ end
 add({ id = "compare", title = "Compare with Last Commit", category = "View", keys = "cmd+shift+d",
 	when = function() return compare.active() or docs.active() ~= nil end,
 	run = function() compare.toggle(S.active) end })
+-- The folds of the comparison with the last commit are the page's: it folds the unchanged stretches of
+-- both sides together, and the editor's own keys would fold one side alone.
+local function comparing_in_editor()
+	return compare.active() and S.overlay == nil and S.focus == "editor"
+end
+add({ id = "compare-collapse", title = "Collapse Unchanged Lines", category = "View", keys = "cmd+alt+[",
+	when = comparing_in_editor, hidden = true, run = function() compare.collapse(S.active, true) end })
+add({ id = "compare-expand", title = "Show All Lines", category = "View", keys = "cmd+alt+]",
+	when = comparing_in_editor, hidden = true, run = function() compare.collapse(S.active, false) end })
 add({ id = "next-change", title = "Go to Next Change", category = "Go", keys = "alt+f5", when = has_changes,
 	run = function() go(1) end })
 add({ id = "previous-change", title = "Go to Previous Change", category = "Go", keys = "alt+shift+f5", when = has_changes,
@@ -325,9 +334,21 @@ add({ id = "outdent", title = "Outdent Line", category = "Edit", shown = "shift+
 add({ id = "fold", title = "Fold", category = "Edit", shown = "cmd+alt+[", when = has_file, run = on_editor({ command = "fold" }) })
 add({ id = "unfold", title = "Unfold", category = "Edit", shown = "cmd+alt+]", when = has_file, run = on_editor({ command = "unfold" }) })
 add({ id = "fold-all", title = "Fold All", category = "Edit", keys = "ctrl+alt+[", when = has_file,
-	run = on_editor({ command = "fold_all" }) })
+	run = function()
+		if compare.active() then
+			compare.collapse(S.active, true)
+		else
+			on_editor({ command = "fold_all" })()
+		end
+	end })
 add({ id = "unfold-all", title = "Unfold All", category = "Edit", keys = "ctrl+alt+]", when = has_file,
-	run = on_editor({ command = "unfold_all" }) })
+	run = function()
+		if compare.active() then
+			compare.collapse(S.active, false)
+		else
+			on_editor({ command = "unfold_all" })()
+		end
+	end })
 add({ id = "select-all", title = "Select All", category = "Selection", shown = "cmd+a", when = has_file,
 	run = on_editor({ command = "select_all" }) })
 add({ id = "select-next", title = "Add Next Occurrence", category = "Selection", keys = "ctrl+g", when = has_file,

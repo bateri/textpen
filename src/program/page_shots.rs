@@ -298,6 +298,32 @@ fn the_pictures_of_the_comparison() -> Result<(), Error> {
         let png = page.shot_in(&fonts, palette).expect("a picture");
         std::fs::write(out.join(format!("{name}.png")), png).expect("the picture written");
     }
+    // Long stretches the same, folded on both sides, and the chevrons that take a change back.
+    for (name, size, palette) in [
+        ("fold-dark-wide", (1280.0, 800.0), Palette::Dark),
+        ("fold-light-80x24", PANE, Palette::Light),
+    ] {
+        let project = lantern();
+        let old: String = (0..80).map(|n| format!("const v{n} = {n};\n")).collect();
+        project.write("src/long.ts", &old);
+        with_git(&project);
+        project.write(
+            "src/long.ts",
+            &old.replace("const v10 = 10;\n", "const v10 = 1000;\n")
+                .replace("const v40 = 40;\nconst v41 = 41;\n", "")
+                .replace(
+                    "const v70 = 70;\n",
+                    "const v70 = 70;\n// added a\n// added b\n",
+                ),
+        );
+        let mut page = open(&project, &["src/long.ts"], size, &fonts)?;
+        page.press("cmd+shift+d")?;
+        wait(&mut page, drawn)?;
+        page.advance(1.0)?;
+        page.settle()?;
+        let png = page.shot_in(&fonts, palette).expect("a picture");
+        std::fs::write(out.join(format!("{name}.png")), png).expect("the picture written");
+    }
     // The panel of changes, with a file shown beside the last commit: wide, and in an 80×24 pane where
     // it is a drawer over the editor.
     for (name, size, palette) in [
