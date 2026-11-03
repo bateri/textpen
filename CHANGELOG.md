@@ -19,6 +19,15 @@ change what the previous one did.
   for the change before and after (`⌥F5`, `⇧⌥F5`) and a button that closes it, as Esc does. Where
   there is nothing to lay out so (a binary file, one outside a git repository, too many lines) it says
   why. The program has the calls `compare` and `compare-base` for it (`docs/calls.md`).
+- **A panel of the changed files.** The sidebar has a third panel beside Files and Search, Changes
+  (`⌘⇧G`): the files git says are changed, and, below them, those it does not keep, each with its
+  icon, its name, its folder and its letter. A press on one shows it beside the last commit (a file
+  taken away has nothing on the right, which cannot be changed; a renamed one is read under its old
+  name; one git does not keep has nothing on the left), and the keys stay in the panel: the arrows go
+  from file to file, ⏎ goes into the editor. A file the panel opened that you did nothing in is
+  closed as the next comes, so that going through fifty files leaves no fifty tabs. In a narrow
+  pane the panel is a drawer that closes on the file. Compare with Last Commit is also in the menus
+  of the editor, a tab and a file of the tree.
 
 ## [0.2.0] - 2026-11-03
 

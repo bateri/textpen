@@ -7,6 +7,7 @@ local text = require("../lib/text")
 local files = require("../lib/files")
 local docs = require("./docs")
 local uploads = require("./uploads")
+local compare = require("./compare")
 
 local b, S, SIZE, act = kit.b, kit.S, kit.SIZE, kit.act
 local layout = b.layout
@@ -480,6 +481,13 @@ function tree.menu(entry, at)
 		items[#items + 1] = "-"
 		if not is_dir then
 			items[#items + 1] = { "Open", nil, function() act.open_file(entry.path, { focus = true }) end }
+			items[#items + 1] = { "Compare with Last Commit", nil, function()
+				if not compare.active(entry.path) then
+					compare.enter(entry.path, "caret")
+				else
+					act.open_file(entry.path, { focus = true })
+				end
+			end }
 			items[#items + 1] = { "Download", nil, function() uploads.save_as(entry.path) end }
 		end
 		items[#items + 1] = { "Rename", "r", function() act.rename(entry.path) end }

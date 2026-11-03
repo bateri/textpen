@@ -123,7 +123,15 @@ function compare.enter(path, how)
 		act.open_file(path, { focus = how ~= "first" })
 		tab = docs.tab_of(path)
 	end
-	if not tab or tab.compare or tab.status == "unopenable" or tab.status == "picture" or tab.status == "error" then
+	if tab and tab.compare then
+		-- Already beside the last commit: it comes to the front, and the view goes to the first change.
+		act.open_file(path, { focus = how ~= "first" })
+		if how == "first" and compare.columns(tab) and tab.compare.groups[1] then
+			compare.arrived(tab, how)
+		end
+		return
+	end
+	if not tab or tab.status == "unopenable" or tab.status == "picture" or tab.status == "error" then
 		return
 	end
 	made += 1

@@ -8,8 +8,8 @@
 
 use std::process::Command;
 
-use pencere_drive::headless::Error;
-use pencere_view::Id;
+use pencere_drive::headless::{Error, Focus};
+use pencere_view::{Id, MenuEntry};
 use similar::{DiffOp, TextDiff};
 
 use crate::page_changes::committed;
@@ -51,9 +51,7 @@ pub(crate) fn drawn(page: &Page) -> bool {
             .iter()
             .any(|layer| layer.starts_with("compare"))
     };
-    page.editor(&left)
-        .is_some_and(|buffer| buffer.len_chars() > 0)
-        && (told(&left) || told(&right))
+    page.editor(&left).is_some() && (told(&left) || told(&right))
 }
 
 /// The file shown is compared, and it is laid out.
@@ -541,5 +539,294 @@ fn the_next_and_the_previous_change_go_round_the_file_and_the_header_counts_them
     assert_eq!(line_of(&page), first);
     assert!(shows(&page, " of "), "{:?}", page_words(&page));
     let _ = right;
+    Ok(())
+}
+
+// --- The panel of changes -----------------------------------------------------------------------------
+
+/// Runs git in the project.
+fn git(project: &Project, args: &[&str]) {
+    let status = Command::new("git")
+        .args(args)
+        .current_dir(project.root())
+        .env("GIT_AUTHOR_NAME", "textpen")
+        .env("GIT_AUTHOR_EMAIL", "textpen@example.com")
+        .env("GIT_COMMITTER_NAME", "textpen")
+        .env("GIT_COMMITTER_EMAIL", "textpen@example.com")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .status()
+        .expect("git");
+    assert!(status.success(), "git {args:?}");
+}
+
+const REFUNDS: &str =
+    "export function refund(orderId: string) {\n  return { orderId, cents: 0 };\n}\n";
+
+/// The project committed, and since: a file changed, one taken away, one renamed (and changed), and one
+/// git does not keep.
+fn panel_project() -> Project {
+    let project = lantern();
+    committed(&project);
+    project.write("src/server.ts", CHANGED);
+    std::fs::remove_file(project.root().join("src/lib/format.ts")).expect("removed");
+    git(
+        &project,
+        &["mv", "src/routes/refunds.ts", "src/routes/returns.ts"],
+    );
+    project.write(
+        "src/routes/returns.ts",
+        &REFUNDS.replace("cents: 0", "cents: 100"),
+    );
+    project.write("notes/new.txt", "a new note\n");
+    project
+}
+
+fn titles(page: &Page) -> Vec<String> {
+    page.menu()
+        .expect("a menu")
+        .entries
+        .iter()
+        .map(|entry| match entry {
+            MenuEntry::Item { title, .. } | MenuEntry::Paste { title, .. } => title.clone(),
+            MenuEntry::Separator => "-".to_owned(),
+        })
+        .collect()
+}
+
+/// Whether the file shown has its editor read-only.
+fn read_only(page: &Page, name: &str) -> bool {
+    page.laid()
+        .and_then(|laid| {
+            laid.editors()
+                .into_iter()
+                .find(|room| room.id == Id::named(name))
+                .map(|room| room.options.read_only)
+        })
+        .expect("the editor")
+}
+
+/// The panel lists what git says in two groups; a press on a row shows that file beside the last
+/// commit: a file changed, one taken away (nothing on the right, which cannot be changed, and no word
+/// that it was deleted), one renamed (the commit's is read under its old name) and one git does not
+/// keep (nothing on the left).
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_panel_lists_the_changed_files_in_two_groups_and_a_press_shows_each_beside_the_last_commit()
+-> Result<(), Error> {
+    let project = panel_project();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+shift+g")?;
+    wait(&mut page, |page| shows(page, "Unversioned Files"))?;
+    assert!(shows(&page, "Changes"), "{:?}", page_words(&page));
+    for row in [
+        "change:src/server.ts",
+        "change:src/lib/format.ts",
+        "change:src/routes/returns.ts",
+        "change:notes/new.txt",
+    ] {
+        assert!(page.bounds(row).is_some(), "{row} is listed");
+    }
+    assert!(page.bounds("change:README.md").is_none());
+    // Changed.
+    page.click("change:src/server.ts")?;
+    wait(&mut page, drawn)?;
+    page.advance(0.5)?;
+    let left = left_of(&page).expect("the left");
+    assert_eq!(
+        page.editor_text(&left).as_deref(),
+        Some(lantern_server_committed())
+    );
+    assert_eq!(text(&page), CHANGED);
+    // The keys stay in the panel.
+    assert!(matches!(page.focus(), Focus::Page), "{:?}", page.focus());
+    // Taken away: nothing on the right, which is read-only, and the left is what the commit has.
+    page.click("change:src/lib/format.ts")?;
+    wait(&mut page, |page| {
+        drawn(page) && page_words(page).iter().any(|word| word == "format.ts")
+    })?;
+    page.advance(0.5)?;
+    page.settle()?;
+    let (left, right) = (
+        left_of(&page).expect("a left"),
+        shown(&page).expect("a right"),
+    );
+    assert_eq!(text(&page), "");
+    assert!(
+        page.editor_text(&left)
+            .is_some_and(|text| text.contains("formatPrice"))
+    );
+    assert!(
+        read_only(&page, &right),
+        "a file that is not on disk is not changed"
+    );
+    assert!(!shows(&page, "deleted on disk"), "{:?}", page_words(&page));
+    let (l, r) = (extent(&page, &left), extent(&page, &right));
+    assert!((l.0 - r.0).abs() < 0.5, "{} and {} points", l.0, r.0);
+    // Saving makes no file.
+    page.focus_editor(&right)?;
+    page.press("cmd+s")?;
+    page.advance(1.0)?;
+    assert!(!project.exists("src/lib/format.ts"));
+    // Renamed.
+    page.click("change:src/routes/returns.ts")?;
+    wait(&mut page, |page| {
+        text(page).contains("cents: 100") && drawn(page)
+    })?;
+    page.advance(0.5)?;
+    let left = left_of(&page).expect("a left");
+    assert_eq!(page.editor_text(&left).as_deref(), Some(REFUNDS));
+    // Not kept by git.
+    page.click("change:notes/new.txt")?;
+    wait(&mut page, |page| {
+        text(page) == "a new note\n" && drawn(page)
+    })?;
+    page.advance(0.5)?;
+    let left = left_of(&page).expect("a left");
+    assert_eq!(page.editor_text(&left).as_deref(), Some(""));
+    Ok(())
+}
+
+/// The keys go through the panel's files, each shown beside the last commit as it is come to; the one
+/// the panel opened last is closed as the next comes, ⏎ goes into the editor, and Esc there ends the
+/// comparison.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_arrows_go_through_the_changed_files_and_enter_goes_into_the_editor() -> Result<(), Error> {
+    let project = panel_project();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+shift+g")?;
+    wait(&mut page, |page| shows(page, "Unversioned Files"))?;
+    page.click("change:src/lib/format.ts")?;
+    wait(&mut page, |page| {
+        page.bounds("tab:src/lib/format.ts").is_some() && drawn(page)
+    })?;
+    page.press("down")?;
+    wait(&mut page, |page| {
+        text(page).contains("cents: 100") && drawn(page)
+    })?;
+    // What was opened on the way is not left behind; what was open before is.
+    wait(&mut page, |page| {
+        page.bounds("tab:src/lib/format.ts").is_none()
+    })?;
+    assert!(page.bounds("tab:README.md").is_some());
+    page.press("down")?;
+    wait(&mut page, |page| text(page) == CHANGED && drawn(page))?;
+    page.press("down")?;
+    wait(&mut page, |page| {
+        text(page) == "a new note\n" && drawn(page)
+    })?;
+    page.press("down")?;
+    page.press("up")?;
+    wait(&mut page, |page| text(page) == CHANGED && drawn(page))?;
+    // ⏎: the keys are in the editor, and what is typed is the file's.
+    page.press("enter")?;
+    assert!(
+        matches!(page.focus(), Focus::Editor(_)),
+        "{:?}",
+        page.focus()
+    );
+    page.type_text("x")?;
+    assert_ne!(text(&page), CHANGED);
+    page.press("cmd+z")?;
+    page.press("escape")?;
+    page.advance(0.5)?;
+    assert!(left_of(&page).is_none(), "Esc ends the comparison");
+    Ok(())
+}
+
+/// Nothing changed, and not a repository, are said in words; of thousands of files only those in view
+/// have elements.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_panel_says_when_there_is_nothing_and_makes_only_the_rows_in_view() -> Result<(), Error> {
+    let project = lantern();
+    committed(&project);
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+shift+g")?;
+    wait(&mut page, |page| shows(page, "No changes"))?;
+    let project = lantern();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+shift+g")?;
+    wait(&mut page, |page| shows(page, "Not a git repository"))?;
+    // Thousands of files git does not keep.
+    let project = lantern();
+    committed(&project);
+    for n in 0..3000 {
+        project.write(&format!("many/f{n:04}.txt"), "x\n");
+    }
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+shift+g")?;
+    wait(&mut page, |page| {
+        page.bounds("change:many/f0000.txt").is_some()
+    })?;
+    assert!(page.bounds("change:many/f2999.txt").is_none());
+    let rows = (0..3000)
+        .filter(|n| page.bounds(&format!("change:many/f{n:04}.txt")).is_some())
+        .count();
+    assert!(rows > 5 && rows < 300, "{rows} rows are made");
+    Ok(())
+}
+
+/// In an 80×24 pane the panel is a drawer, and a press on a row closes it on the comparison. The menus
+/// of a row, a tab and a file in the tree have the comparison too.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn in_a_narrow_pane_the_panel_is_a_drawer_that_closes_on_the_comparison_and_the_menus_offer_it()
+-> Result<(), Error> {
+    let project = panel_project();
+    let session = project.session(&["src/server.ts", "README.md"]);
+    let mut page = project.open(&session, PANE)?;
+    page.press("cmd+shift+g")?;
+    wait(&mut page, |page| shows(page, "Unversioned Files"))?;
+    page.click("change:src/routes/returns.ts")?;
+    wait(&mut page, |page| {
+        text(page).contains("cents: 100") && drawn(page)
+    })?;
+    page.advance(0.5)?;
+    assert!(!shows(&page, "Unversioned Files"), "the drawer closed");
+    // The menu of a row.
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+shift+g")?;
+    wait(&mut page, |page| shows(page, "Unversioned Files"))?;
+    page.right_click("change:src/server.ts")?;
+    assert_eq!(
+        titles(&page),
+        ["Open File", "Reveal in Files", "-", "Copy Path"]
+    );
+    page.press("escape")?;
+    // The menu of a tab and of a file of the tree.
+    page.right_click("tab:README.md")?;
+    assert!(
+        titles(&page)
+            .iter()
+            .any(|title| title == "Compare with Last Commit")
+    );
+    page.press("escape")?;
+    page.press("cmd+shift+e")?;
+    wait(&mut page, |page| page.bounds("row:README.md").is_some())?;
+    page.right_click("row:README.md")?;
+    assert!(
+        titles(&page)
+            .iter()
+            .any(|title| title == "Compare with Last Commit")
+    );
+    page.press("escape")?;
+    // The menu of the editor offers it, and says so when it is on.
+    let editor = shown(&page).expect("an editor");
+    page.right_click(&editor)?;
+    assert!(
+        titles(&page)
+            .iter()
+            .any(|title| title == "Compare with Last Commit"),
+        "{:?}",
+        titles(&page)
+    );
+    page.press("escape")?;
     Ok(())
 }

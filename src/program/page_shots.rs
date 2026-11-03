@@ -298,6 +298,30 @@ fn the_pictures_of_the_comparison() -> Result<(), Error> {
         let png = page.shot_in(&fonts, palette).expect("a picture");
         std::fs::write(out.join(format!("{name}.png")), png).expect("the picture written");
     }
+    // The panel of changes, with a file shown beside the last commit: wide, and in an 80×24 pane where
+    // it is a drawer over the editor.
+    for (name, size, palette) in [
+        ("panel-dark-wide", (1280.0, 800.0), Palette::Dark),
+        ("panel-light-wide", (1280.0, 800.0), Palette::Light),
+        ("panel-dark-80x24", PANE, Palette::Dark),
+        ("panel-light-80x24", PANE, Palette::Light),
+    ] {
+        let project = lantern();
+        with_changed_server(&project);
+        std::fs::remove_file(project.root().join("src/lib/orders.ts")).expect("removed");
+        project.write("notes/todo.txt", "ship the lantern\n");
+        let mut page = open(&project, &["README.md"], size, &fonts)?;
+        page.press("cmd+shift+g")?;
+        wait(&mut page, |page| shows(page, "Unversioned Files"))?;
+        if size.0 > 700.0 {
+            page.click("change:src/server.ts")?;
+            wait(&mut page, drawn)?;
+        }
+        page.advance(1.0)?;
+        page.settle()?;
+        let png = page.shot_in(&fonts, palette).expect("a picture");
+        std::fs::write(out.join(format!("{name}.png")), png).expect("the picture written");
+    }
     Ok(())
 }
 

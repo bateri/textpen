@@ -242,6 +242,7 @@ end
 
 add({ id = "sidebar", title = "Toggle Sidebar", category = "View", keys = "cmd+b", run = function() act.toggle_sidebar() end })
 add({ id = "show-files", title = "Show Files", category = "View", keys = "cmd+shift+e", run = function() act.focus_sidebar("files") end })
+add({ id = "show-changes", title = "Show Changes", category = "View", keys = "cmd+shift+g", run = function() act.focus_sidebar("changes") end })
 add({ id = "focus", title = "Move Focus Between Sidebar and Editor", category = "View", keys = "f6", run = function() act.cycle_focus() end })
 add({ id = "wrap", title = "Toggle Word Wrap", category = "View",
 	run = function() act.change_settings({ wrap = not S.settings.wrap }) end })

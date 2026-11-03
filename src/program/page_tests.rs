@@ -2530,6 +2530,7 @@ fn the_editors_menu_has_the_standard_lines_and_textpens_own_and_the_press_puts_t
             "Select All Occurrences",
             "-",
             "Find in Project",
+            "Compare with Last Commit",
             "Command Palette"
         ]
     );
@@ -2604,8 +2605,13 @@ fn the_menus_revert_change_is_on_a_changed_line_only() -> Result<(), Error> {
     let titles = menu_titles(&page);
     assert!(titles.contains(&"Revert Change".to_owned()), "{titles:?}");
     assert_eq!(
-        titles[titles.len() - 3..],
-        ["Find in Project", "Revert Change", "Command Palette"]
+        titles[titles.len() - 4..],
+        [
+            "Find in Project",
+            "Revert Change",
+            "Compare with Last Commit",
+            "Command Palette"
+        ]
     );
     page.pick_titled("Revert Change")?;
     wait(&mut page, |page| text(page) == SERVER)?;

@@ -29,8 +29,12 @@ local S = {
 	listing_errors = {},
 	expanded = {},
 	tree_selection = nil,
-	-- The sidebar's panel ("files" or "search"); in a narrow page it is a drawer over the editor.
+	-- The sidebar's panel ("files", "search" or "changes"); in a narrow page it is a drawer over the
+	-- editor.
 	sidebar = "files",
+	-- The file the changes panel has chosen, and the one it opened last with nothing of the person's in it.
+	changes_selection = nil,
+	changes_preview = nil,
 	drawer = false,
 	-- Where the keys are, as the page has it: "editor" or "sidebar".
 	focus = "editor",

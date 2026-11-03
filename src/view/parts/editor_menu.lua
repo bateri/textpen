@@ -38,6 +38,9 @@ local function open(doc, at, line)
 	if reverting then
 		after[#after + 1] = { key = "revert_change", title = "Revert Change", keys = "ctrl+shift+backspace" }
 	end
+	after[#after + 1] = {
+		key = "compare", title = (tab and tab.compare) and "Close Comparison" or "Compare with Last Commit", keys = "cmd+shift+d",
+	}
 	after[#after + 1] = { key = "palette", title = "Command Palette", keys = "f1" }
 	kit.gather(context:editor_menu(ID, {
 		editor = doc.id,
@@ -78,6 +81,9 @@ local OWN = {
 		if was and was.doc.hunks and was.doc.hunks[was.index] == was.hunk then
 			changes.revert(was.doc, was.index)
 		end
+	end,
+	compare = function()
+		compare.toggle(S.active)
 	end,
 	palette = function()
 		act.open_palette("commands")

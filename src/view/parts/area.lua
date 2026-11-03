@@ -36,7 +36,9 @@ function area.options(tab, doc, side)
 		hard_tabs = config.hard_tabs == true or not settings.insertSpaces,
 		numbers = numbers,
 		gutters = comparing and compare.gutters(side) or changes.gutters(),
-		read_only = side == "left" or (tab.info and tab.info.readonly) or false,
+		-- A file that is not on disk is nothing to change where it is shown beside the commit that has it:
+		-- the right side is empty, and saving would make the file.
+		read_only = side == "left" or (tab.info and (tab.info.readonly or (comparing and tab.info.missing))) or false,
 		whitespace = settings.whitespace,
 		indent_guides = settings.indentGuides,
 		comment = config.comment,
@@ -108,7 +110,7 @@ local function banner_of(tab)
 			kit.button("banner-conflict-reload", "Reload from Disk", { h = 24 }),
 			kit.button("banner-conflict-keep", "Keep Mine", { tone = "primary", h = 24 }),
 		})
-	elseif info.missing and info.mtime ~= 0 then
+	elseif info.missing and info.mtime ~= 0 and not tab.compare then
 		return banner("bad", "trash", { b.span(name):bold(), " was deleted on disk. Saving writes it again." }, {
 			kit.button("banner-missing-close", "Close", { h = 24 }),
 		})

@@ -317,6 +317,14 @@ function act.save(path, done)
 		end
 		return
 	end
+	if tab.compare and tab.info and tab.info.missing then
+		-- Shown beside the commit that has it, a file that is not on disk is not made by saving.
+		kit.toast(text.basename(tab.path) .. " is not on disk: there is nothing to save", "info", 2.4)
+		if done then
+			done(false)
+		end
+		return
+	end
 	docs.save(tab, false, done)
 end
 

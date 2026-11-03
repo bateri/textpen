@@ -27,6 +27,13 @@ local function hints(has_file)
 			{ ".", "menu", "hint:tree-menu" },
 			{ "escape", "editor", "hint:editor" },
 		}
+	elseif S.focus == "sidebar" and S.sidebar == "changes" then
+		return {
+			{ "enter", "edit", "hint:changes-open" },
+			{ "down", "next", "hint:changes-next" },
+			{ "up", "previous", "hint:changes-previous" },
+			{ "escape", "editor", "hint:editor" },
+		}
 	elseif S.focus == "sidebar" and search.in_results() then
 		return {
 			{ "enter", "open", "hint:search-open" },

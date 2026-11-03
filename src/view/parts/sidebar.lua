@@ -5,6 +5,7 @@ local kit = require("../lib/kit")
 local text = require("../lib/text")
 local docs = require("./docs")
 local tree = require("./tree")
+local changes_list = require("./changes_list")
 local uploads = require("./uploads")
 
 local b, S, SIZE, act = kit.b, kit.S, kit.SIZE, kit.act
@@ -36,6 +37,7 @@ local function head(drawer)
 	local switch = b.div():row():gap(2):p(2):rounded(7):bg("raised1")
 		:child(segment("sidebar-files", "files", "Files", S.sidebar == "files", "cmd+shift+e"))
 		:child(segment("sidebar-search", "search", "Search in files", S.sidebar == "search", "cmd+shift+f"))
+		:child(segment("sidebar-changes", "git-branch", "Changes", S.sidebar == "changes", "cmd+shift+g"))
 	row:child(switch)
 	row:child(b.spacer())
 	if S.sidebar == "files" then
@@ -72,6 +74,8 @@ function sidebar.view(width, drawer)
 		if mark then
 			panel:child(mark)
 		end
+	elseif S.sidebar == "changes" then
+		panel:child(project_line()):child(changes_list.view(width))
 	else
 		panel:child(act.search_view())
 	end
@@ -151,6 +155,8 @@ function sidebar.press(id, event)
 		act.focus_sidebar("files")
 	elseif id == "sidebar-search" then
 		act.focus_sidebar("search")
+	elseif id == "sidebar-changes" then
+		act.focus_sidebar("changes")
 	elseif id == "sidebar-new-file" then
 		act.create("file")
 	elseif id == "sidebar-new-folder" then
@@ -169,6 +175,8 @@ function sidebar.press(id, event)
 		S.drawer = false
 		act.focus_editor()
 	elseif id == "resizer" then
+		return true
+	elseif changes_list.press(id) then
 		return true
 	else
 		return tree.press(id, event)
@@ -196,10 +204,19 @@ function act.focus_sidebar(panel)
 		end
 		S.field = nil
 		kit.keyboard("page")
+	elseif S.sidebar == "changes" then
+		changes_list.focused()
+		S.field = nil
+		kit.keyboard("page")
 	else
 		act.focus_search()
 	end
 	kit.gather(true)
+end
+
+-- A key as the panel that has the keyboard hears it.
+function act.sidebar_key(key, mods)
+	return sidebar.key(key, mods)
 end
 
 function act.toggle_sidebar()
@@ -239,6 +256,8 @@ function sidebar.key(key, mods)
 	end
 	if S.sidebar == "files" then
 		return tree.key(key, mods)
+	elseif S.sidebar == "changes" then
+		return changes_list.key(key, mods)
 	end
 	return act.search_key(key, mods)
 end
@@ -517,6 +536,8 @@ function sidebar.settle()
 	return tree.measure()
 end
 
-sidebar.context = tree.context
+function sidebar.context(id, event)
+	return changes_list.context(id, event) or tree.context(id, event)
+end
 
 return sidebar
