@@ -9,7 +9,7 @@ change what the previous one did.
 
 ### Added
 
-- **A file beside the last commit.** `⌘⇧D`, the button at the end of the tab strip (on a file git
+- **A file beside the last commit.** `⇧⌘D`, the button at the end of the tab strip (on a file git
   says is changed) or Compare with Last Commit in the palette shows the file in two columns: what the
   last commit keeps of it on the left (it cannot be changed), the file itself on the right, with
   the lines that differ in colour (red taken away, green added, blue changed, and in a changed line the
@@ -27,7 +27,7 @@ change what the previous one did.
   as the commit has them replace it, as one edit that `⌘Z` undoes, and the line break at the end of the
   text comes out as the commit's does.
 - **A panel of the changed files.** The sidebar has a third panel beside Files and Search, Changes
-  (`⌘⇧G`): the files git says are changed, and, below them, those it does not keep, each with its
+  (`⇧⌘G`): the files git says are changed, and, below them, those it does not keep, each with its
   icon, its name, its folder and its letter. A press on one shows it beside the last commit (a file
   taken away has nothing on the right, which cannot be changed; a renamed one is read under its old
   name; one git does not keep has nothing on the left), and the keys stay in the panel: the arrows go

@@ -21,12 +21,14 @@ subscription, a push, a `code`. What the page is told is made in `api/` from wha
 | `api/buffers.rs`           | the calls `open`, `edit`, `slice`, `save`, `buffer`, `discard`, `quit`; a long text read in pieces          |
 | `api/pictures.rs`          | the calls `picture` and `release`: a picture file read, measured and held by the terminal for a tab         |
 | `api/transfers.rs`         | the calls `place` and `upload`: the files the person gave the page, received into the project              |
+| `api/compare.rs`           | the calls `compare` and `compare-base`: an open file against the last commit, and the commit's text in pieces |
 | `api/search.rs`            | the call `search`                                                                                           |
 | `api/session.rs`           | the calls `boot`, `ui`, `settings`, `handoff`                                                               |
 | `api/changes.rs`           | the topic `changes`: the disk and git, as they change                                                       |
 | `api/tests.rs`             | the calls in a conversation in the same process: calls sent together, the pane lent and given back          |
 | `project/tree.rs`          | the project on disk: listing, the index of every file, create, rename, remove, the order of names           |
-| `project/git.rs`           | git with a time limit: the repository, its files, its branch and changes                                    |
+| `project/git.rs`           | git with a time limit: the repository, its files, its branch and changes, what the last commit keeps of a file |
+| `project/compare.rs`       | the blocks that make the commit's text the file's, and the words that differ in a changed line, within limits |
 | `project/watch.rs`         | which of the listed directories changed                                                                     |
 | `project/search.rs`        | a search through the files of the project                                                                   |
 | `project/paths.rs`         | paths by their text alone                                                                                   |

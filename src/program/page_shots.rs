@@ -273,6 +273,36 @@ fn with_changed_server(project: &Project) {
     project.write("src/server.ts", &server);
 }
 
+/// The pictures of the comparison for the docs: the file beside the last commit, and the panel of the
+/// changed files with a file shown.
+#[test]
+#[ignore = "shots: draws the page in the fonts of this machine into docs/; make shots"]
+fn the_pictures_of_the_comparison_in_the_docs() -> Result<(), Error> {
+    let fonts = fonts();
+    let project = lantern();
+    with_changed_server(&project);
+    let mut page = open(&project, &["src/server.ts"], (1280.0, 800.0), &fonts)?;
+    page.press("cmd+shift+d")?;
+    wait(&mut page, drawn)?;
+    page.advance(1.0)?;
+    page.settle()?;
+    save(&page, &fonts, Palette::Dark, "compare.png");
+
+    let project = lantern();
+    with_changed_server(&project);
+    std::fs::remove_file(project.root().join("src/lib/orders.ts")).expect("removed");
+    project.write("notes/todo.txt", "ship the lantern\n");
+    let mut page = open(&project, &["README.md"], (1280.0, 800.0), &fonts)?;
+    page.press("cmd+shift+g")?;
+    wait(&mut page, |page| shows(page, "Unversioned Files"))?;
+    page.click("change:src/server.ts")?;
+    wait(&mut page, drawn)?;
+    page.advance(1.0)?;
+    page.settle()?;
+    save(&page, &fonts, Palette::Dark, "changes-panel.png");
+    Ok(())
+}
+
 /// The file shown beside what the last commit keeps of it, in a dark and a light terminal, wide and
 /// in an 80×24 pane, for the eye (`target/shots/`).
 #[test]

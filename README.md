@@ -63,6 +63,10 @@ files cross the stream once; after that the terminal keeps them.
     <td width="33%" valign="top"><img src="docs/preview.png" width="100%" alt="Markdown and its preview, in a light theme"><br>Markdown and its preview, in a light theme</td>
     <td width="33%" valign="top"><img src="docs/light-80x24.png" width="100%" alt="An 80×24 pane in a light theme"><br>An 80×24 pane in a light theme</td>
   </tr>
+  <tr>
+    <td width="33%" valign="top"><img src="docs/compare.png" width="100%" alt="A file beside the last commit: the same lines at the same height, the lines and words that differ in colour"><br>A file beside the last commit</td>
+    <td width="33%" valign="top"><img src="docs/changes-panel.png" width="100%" alt="The panel of the changed files, with the file chosen shown beside the last commit"><br>The changed files, each shown beside the last commit</td>
+  </tr>
 </table>
 
 **The files of the project**, as a tree with what git says of each — changed, new, in
@@ -90,6 +94,27 @@ peek opens under it with the lines as they were on red and as they are on green,
 to close it. The original is what git's index keeps of the file, so a change you staged is no
 longer marked, and a file git does not keep has no marks. They follow what you type, and the
 setting `Changes in the gutter` (or Toggle Changes in the Gutter) turns them off.
+
+**A file beside the last commit.** `⇧⌘D`, the button at the end of the tab strip or Compare with
+Last Commit in the palette shows the file in two columns, as a git client does: what the last
+commit keeps of it on the left, which cannot be changed, and the file itself on the right, which is
+its own editor, so that you type, undo and save as ever. The lines that differ are in colour (red
+taken away, green added, blue changed, and in a changed line the words that differ); the side that
+has fewer lines has a hatched gap, so that the same lines stand at the same height, and the two
+scroll together, down and across. The long stretches that did not change are folded on both
+sides, three lines kept either side of a change, and a chevron opens one (`⌘⌥]` shows every
+line, `⌘⌥[` folds them again). A chevron at the first line of a change takes it back: the lines as
+the commit has them replace it, as one edit that `⌘Z` undoes. The header names the commit, counts
+the changes (`1 of 5`) and goes to the next and the previous (`⌥F5`, `⇧⌥F5`); `Esc` closes it. A
+file taken away shows what the commit has against nothing, a renamed one is read under its old
+name, and one git does not keep is all added. A binary file, a file outside a git repository and
+a file of more than 2 MiB or 50 000 lines are not laid out so, and the page says why.
+
+**The changed files.** The sidebar has a third panel beside Files and Search, `⇧⌘G`: the files git
+says are changed, and below them those it does not keep, each with its icon, its folder and its
+letter. A click, or an arrow, shows the file beside the last commit and leaves the keys in the
+panel, so that you go through a change set file by file; `⏎` goes into the editor. A file the
+panel opened that you did nothing in is closed as the next comes.
 
 **Every colour is the terminal's.** A terminal gives its view a handful of colours — its
 background and foreground, a dimmed one, an accent, and the colours it says success, danger,
@@ -195,7 +220,9 @@ type `@`, `#`, `[` or `{`.
 | `⌃G`, `⇧⌘L`, `⌃⇧↑` `⌃⇧↓`   | add the next match, every match, a cursor above or below                  |
 | `⌘/`, `⌥↑` `⌥↓`, `⇧⌘K`     | comment, move the line, delete it (`⌃⇧K` too)                             |
 | `⌘I`, `⌃J`, `⌃⌥[`          | select the line, join lines, fold all                                     |
-| `⌥F5`, `⇧⌥F5`              | the next and the previous change against git, with its peek (`⌃⇧⌫` reverts it) |
+| `⌥F5`, `⇧⌥F5`              | the next and the previous change against git, with its peek (`⌃⇧⌫` reverts it), or in the comparison |
+| `⇧⌘D`, `⇧⌘G`               | the file beside the last commit, the panel of the changed files           |
+| `⌘⌥[`, `⌘⌥]`               | in the comparison, fold what did not change and show every line           |
 | `⇧F10`                     | the editor's right-click menu, at the caret                               |
 | `⇧⌘V`                      | the preview of a Markdown file                                            |
 | `⌘,`, `⇧⌘/`                | the settings, every key                                                   |
@@ -205,7 +232,8 @@ type `@`, `#`, `[` or `{`.
 The tree has the keys once you click a row in it, or press `⇧⌘E` or `F6`; then `j` `k` and
 the arrows move, `h` `l` fold and unfold, `⏎` opens, `a` makes a file and `A` a folder, `r`
 renames or moves, `d` deletes, `y` copies the path, `.` opens the menu of the row. `Esc`
-goes back to the editor from anywhere. The keys the status line shows are buttons too: a
+goes back to the editor from anywhere. The panel of the changed files has the same keys that go
+through it (`j` `k` and the arrows, `⏎` into the editor, `y` copies the path, `.` opens its menu). The keys the status line shows are buttons too: a
 click does what the key does.
 
 `⌃C` always reaches textpen and ends it, whatever has the keyboard; what is not saved is
