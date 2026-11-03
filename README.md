@@ -142,18 +142,19 @@ or smaller, and textpen has no zoom of its own.
 
 ## Run it
 
-textpen is one file, with the editor inside it and nothing else to install. Take the file for
-your system from the [latest release](https://github.com/bateri/textpen/releases/latest) — macOS on
-Apple silicon, or Linux on `arm64` or `x86_64` — check it against `SHA256SUMS`, and put
-it on your `PATH` as `textpen`:
+textpen is one file, with the editor inside it and nothing else to install, for macOS on Apple
+silicon and Linux on `arm64` and `x86_64`:
 
 ```sh
-chmod +x textpen-0.2.0-aarch64-apple-darwin
-mv textpen-0.2.0-aarch64-apple-darwin ~/.local/bin/textpen
+curl -fsSL https://raw.githubusercontent.com/bateri/textpen/main/install.sh | sh
 ```
 
-To see the editor you need a terminal that hosts pencere views. bateri is the first, and no
-release of it has them yet: until one does, build bateri from its `main` branch. In any other
+The installer takes the newest release (or `TEXTPEN_VERSION=0.2.0`), checks it against the
+release's `SHA256SUMS`, and puts it in `~/.local/bin` (`TEXTPEN_INSTALL=<dir>` puts it elsewhere).
+A file a browser downloads is quarantined by macOS; one curl downloads is not.
+
+To see the editor you need a terminal that hosts pencere views. bateri is the first, from its
+0.23. In any other
 terminal textpen opens your own `$EDITOR`.
 
 ```sh

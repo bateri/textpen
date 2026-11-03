@@ -9,6 +9,9 @@ change what the previous one did.
 
 ### Added
 
+- **An installer.** `curl -fsSL https://raw.githubusercontent.com/bateri/textpen/main/install.sh | sh` takes the
+  newest release, checks it against `SHA256SUMS` and puts it in `~/.local/bin`.
+
 - **Drop a file on the tree to put it in the project.** Files dragged from Finder over the page mark
   where they would go and say so ("Upload to docs/"): a folder's row is that folder, a file's row
   is its folder, and the empty room in the tree is the project's own folder. Dropped, each file is

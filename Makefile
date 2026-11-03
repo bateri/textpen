@@ -2,7 +2,7 @@
 # (src/view/, a page of pencere's kit) and the pictures (src/assets/) carried in it by build.rs. The
 # gate, `make dev` and the steps of a release are here; RELEASING.md says in what order and why.
 # Nothing here needs Node but the release steps, which run tools/release.mjs.
-.PHONY: pin fmt lint test test-page check-timing shots check build pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
+.PHONY: pin fmt lint test test-page test-tools check-timing shots check build pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
 
 # pencere is pinned in one place, Cargo.lock (Cargo.toml names the release): the crate the program is
 # built on is of it, and so are the `pencere` command `make dev` runs textpen under and the stand-in
@@ -69,7 +69,11 @@ shots:
 	cargo test --locked --bin textpen page_shots:: -- --ignored
 
 # check is the gate: the pin of pencere, formatting, lints, the program's tests, the page's tests.
-check: pin lint test test-page
+check: pin lint test test-page test-tools
+
+# test-tools runs the tests of the installer (install.sh), against a stand-in for GitHub.
+test-tools:
+	node --test test/install.test.mjs
 
 # build makes target/release/textpen, the program for this machine, with the page in it.
 build:
