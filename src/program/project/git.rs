@@ -27,6 +27,8 @@ const STDERR_LIMIT: u64 = 16 * 1024;
 
 /// What `run` says of output past the limit it was given.
 const SAID_TOO_MUCH: &str = "git said too much";
+/// What `run` says of a git that failed and said nothing: `--quiet` asked it not to.
+const SAID_NOTHING: &str = "git failed";
 
 /// How long what git said of the renames is used when a file is looked for under its old name.
 const RENAME_AGE: Duration = Duration::from_millis(2500);
@@ -82,6 +84,9 @@ pub struct Committed {
 pub enum Kept {
     /// A path outside the project, or a project git cannot say of.
     Outside,
+    /// Git could not read the commit, for the words it gives: not the same as a file the commit has
+    /// not, which would make every line of the file look new.
+    Failed(String),
     /// Not text.
     Binary,
     /// Longer than is read.
@@ -146,7 +151,7 @@ fn run(args: &[&str], cwd: &str, max_output: usize) -> Result<Vec<u8>, String> {
         let said = String::from_utf8_lossy(&said);
         let said = said.trim();
         return Err(if said.is_empty() {
-            "git failed".to_owned()
+            SAID_NOTHING.to_owned()
         } else {
             format!("git failed: {said}")
         });
@@ -415,21 +420,45 @@ impl Git {
         normalized(bytes)
     }
 
-    /// The blob the last commit keeps `path` as, none where it keeps no file of that name.
-    fn blob_of(&self, path: &str) -> Option<String> {
+    /// The blob the last commit keeps `path` as, none where it keeps no file of that name or there is
+    /// no commit yet; words where git could not read the commit. `ls-tree`, as `rev-parse HEAD:./path`
+    /// says nothing and fails alike for a path that is not there and a tree that cannot be read.
+    fn blob_of(&self, path: &str) -> Result<Option<String>, String> {
         let said = run(
             &[
-                "rev-parse",
-                "--verify",
-                "--quiet",
-                &format!("HEAD:./{path}"),
+                "--literal-pathspecs",
+                "ls-tree",
+                "-z",
+                "HEAD",
+                "--",
+                &format!("./{path}"),
             ],
             &self.root,
             1 << 16,
-        )
-        .ok()?;
-        let id = text_of(&said);
-        (!id.is_empty() && id.chars().all(|ch| ch.is_ascii_hexdigit())).then_some(id)
+        );
+        match said {
+            Ok(said) => {
+                let line = text_of(&said);
+                let mut fields = line.split([' ', '\t']);
+                let (_, kind, id) = (fields.next(), fields.next(), fields.next());
+                Ok(id.filter(|_| kind == Some("blob")).map(str::to_owned))
+            }
+            Err(why) if self.has_commit()? => Err(why),
+            Err(_) => Ok(None),
+        }
+    }
+
+    /// Whether there is a commit yet; words where git could not say.
+    fn has_commit(&self) -> Result<bool, String> {
+        match run(
+            &["rev-parse", "--verify", "--quiet", "HEAD"],
+            &self.root,
+            1 << 16,
+        ) {
+            Ok(_) => Ok(true),
+            Err(why) if why == SAID_NOTHING => Ok(false),
+            Err(why) => Err(why),
+        }
     }
 
     /// What the last commit (HEAD) keeps of `path` (relative to the project's root), staged or not:
@@ -440,15 +469,22 @@ impl Git {
             return Kept::Outside;
         }
         let mut at = path.to_owned();
-        let mut blob = self.blob_of(path);
+        let mut blob = match self.blob_of(path) {
+            Ok(blob) => blob,
+            Err(why) => return Kept::Failed(why),
+        };
         if blob.is_none() {
             let renamed = self
                 .status(RENAME_AGE)
                 .and_then(|info| info.renames.get(path).cloned());
             if let Some(from) = renamed {
-                if let Some(found) = self.blob_of(&from) {
-                    at = from;
-                    blob = Some(found);
+                match self.blob_of(&from) {
+                    Ok(Some(found)) => {
+                        at = from;
+                        blob = Some(found);
+                    }
+                    Ok(None) => {}
+                    Err(why) => return Kept::Failed(why),
                 }
             }
         }
@@ -483,7 +519,7 @@ impl Git {
                 None => Kept::Binary,
             },
             Err(why) if why == SAID_TOO_MUCH => Kept::TooLarge,
-            Err(_) => Kept::Outside,
+            Err(why) => Kept::Failed(why),
         }
     }
 

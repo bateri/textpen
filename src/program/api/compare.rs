@@ -71,6 +71,7 @@ fn run(session: &Session, args: OnePath, gone: &Gone<'_>) -> Result<Compared, Fa
     let commit = git.last_commit();
     let committed = match kept {
         Kept::Outside => return Ok(nothing(version, None, "outside")),
+        Kept::Failed(why) => return Err(Failure::Failed(why)),
         Kept::Binary => return Ok(nothing(version, commit, "binary")),
         Kept::TooLarge => return Ok(nothing(version, commit, "too-large")),
         Kept::Text(committed) => committed,

@@ -53,6 +53,8 @@ local HATCHED = 40
 local WORDS_MOST = 6000
 -- How many places told to a side are kept, to tell its echoes from what the person does.
 local ECHOES = 32
+-- How long, seconds, before asking again what differs where git failed.
+local FAILED_AGAIN = 2
 
 -- The editors of the left-hand sides, by name, as `docs.by_id` has the files'.
 local by_left = {}
@@ -287,12 +289,12 @@ local function deliver(cmp)
 	end
 	cmp.delivering = true
 	local pieces = cmp.pieces
+	local left = cmp.left
 	cmp.pieces = nil
 	cmp.delivered = false
-	cmp.loads = 0
 	local index = 0
 	local function step()
-		if cmp.closed then
+		if cmp.closed or cmp.left ~= left then
 			return nil
 		end
 		index += 1
@@ -307,8 +309,13 @@ local function deliver(cmp)
 			kit.after(0, step)
 		else
 			cmp.delivering = false
-			cmp.delivered = true
-			compare.check_loaded(cmp)
+			if cmp.pieces then
+				-- A newer commit's text came while this one went in: it is the one that stays.
+				deliver(cmp)
+			else
+				cmp.delivered = true
+				compare.check_loaded(cmp)
+			end
 		end
 		return nil
 	end
@@ -382,6 +389,24 @@ local function read_base(tab, cmp, base)
 	from(0)
 end
 
+-- The two columns have gone from the page, and the left editor with them: where they come back it is
+-- an editor made anew, with its text to be read again and a row to be measured.
+local function left_gone(cmp)
+	by_left[cmp.left] = nil
+	kit.syntaxes[cmp.left] = nil
+	made += 1
+	cmp.left = "compare:" .. made
+	by_left[cmp.left] = cmp
+	cmp.syntax, cmp.lang = nil, nil
+	cmp.mounted, cmp.loaded, cmp.delivered, cmp.delivering = false, false, false, false
+	cmp.shown, cmp.pieces = nil, nil
+	cmp.loads = 0
+	cmp.first, cmp.last = 1, 0
+	cmp.row, cmp.on = nil, nil
+	cmp.drawn = false
+	cmp.asked = { left = {}, right = {} }
+end
+
 -- Asks the program how the file differs from the last commit, and draws it.
 function compare.refresh(doc)
 	local tab = docs.tab_of(doc.path)
@@ -394,7 +419,18 @@ function compare.refresh(doc)
 		return
 	end
 	if docs.unsent(doc) then
-		-- What was typed goes first; its answer brings the question again.
+		-- What was typed goes first, and its answer brings the question again; what a save holds up
+		-- brings nothing, so it is asked again shortly. A text out of step is read anew, which brings it.
+		if not doc.broken and not cmp.waiting then
+			cmp.waiting = true
+			kit.after(0.25, function()
+				cmp.waiting = false
+				if not cmp.closed and not doc.closed then
+					compare.refresh(doc)
+				end
+				return nil
+			end)
+		end
 		return
 	end
 	cmp.asking = true
@@ -403,9 +439,17 @@ function compare.refresh(doc)
 		if cmp.closed or doc.closed then
 			return nil
 		end
+		local had_columns = compare.columns(tab)
 		if err or result == nil then
 			cmp.result = { version = doc.version, why = "failed", message = err and err.message or nil }
 			cmp.groups = {}
+			-- Git may answer again, with nothing changed that would bring the question.
+			kit.after(FAILED_AGAIN, function()
+				if not cmp.closed and cmp.result and cmp.result.why == "failed" then
+					compare.refresh(doc)
+				end
+				return nil
+			end)
 		elseif docs.unsent(doc) or result.version ~= doc.version then
 			-- The text moved on while git was asked: what it said is of an older one.
 			cmp.again = true
@@ -413,6 +457,7 @@ function compare.refresh(doc)
 			cmp.result = result
 			cmp.groups = grouped(result.blocks)
 			cmp.dirty = true
+			cmp.taking = false
 			if result.why == nil then
 				local base = result.base
 				local key = base.id or ""
@@ -425,6 +470,9 @@ function compare.refresh(doc)
 					end
 				end
 			end
+		end
+		if had_columns and not compare.columns(tab) then
+			left_gone(cmp)
 		end
 		compare.update(tab)
 		if cmp.again then
@@ -602,6 +650,22 @@ local function stretches(cmp, rid, blocks)
 	return out
 end
 
+-- A stretch with the caret in the lines it would hide is open, on both sides: a fold would put the caret
+-- out of them (the editor does, and unfolds one side alone for a caret that goes in), and what the person
+-- went to out of sight.
+local function open_at_caret(cmp, doc)
+	if cmp.arrive == "first" then
+		return
+	end
+	local line = docs.where(doc).line - 1
+	for _, stretch in cmp.stretches do
+		local first = stretch.new_at + stretch.top
+		if line >= first and line < first + stretch.hidden then
+			cmp.opened[stretch.old_at] = true
+		end
+	end
+end
+
 -- The decorations of the folds of one side: each stretch a region that folds from its last line in view,
 -- with how many lines it hides said at that line's end; the stretches the person opened are not there.
 local function folds(which, id, list, opened)
@@ -629,7 +693,7 @@ local function folds(which, id, list, opened)
 end
 
 -- The markers of the right-hand gutter: a chevron on the first line of each change, which takes it back,
--- and on each folded stretch, which opens it (on both sides).
+-- and the arrows of `Show All Lines` on each folded stretch, which open it (on both sides).
 local function marks(cmp, tab, rid, list)
 	local out = {}
 	local finish = (layout.editor_length(rid) or 0) + 1
@@ -651,14 +715,15 @@ local function marks(cmp, tab, rid, list)
 	local editable = not (tab.info and (tab.info.readonly or tab.info.missing))
 	if editable then
 		for index, group in cmp.groups do
-			mark(group.line, "apply:" .. index, "assets/icons/chevrons-right.svg", "Revert Change")
+			mark(group.line, "apply:" .. index, "assets/icons/chevrons-right.svg",
+				"Revert Change " .. kit.keys_of("ctrl+shift+backspace"))
 		end
 	end
 	if cmp.collapsed then
 		for _, stretch in list do
 			if not cmp.opened[stretch.old_at] then
-				mark(stretch.new_at + stretch.top - 1, "open:" .. stretch.old_at, "assets/icons/chevron-down.svg",
-					"Show " .. stretch.hidden .. " unchanged lines")
+				mark(stretch.new_at + stretch.top - 1, "open:" .. stretch.old_at, "assets/icons/arrows-vertical.svg",
+					"Show " .. stretch.hidden .. " unchanged lines " .. kit.keys_of("cmd+alt+]"))
 			end
 		end
 	end
@@ -684,9 +749,13 @@ function compare.update(tab)
 	if docs.unsent(doc) or result.version ~= doc.version then
 		return
 	end
-	if not cmp.row then
+	-- How tall a row is, measured on a line. Where neither side has one there is nothing to line up: the
+	-- first line that comes is measured.
+	if not cmp.on or not cmp.row then
 		compare.anchor(tab)
-		return
+		if cmp.on then
+			return
+		end
 	end
 	if not cmp.dirty then
 		return
@@ -695,6 +764,7 @@ function compare.update(tab)
 	local blocks = result.blocks or {}
 	cmp.gaps = gaps_of(cmp, doc.id, blocks)
 	cmp.stretches = cmp.collapsed and stretches(cmp, doc.id, blocks) or {}
+	open_at_caret(cmp, doc)
 	for _, side in { { "left", cmp.left }, { "right", doc.id } } do
 		local which, id = side[1], side[2]
 		local version, from, to = whole(id)
@@ -799,6 +869,7 @@ function compare.anchor(tab)
 		end
 	end
 	cmp.on = id
+	cmp.row = nil
 	kit.ask(id, {
 		decorate = ROW, version = layout.editor_version(id), from = 1, to = (layout.editor_length(id) or 0) + 1,
 		decorations = { { from = from, to = to, anchor = ANCHOR } },
@@ -1022,7 +1093,9 @@ function compare.header(tab)
 	local cmp = tab.compare
 	local result = cmp.result
 	local commit = result and result.commit
-	local left = b.div():row():items_center():gap(8):grow(1):min_w(0):px(10):id("compare-commit")
+	-- Each half starts from nothing and takes half of the room, so that the rule between them stands on
+	-- the rule between the two sides whatever each half holds.
+	local left = b.div():row():items_center():gap(8):w(0):grow(1):min_w(0):px(10):id("compare-commit")
 		:child(b.text("Last Commit"):weight(650):no_shrink())
 	if commit then
 		left:child(b.text(string.sub(commit.id, 1, 7)):color("quiet"):no_shrink())
@@ -1033,7 +1106,7 @@ function compare.header(tab)
 		left:child(b.text(text.basename(base.path)):color("quiet"):truncate():min_w(0))
 	end
 	local groups = cmp.groups
-	local right = b.div():row():items_center():gap(6):grow(1):min_w(0):px(10)
+	local right = b.div():row():items_center():gap(6):w(0):grow(1):min_w(0):px(10)
 	right:child(b.spacer())
 	if #groups > 0 then
 		local line = tab.doc and docs.where(tab.doc).line - 1 or 0
@@ -1049,9 +1122,9 @@ function compare.header(tab)
 	end
 	local tab_cmp = cmp
 	if tab_cmp.collapsed and #(tab_cmp.stretches or {}) > 0 then
-		right:child(kit.icon_button("compare-fold", "arrows-vertical", "Show All Lines", { keys = "cmd+alt+]", size = 24 }))
+		right:child(kit.icon_button("compare-fold", "arrows-vertical", "Show All Lines", { keys = "ctrl+alt+]", size = 24 }))
 	elseif not tab_cmp.collapsed then
-		right:child(kit.icon_button("compare-fold", "fold", "Collapse Unchanged", { keys = "cmd+alt+[", size = 24 }))
+		right:child(kit.icon_button("compare-fold", "fold", "Collapse Unchanged", { keys = "ctrl+alt+[", size = 24 }))
 	end
 	right:child(kit.icon_button("compare-previous", "arrow-up", "Previous Change",
 		{ keys = "alt+shift+f5", size = 24, disabled = #groups == 0 }))
@@ -1135,6 +1208,17 @@ function compare.revert(tab, index)
 	if not (group and doc and doc.loaded) or docs.unsent(doc) or tab.info and (tab.info.readonly or tab.info.missing) then
 		return
 	end
+	-- The groups are of the text the program last answered of, and the left side of the commit it read: a
+	-- press before the answer to the last one would write over lines that have moved since.
+	if cmp.taking or not cmp.loaded or not cmp.result or cmp.result.version ~= doc.version then
+		return
+	end
+	cmp.taking = true
+	kit.after(0.3, function()
+		-- Where the editor would not make the change, nothing else brings the answer.
+		compare.refresh(doc)
+		return nil
+	end)
 	local old = {}
 	if group.old_end > group.old_line then
 		local from = start_of(cmp.left, group.old_line)
@@ -1152,6 +1236,35 @@ function compare.revert(tab, index)
 	changes.put_back(doc, group.line, group.new_end - group.line, old, "revert-change", ends)
 	act.focus_editor()
 	kit.gather(true)
+end
+
+-- The change on the line `line` (from 0) of the file: its index, none where the line is in none. A change
+-- that only took lines away stands by the line after them, as its chevron does.
+function compare.change_at(tab, line)
+	local cmp = tab and tab.compare
+	for index, group in cmp and cmp.groups or {} do
+		if line == group.line or (line > group.line and line < group.new_end) then
+			return index
+		end
+	end
+	return nil
+end
+
+-- The key that shows lines: the stretch the caret's line folds, or, elsewhere, every line.
+function compare.expand(path)
+	local tab = docs.tab_of(path or S.active)
+	local cmp, doc = tab and tab.compare, tab and tab.doc
+	if not (cmp and doc) then
+		return
+	end
+	local line = docs.where(doc).line - 1
+	for _, stretch in cmp.stretches or {} do
+		if not cmp.opened[stretch.old_at] and line == stretch.new_at + stretch.top - 1 then
+			compare.open_stretch(tab, stretch.old_at)
+			return
+		end
+	end
+	compare.collapse(path, false)
 end
 
 -- Folds every unchanged stretch (`on`), or shows every line: on both sides together.

@@ -527,6 +527,37 @@ fn a_link_a_file_outside_the_project_and_a_project_outside_a_repository_have_no_
     );
 }
 
+#[test]
+fn a_commit_git_cannot_read_is_a_failure_and_not_a_file_the_commit_never_had() {
+    let (dir, session) = session(&[("a.txt", "a\n")]);
+    let project = dir.path().join("project");
+    git(&project, &["init", "-q"]);
+    git(&project, &["add", "a.txt"]);
+    git(&project, &["commit", "-q", "-m", "first"]);
+    let said = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD^{tree}"])
+        .current_dir(&project)
+        .output()
+        .unwrap();
+    let tree = String::from_utf8(said.stdout).unwrap();
+    let tree = tree.trim();
+    std::fs::remove_file(
+        project
+            .join(".git/objects")
+            .join(&tree[..2])
+            .join(&tree[2..]),
+    )
+    .unwrap();
+    let mut conversation = conversation(&session);
+    send(&mut conversation, 1, "open", json!({ "path": "a.txt" }));
+    answer(&mut conversation).1.unwrap();
+    send(&mut conversation, 2, "compare", json!({ "path": "a.txt" }));
+    assert!(
+        answer(&mut conversation).1.is_err(),
+        "an empty left side would say every line of the file is new"
+    );
+}
+
 /// What `compare` says of `path`.
 fn compared(conversation: &mut Conversation, id: u64, path: &str) -> Value {
     send(conversation, id, "compare", json!({ "path": path }));

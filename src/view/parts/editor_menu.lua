@@ -32,6 +32,9 @@ local function open(doc, at, line)
 	-- Beside the last commit the marks of the index are not shown, and no change is taken back by them.
 	local index = not (tab and tab.compare) and changes.hunk_of_line(doc, line) or nil
 	reverting = index and { doc = doc, index = index, hunk = doc.hunks[index] } or nil
+	-- Beside it, the changes are the comparison's.
+	local comparing = tab and tab.compare and compare.change_at(tab, line) or nil
+	reverting = comparing and { tab = tab, index = comparing } or reverting
 	local after = {
 		{ key = "find_in_project", title = "Find in Project", keys = "cmd+shift+f" },
 	}
@@ -78,7 +81,9 @@ local OWN = {
 	end,
 	revert_change = function()
 		local was = reverting
-		if was and was.doc.hunks and was.doc.hunks[was.index] == was.hunk then
+		if was and was.tab then
+			compare.revert(was.tab, was.index)
+		elseif was and was.doc.hunks and was.doc.hunks[was.index] == was.hunk then
 			changes.revert(was.doc, was.index)
 		end
 	end,

@@ -60,7 +60,11 @@ function area.options(tab, doc, side)
 			matches = b.alpha("accent", 0.16),
 			brackets = b.alpha("accent", 0.55),
 			numbers = "quiet",
-			current_number = "foreground",
+			-- The left side's caret is not where the person works: only the file's line number stands out.
+			current_number = if side == "left" then "quiet" else "foreground",
+			-- A folded stretch says how many lines it hides in words, so the editor's own mark is not drawn.
+			folds = if comparing then false else nil,
+			folded = if comparing then false else nil,
 			whitespace = b.alpha("foreground", 0.24),
 		},
 	})

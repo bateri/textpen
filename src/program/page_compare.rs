@@ -189,7 +189,19 @@ fn stands_side_by_side(size: (f32, f32), least: usize) -> Result<(), Error> {
     // The marks of the index and the column that folds are not in the gutter.
     assert!(page.gutter_cell(&right, "changes", 0).is_none());
     assert!(page.gutter_cell(&right, "folds", 0).is_none());
+    assert_header_stands_on_the_sides(&page, &left);
     Ok(())
+}
+
+/// The rule between the two halves of the header is on the rule between the two sides, whatever each
+/// half holds.
+fn assert_header_stands_on_the_sides(page: &Page, left: &str) {
+    let half = page.bounds("compare-commit").expect("the header");
+    let side = page.bounds(left).expect("the left side");
+    assert!(
+        (half.x + half.w - (side.x + side.w)).abs() < 1.0,
+        "the header's half {half:?}, the left side {side:?}"
+    );
 }
 
 #[test]
@@ -903,6 +915,8 @@ fn what_is_the_same_is_folded_on_both_sides_alike_and_a_stretch_opens_on_both_to
         folded < 45.0 * 21.0,
         "{folded} points: far from the 90 lines there are"
     );
+    // One more button in the header than where nothing folds, and its rule has not moved.
+    assert_header_stands_on_the_sides(&page, &left);
     assert_aligned(&page, &left, &right, &old, &new, 4);
     // The first line of a stretch is in view; the lines it hides stand where it does.
     let y = |name: &str, line: usize| page.gutter_cell(name, "numbers", line).map(|cell| cell.y);
@@ -942,7 +956,7 @@ fn what_is_the_same_is_folded_on_both_sides_alike_and_a_stretch_opens_on_both_to
     let again = extent(&page, &right).0;
     assert!((again - folded).abs() < 0.5, "{again} and {folded}");
     assert_aligned(&page, &left, &right, &old, &new, 4);
-    page.press("cmd+alt+]")?;
+    page.press("ctrl+alt+]")?;
     page.advance(0.5)?;
     page.settle()?;
     let (l, r) = (extent(&page, &left), extent(&page, &right));
@@ -1067,5 +1081,288 @@ fn a_change_at_the_end_of_the_text_is_taken_back_to_the_byte() -> Result<(), Err
         page.press("cmd+z")?;
         wait(&mut page, |page| text(page) == new)?;
     }
+    Ok(())
+}
+
+// --- While the text and git move on ----------------------------------------------------------------------
+
+/// The content of the two sides is as tall as each other, to a point.
+fn assert_same_height(page: &Page, left: &str, right: &str) {
+    let (left_height, right_height) = (extent(page, left).0, extent(page, right).0);
+    assert!(
+        (left_height - right_height).abs() < 1.0,
+        "the left is {left_height} points tall, the right {right_height}"
+    );
+}
+
+/// A second chevron pressed before the program has answered of the first takes back the change it
+/// stands by, or nothing: never the lines where that change was before the first was taken back.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_chevron_pressed_before_the_program_has_answered_takes_back_no_other_lines() -> Result<(), Error>
+{
+    use pencere_view::Button;
+    let (one, both) = {
+        let project = changed_project();
+        let session = project.session(&["src/server.ts"]);
+        let mut page = project.open(&session, WIDE)?;
+        let (_, right) = compared(&mut page)?;
+        let lines = markers(&page, "apply:");
+        page.click_gutter(&right, "apply", lines[0], Button::Left)?;
+        wait(&mut page, |page| markers(page, "apply:").len() == 3)?;
+        let one = text(&page);
+        page.advance(0.5)?;
+        page.settle()?;
+        let lines = markers(&page, "apply:");
+        page.click_gutter(&right, "apply", lines[0], Button::Left)?;
+        wait(&mut page, |page| markers(page, "apply:").len() == 2)?;
+        (one, text(&page))
+    };
+    let project = changed_project();
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let (_, right) = compared(&mut page)?;
+    let lines = markers(&page, "apply:");
+    page.click_gutter(&right, "apply", lines[0], Button::Left)?;
+    wait(&mut page, |page| text(page) != CHANGED)?;
+    // The chevron of the second change, where it is now: the first's has gone with its lines, or is
+    // still there where they were.
+    let now = markers(&page, "apply:");
+    let second = if now.len() == 4 { now[1] } else { now[0] };
+    page.click_gutter(&right, "apply", second, Button::Left)?;
+    page.advance(1.0)?;
+    page.settle()?;
+    let after = text(&page);
+    assert!(
+        after == one || after == both,
+        "neither the first alone nor the two: {after:?}"
+    );
+    Ok(())
+}
+
+/// Git cannot read the commit for a moment: the page says so, and when git answers again the left side
+/// has the commit's text.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_git_that_failed_gives_the_commits_text_back_when_it_answers_again() -> Result<(), Error> {
+    let project = changed_project();
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    compared(&mut page)?;
+    let said = Command::new("git")
+        .args(["rev-parse", "HEAD^{tree}"])
+        .current_dir(project.root())
+        .output()
+        .expect("git");
+    let tree = String::from_utf8(said.stdout).expect("an id");
+    let tree = tree.trim();
+    let object = project
+        .root()
+        .join(".git/objects")
+        .join(&tree[..2])
+        .join(&tree[2..]);
+    let away = object.with_extension("away");
+    std::fs::rename(&object, &away).expect("the tree is a file of its own");
+    page.type_text("x")?;
+    wait(&mut page, |page| shows(page, "could not be compared"))?;
+    std::fs::rename(&away, &object).expect("the tree goes back");
+    wait(&mut page, |page| {
+        left_of(page).is_some_and(|left| {
+            page.editor_text(&left).as_deref() == Some(lantern_server_committed())
+        })
+    })?;
+    wait(&mut page, drawn)?;
+    page.advance(0.5)?;
+    page.settle()?;
+    let (left, right) = (
+        left_of(&page).expect("a left editor"),
+        shown(&page).expect("a right editor"),
+    );
+    assert_aligned(
+        &page,
+        &left,
+        &right,
+        lantern_server_committed(),
+        &text(&page),
+        6,
+    );
+    Ok(())
+}
+
+/// Find goes to a line of a stretch that is folded: the stretch opens on both sides, and the caret
+/// stays on the line it went to.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn find_going_into_a_folded_stretch_opens_it_on_both_sides() -> Result<(), Error> {
+    let project = long_project();
+    let session = project.session(&["src/long.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let (left, right) = compared(&mut page)?;
+    let folded = markers(&page, "open:").len();
+    page.press("cmd+f")?;
+    page.type_text("v50 ")?;
+    page.press("enter")?;
+    wait(&mut page, |page| shows(page, "Ln 49,"))?;
+    wait(&mut page, |page| markers(page, "open:").len() == folded - 1)?;
+    page.advance(0.5)?;
+    page.settle()?;
+    assert!(
+        shows(&page, "Ln 49,"),
+        "the caret moved: {:?}",
+        page_words(&page)
+    );
+    assert_same_height(&page, &left, &right);
+    Ok(())
+}
+
+/// The caret on a line that would be folded: it stays there, beside the commit and after it.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_caret_stays_on_its_line_through_the_comparison() -> Result<(), Error> {
+    let project = long_project();
+    let session = project.session(&["src/long.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+f")?;
+    page.type_text("v50 ")?;
+    page.press("enter")?;
+    wait(&mut page, |page| shows(page, "Ln 49,"))?;
+    page.press("escape")?;
+    page.press("left")?;
+    wait(&mut page, |page| shows(page, "Ln 49,"))?;
+    let (left, right) = compared(&mut page)?;
+    assert!(
+        shows(&page, "Ln 49,"),
+        "beside the commit: {:?}",
+        page_words(&page)
+    );
+    assert_same_height(&page, &left, &right);
+    page.press("escape")?;
+    wait(&mut page, |page| left_of(page).is_none())?;
+    assert!(
+        shows(&page, "Ln 49,"),
+        "after the comparison: {:?}",
+        page_words(&page)
+    );
+    Ok(())
+}
+
+/// The comparison asked for while a save is on its way is laid out when the save is done, with nothing
+/// typed since.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_comparison_asked_for_during_a_save_is_laid_out_after_it() -> Result<(), Error> {
+    let project = changed_project();
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    page.type_text("x")?;
+    page.advance(0.5)?;
+    page.settle()?;
+    page.press("cmd+s")?;
+    page.press("cmd+shift+d")?;
+    wait(&mut page, drawn)?;
+    Ok(())
+}
+
+/// A new empty file, and lines typed in it: the two sides are lined up by a row that was measured, not
+/// by a guess made when there was nothing to measure.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn lines_typed_in_a_new_empty_file_are_lined_up_with_the_empty_commit() -> Result<(), Error> {
+    let project = lantern();
+    committed(&project);
+    project.write("empty.txt", "");
+    let session = project.session(&["empty.txt"]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+shift+d")?;
+    wait(&mut page, |page| left_of(page).is_some())?;
+    page.advance(0.5)?;
+    page.settle()?;
+    // More than the room shows: a content shorter than its room is as tall as the room.
+    page.paste(&"a line\n".repeat(120))?;
+    wait(&mut page, |page| markers(page, "apply:").len() == 1)?;
+    page.advance(0.5)?;
+    page.settle()?;
+    let (left, right) = (
+        left_of(&page).expect("a left editor"),
+        shown(&page).expect("a right editor"),
+    );
+    assert_same_height(&page, &left, &right);
+    Ok(())
+}
+
+/// Esc takes the carets added away first, as it does in any editor; the next closes the comparison.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn esc_takes_added_carets_away_before_it_closes_the_comparison() -> Result<(), Error> {
+    let project = changed_project();
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    compared(&mut page)?;
+    page.press("ctrl+shift+down")?;
+    page.advance(0.1)?;
+    page.settle()?;
+    page.press("escape")?;
+    page.advance(0.1)?;
+    page.settle()?;
+    assert!(left_of(&page).is_some(), "the first Esc closed it");
+    page.press("escape")?;
+    wait(&mut page, |page| left_of(page).is_none())?;
+    Ok(())
+}
+
+/// A change is taken back from the keyboard, and the stretch the caret is on opened; elsewhere the same
+/// key shows every line.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_change_and_a_stretch_are_reached_from_the_keyboard() -> Result<(), Error> {
+    let project = long_project();
+    let session = project.session(&["src/long.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    compared(&mut page)?;
+    let folded = markers(&page, "open:").len();
+    assert!(folded > 1, "{folded} stretches");
+    // The caret is on the first line, the one the first stretch folds from.
+    page.press("cmd+alt+]")?;
+    wait(&mut page, |page| markers(page, "open:").len() == folded - 1)?;
+    page.advance(0.5)?;
+    page.settle()?;
+    // The first change: `const v10 = 1000;` goes back to what the commit has.
+    page.press("alt+f5")?;
+    wait(&mut page, |page| shows(page, "Ln 11,"))?;
+    page.press("ctrl+shift+backspace")?;
+    wait(&mut page, |page| text(page).contains("const v10 = 10;\n"))?;
+    wait(&mut page, |page| markers(page, "apply:").len() == 2)?;
+    page.advance(0.5)?;
+    page.settle()?;
+    // Not on a stretch's line: every line.
+    page.press("alt+f5")?;
+    page.advance(0.2)?;
+    page.settle()?;
+    page.press("cmd+alt+]")?;
+    wait(&mut page, |page| markers(page, "open:").is_empty())?;
+    Ok(())
+}
+
+/// `⇧⌘G` opens the panel of the changed files, except with the find bar open, where it is what it is in
+/// any editor: the previous match.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_key_of_the_panel_leaves_the_find_bar_its_previous_match() -> Result<(), Error> {
+    let project = changed_project();
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+f")?;
+    page.type_text("res")?;
+    page.advance(0.2)?;
+    page.settle()?;
+    page.press("cmd+shift+g")?;
+    page.advance(0.2)?;
+    page.settle()?;
+    assert!(page.bounds("change:src/server.ts").is_none());
+    page.press("escape")?;
+    page.press("cmd+shift+g")?;
+    wait(&mut page, |page| {
+        page.bounds("change:src/server.ts").is_some()
+    })?;
     Ok(())
 }

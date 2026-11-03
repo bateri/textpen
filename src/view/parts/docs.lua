@@ -869,6 +869,8 @@ local function locate(doc, event)
 	if not range then
 		return
 	end
+	-- Several carets are what the editor's Esc takes away, before the page's does anything.
+	doc.one_range = #event.ranges == 1
 	local line = layout.line_of(doc.id, range.head) or 1
 	local start = layout.line_start(doc.id, line) or 1
 	-- A line too long for one read (1 MiB) is counted by its bytes up to the caret.

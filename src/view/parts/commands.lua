@@ -87,14 +87,28 @@ end
 add({ id = "compare-collapse", title = "Collapse Unchanged Lines", category = "View", keys = "cmd+alt+[",
 	when = comparing_in_editor, hidden = true, run = function() compare.collapse(S.active, true) end })
 add({ id = "compare-expand", title = "Show All Lines", category = "View", keys = "cmd+alt+]",
-	when = comparing_in_editor, hidden = true, run = function() compare.collapse(S.active, false) end })
+	when = comparing_in_editor, hidden = true, run = function() compare.expand(S.active) end })
 add({ id = "next-change", title = "Go to Next Change", category = "Go", keys = "alt+f5", when = has_changes,
 	run = function() go(1) end })
 add({ id = "previous-change", title = "Go to Previous Change", category = "Go", keys = "alt+shift+f5", when = has_changes,
 	run = function() go(-1) end })
 add({ id = "revert-change", title = "Revert Change", category = "Edit", keys = "ctrl+shift+backspace",
-	when = function() return not compare.active() and (changes.peeking() or changes.at_caret() ~= nil) end,
+	when = function()
+		if compare.active() then
+			local tab = docs.tab_of(S.active)
+			return tab.doc ~= nil and compare.change_at(tab, docs.where(tab.doc).line - 1) ~= nil
+		end
+		return changes.peeking() or changes.at_caret() ~= nil
+	end,
 	run = function()
+		if compare.active() then
+			local tab = docs.tab_of(S.active)
+			local at = tab.doc and compare.change_at(tab, docs.where(tab.doc).line - 1)
+			if at then
+				compare.revert(tab, at)
+			end
+			return
+		end
 		local doc, index = changes.at_caret()
 		if S.peek then
 			doc = docs.tab_of(S.peek.path) and docs.tab_of(S.peek.path).doc
@@ -105,11 +119,16 @@ add({ id = "revert-change", title = "Revert Change", category = "Edit", keys = "
 		end
 	end })
 -- Esc closes the peek of a change, or, with none open and the keys in the editor, the comparison with
--- the last commit (one command: two with the same key would be one the host cannot tell apart).
+-- the last commit (one command: two with the same key would be one the host cannot tell apart). Several
+-- carets go first: that Esc is the editor's.
+local function esc_closes_comparison()
+	local doc = docs.active()
+	return compare.active() and S.overlay == nil and S.focus == "editor" and not S.find.open
+		and (doc == nil or doc.one_range ~= false)
+end
 add({ id = "close-peek", title = "Close the Peek of a Change or the Comparison", category = "Go", keys = "escape",
 	when = function()
-		return changes.peeking()
-			or (compare.active() and S.overlay == nil and S.focus == "editor" and not S.find.open)
+		return changes.peeking() or esc_closes_comparison()
 	end,
 	hidden = true,
 	run = function()
@@ -251,7 +270,10 @@ end
 
 add({ id = "sidebar", title = "Toggle Sidebar", category = "View", keys = "cmd+b", run = function() act.toggle_sidebar() end })
 add({ id = "show-files", title = "Show Files", category = "View", keys = "cmd+shift+e", run = function() act.focus_sidebar("files") end })
-add({ id = "show-changes", title = "Show Changes", category = "View", keys = "cmd+shift+g", run = function() act.focus_sidebar("changes") end })
+-- With the find bar open the key is what it is in any editor, the previous match.
+add({ id = "show-changes", title = "Show Changes", category = "View", keys = "cmd+shift+g",
+	when = function() return not S.find.open end,
+	run = function() act.focus_sidebar("changes") end })
 add({ id = "focus", title = "Move Focus Between Sidebar and Editor", category = "View", keys = "f6", run = function() act.cycle_focus() end })
 add({ id = "wrap", title = "Toggle Word Wrap", category = "View",
 	run = function() act.change_settings({ wrap = not S.settings.wrap }) end })

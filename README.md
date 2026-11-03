@@ -102,8 +102,9 @@ its own editor, so that you type, undo and save as ever. The lines that differ a
 taken away, green added, blue changed, and in a changed line the words that differ); the side that
 has fewer lines has a hatched gap, so that the same lines stand at the same height, and the two
 scroll together, down and across. The long stretches that did not change are folded on both
-sides, three lines kept either side of a change, and a chevron opens one (`⌘⌥]` shows every
-line, `⌘⌥[` folds them again). A chevron at the first line of a change takes it back: the lines as
+sides, three lines kept either side of a change, and the arrows beside one open it (`⌘⌥]` at the
+caret, `⌃⌥]` shows every line, `⌃⌥[` folds them again); a caret that goes into one, with Find or Go
+to Line, opens it too. A chevron at the first line of a change takes it back (`⌃⇧⌫`): the lines as
 the commit has them replace it, as one edit that `⌘Z` undoes. The header names the commit, counts
 the changes (`1 of 5`) and goes to the next and the previous (`⌥F5`, `⇧⌥F5`); `Esc` closes it. A
 file taken away shows what the commit has against nothing, a renamed one is read under its old
@@ -222,7 +223,7 @@ type `@`, `#`, `[` or `{`.
 | `⌘I`, `⌃J`, `⌃⌥[`          | select the line, join lines, fold all                                     |
 | `⌥F5`, `⇧⌥F5`              | the next and the previous change against git, with its peek (`⌃⇧⌫` reverts it), or in the comparison |
 | `⇧⌘D`, `⇧⌘G`               | the file beside the last commit, the panel of the changed files           |
-| `⌘⌥[`, `⌘⌥]`               | in the comparison, fold what did not change and show every line           |
+| `⌘⌥]`, `⌃⌥]`, `⌃⌥[`        | in the comparison, open the stretch at the caret, show every line, fold   |
 | `⇧F10`                     | the editor's right-click menu, at the caret                               |
 | `⇧⌘V`                      | the preview of a Markdown file                                            |
 | `⌘,`, `⇧⌘/`                | the settings, every key                                                   |
