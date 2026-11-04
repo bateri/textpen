@@ -7,6 +7,8 @@ change what the previous one did.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-04
+
 ### Security
 
 - **Opening a project no longer runs a command its own `.git/config` names.** A project that was only
