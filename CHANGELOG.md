@@ -7,6 +7,8 @@ change what the previous one did.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-04
+
 ### Added
 
 - **A file beside the last commit.** `⇧⌘D`, the button at the end of the tab strip (on a file git
