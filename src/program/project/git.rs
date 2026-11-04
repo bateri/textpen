@@ -130,6 +130,11 @@ fn run(args: &[&str], cwd: &str, max_output: usize) -> Result<Vec<u8>, String> {
         // git status refreshes the index when it can, which takes its lock: a person running git
         // in a shell beside the editor would find it taken.
         .env("GIT_OPTIONAL_LOCKS", "0")
+        // A partial clone fetches what it does not have when it is read, by the command its config
+        // names (`core.sshCommand`). Nothing here goes to the network: what is not there has failed.
+        .env("GIT_NO_LAZY_FETCH", "1")
+        .env("GIT_ALLOW_PROTOCOL", "none")
+        .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -356,24 +361,83 @@ fn index_written(root: &str) -> u64 {
         .map_or(0, super::ms_of)
 }
 
+/// The options that take away the filters a repository's own config names. `git status` runs a filter's
+/// clean command on a file it has to read to know whether it changed, and a project that was only unpacked
+/// here would run it as soon as it is opened. What the person's own config names (a global `git lfs
+/// install`) is theirs, and stays. A name `-c` cannot say whole, with `=` in it, is no name a person
+/// chooses: nothing of that repository is asked.
+fn without_repository_filters(root: &str) -> Result<Vec<String>, String> {
+    let listed = |args: &[&str]| match run(args, root, 1 << 20) {
+        Ok(out) => Ok(out),
+        // `--get-regexp` fails, saying nothing, where nothing matches.
+        Err(why) if why == SAID_NOTHING => Ok(Vec::new()),
+        Err(why) => Err(why),
+    };
+    const NAMES: [&str; 6] = [
+        "config",
+        "--show-scope",
+        "--name-only",
+        "-z",
+        "--get-regexp",
+        "^filter\\.",
+    ];
+    let scoped = listed(&NAMES);
+    // A git from before `--show-scope` (2.26) cannot tell whose a filter is: none of them runs.
+    let every = if scoped.is_err() {
+        listed(&["config", "--name-only", "-z", "--get-regexp", "^filter\\."])?
+    } else {
+        Vec::new()
+    };
+    let scoped = scoped.unwrap_or_default();
+    let mut records = scoped.split(|byte| *byte == 0);
+    let mut names = Vec::new();
+    while let (Some(scope), Some(key)) = (records.next(), records.next()) {
+        if scope != b"global" && scope != b"system" {
+            names.push(key);
+        }
+    }
+    names.extend(every.split(|byte| *byte == 0));
+    let mut drivers = std::collections::BTreeSet::new();
+    for key in names {
+        let key = String::from_utf8_lossy(key);
+        let Some((driver, _)) = key
+            .strip_prefix("filter.")
+            .and_then(|rest| rest.rsplit_once('.'))
+        else {
+            continue;
+        };
+        if driver.contains('=') {
+            return Err(format!("the filter \"{driver}\" cannot be turned off"));
+        }
+        drivers.insert(driver.to_owned());
+    }
+    let mut options = Vec::new();
+    for driver in drivers {
+        for setting in ["clean=", "smudge=", "process=", "required=false"] {
+            options.push("-c".to_owned());
+            options.push(format!("filter.{driver}.{setting}"));
+        }
+    }
+    Ok(options)
+}
+
 fn read(root: &str) -> Result<GitInfo, String> {
     // Where the root is in the repository, as git names it: a path git gives is made the page's by
     // taking this off, whatever links lie between the two (/var and /private/var).
     let prefix = text_of(&run(&["rev-parse", "--show-prefix"], root, 1 << 20)?);
-    let out = run(
-        &[
-            "status",
-            "--porcelain=v2",
-            "--branch",
-            "-z",
-            "--untracked-files=all",
-            // A folder that matches is named and not gone through, so this costs little in a
-            // project with a large `target` or `node_modules`.
-            "--ignored=matching",
-        ],
-        root,
-        32 << 20,
-    )?;
+    let options = without_repository_filters(root)?;
+    let mut args: Vec<&str> = options.iter().map(String::as_str).collect();
+    args.extend([
+        "status",
+        "--porcelain=v2",
+        "--branch",
+        "-z",
+        "--untracked-files=all",
+        // A folder that matches is named and not gone through, so this costs little in a
+        // project with a large `target` or `node_modules`.
+        "--ignored=matching",
+    ]);
+    let out = run(&args, root, 32 << 20)?;
     let mut info = parse_status(&out, &prefix);
     info.index = index_written(root);
     if info.branch == "(detached)" {
@@ -955,6 +1019,129 @@ mod tests {
         std::fs::write(root.join("a.txt"), "a").unwrap();
         let info = read(root.to_str().unwrap()).unwrap();
         assert!(info.changes.contains_key("a.txt"));
+        assert!(!marker.exists(), "the repository's own command was run");
+    }
+
+    /// A script that leaves a mark where it is run, for the commands a repository can name; it fails, so
+    /// that what waits on it does not wait.
+    fn marking_hook(root: &std::path::Path) -> (String, std::path::PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let marker = root.join("ran");
+        let hook = root.join("hook.sh");
+        std::fs::write(
+            &hook,
+            format!("#!/bin/sh\ntouch '{}'\nexit 1\n", marker.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        (hook.to_str().unwrap().to_owned(), marker)
+    }
+
+    /// A file of the same size as it was committed, and of another time, which git has to read to know
+    /// whether it changed, by the filter its attributes name.
+    fn filtered_and_edited(root: &std::path::Path) {
+        std::fs::write(root.join(".gitattributes"), "a.txt filter=evil\n").unwrap();
+        std::fs::write(root.join("a.txt"), "a\n").unwrap();
+        git_in(root, &["add", "a.txt", ".gitattributes"]);
+        git_in(root, &["commit", "-qm", "one"]);
+    }
+
+    fn edit_at_the_same_size(root: &std::path::Path) {
+        std::fs::write(root.join("a.txt"), "b\n").unwrap();
+        let file = std::fs::File::options()
+            .write(true)
+            .open(root.join("a.txt"))
+            .unwrap();
+        file.set_modified(SystemTime::now() + Duration::from_secs(5))
+            .unwrap();
+    }
+
+    /// The clean and the process command of a filter the repository names, in its own config or in a file
+    /// that includes, are not run to read the status; and the file is still seen to have changed.
+    #[test]
+    fn a_filter_a_repository_names_is_not_run() {
+        for setting in ["filter.evil.clean", "filter.evil.process"] {
+            let (_dir, root) = repository();
+            let (hook, marker) = marking_hook(&root);
+            filtered_and_edited(&root);
+            git_in(&root, &["config", setting, &hook]);
+            git_in(&root, &["config", "filter.evil.required", "true"]);
+            edit_at_the_same_size(&root);
+            let info = read(root.to_str().unwrap()).unwrap();
+            assert_eq!(info.changes.get("a.txt"), Some(&GitState::Modified));
+            assert!(!marker.exists(), "{setting} was run");
+        }
+        let (_dir, root) = repository();
+        let (hook, marker) = marking_hook(&root);
+        filtered_and_edited(&root);
+        std::fs::write(
+            root.join("included"),
+            format!("[filter \"evil\"]\n\tclean = {hook}\n"),
+        )
+        .unwrap();
+        git_in(&root, &["config", "include.path", "../included"]);
+        edit_at_the_same_size(&root);
+        read(root.to_str().unwrap()).unwrap();
+        assert!(!marker.exists(), "the included filter was run");
+    }
+
+    /// A name `-c` cannot turn off is no reason to run it: the repository is not asked.
+    #[test]
+    fn a_filter_whose_name_cannot_be_said_stops_the_asking() {
+        let (_dir, root) = repository();
+        let (hook, marker) = marking_hook(&root);
+        std::fs::write(root.join(".gitattributes"), "a.txt filter=a=b\n").unwrap();
+        std::fs::write(root.join("a.txt"), "a\n").unwrap();
+        git_in(&root, &["add", "a.txt", ".gitattributes"]);
+        git_in(&root, &["commit", "-qm", "one"]);
+        git_in(&root, &["config", "filter.a=b.clean", &hook]);
+        edit_at_the_same_size(&root);
+        assert!(read(root.to_str().unwrap()).is_err());
+        assert!(!marker.exists(), "the filter was run");
+    }
+
+    /// A filter of the person's own, which a repository does not name, is theirs: it is not turned off.
+    #[test]
+    fn only_the_filters_a_repository_names_are_turned_off() {
+        let (_dir, root) = repository();
+        git_in(&root, &["config", "filter.mine.clean", "cat"]);
+        let options = without_repository_filters(root.to_str().unwrap()).unwrap();
+        assert!(
+            options.contains(&"filter.mine.clean=".to_owned()),
+            "{options:?}"
+        );
+        assert!(
+            !options.iter().any(|option| option.contains("filter.lfs")),
+            "{options:?}"
+        );
+    }
+
+    /// A partial clone does not fetch what it lacks by the command its config names: the file is said not
+    /// to be read, and nothing runs.
+    #[test]
+    fn a_partial_clone_runs_no_command_to_fetch_what_it_lacks() {
+        let (_dir, root) = repository();
+        let (hook, marker) = marking_hook(&root);
+        std::fs::write(root.join("a.txt"), "a\n").unwrap();
+        git_in(&root, &["add", "a.txt"]);
+        git_in(&root, &["commit", "-qm", "one"]);
+        let blob = Command::new("git")
+            .args(["rev-parse", "HEAD:a.txt"])
+            .current_dir(&root)
+            .output()
+            .unwrap();
+        let blob = String::from_utf8(blob.stdout).unwrap();
+        let blob = blob.trim();
+        std::fs::remove_file(root.join(".git/objects").join(&blob[..2]).join(&blob[2..])).unwrap();
+        git_in(&root, &["config", "extensions.partialClone", "origin"]);
+        git_in(
+            &root,
+            &["config", "remote.origin.url", "ssh://example.invalid/x"],
+        );
+        git_in(&root, &["config", "remote.origin.promisor", "true"]);
+        git_in(&root, &["config", "core.sshCommand", &hook]);
+        let git = Git::new(root.to_str().unwrap());
+        assert!(matches!(git.committed("a.txt"), Kept::Failed(_)));
         assert!(!marker.exists(), "the repository's own command was run");
     }
 

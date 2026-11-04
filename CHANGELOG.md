@@ -7,6 +7,14 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Security
+
+- **Opening a project no longer runs a command its own `.git/config` names.** A project that was only
+  unpacked could run one as soon as textpen read its status (`filter.<name>.clean` and `.process`) or
+  read a file its partial clone lacks (`core.sshCommand`). The filters a repository names are turned off
+  for what textpen asks of git, those of your own config (a global `git lfs install`) stay, and nothing
+  textpen asks goes to the network.
+
 ### Fixed
 
 - **The sidebar keeps every button of its head.** Its edge could be dragged so narrow that Collapse
