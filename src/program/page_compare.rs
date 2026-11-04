@@ -406,6 +406,24 @@ fn a_tall_gap_is_hatched_where_it_shows() -> Result<(), Error> {
     Ok(())
 }
 
+/// A file that only moved says so: it is on the list of changes, so "No changes" would read as a mistake.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_file_that_only_moved_says_so_and_not_that_nothing_changed() -> Result<(), Error> {
+    let project = lantern();
+    committed(&project);
+    git(
+        &project,
+        &["mv", "src/lib/format.ts", "src/lib/formatting.ts"],
+    );
+    let session = project.session(&["src/lib/formatting.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    compared(&mut page)?;
+    wait(&mut page, |page| shows(page, "Renamed, same text"))?;
+    assert!(!shows(&page, "No changes"), "{:?}", page_words(&page));
+    Ok(())
+}
+
 /// The wheel on either side moves both, down and across, and the page comes to rest (the sides telling
 /// one another where they were scrolled is no endless round).
 #[test]

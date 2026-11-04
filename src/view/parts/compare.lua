@@ -1351,7 +1351,9 @@ function compare.header(tab)
 		end
 		right:child(b.text(math.max(at, 1) .. " of " .. #groups):color("quiet"):no_shrink())
 	else
-		right:child(b.text("No changes"):color("quiet"):no_shrink())
+		-- A file git says was renamed is on the list of changes with its text the same: its name is the change.
+		local words = if base and base.path ~= tab.path then "Renamed, same text" else "No changes"
+		right:child(b.text(words):color("quiet"):no_shrink())
 	end
 	local tab_cmp = cmp
 	if tab_cmp.collapsed and #(tab_cmp.stretches or {}) > 0 then
