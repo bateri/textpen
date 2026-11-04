@@ -177,6 +177,10 @@ fn ui_of(read: &Map<String, Value>) -> UiState {
             .unwrap_or_default(),
         recent,
         preview: strings(read.get("preview")),
+        changes_tree: read
+            .get("changesTree")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
     }
 }
 

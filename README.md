@@ -116,7 +116,8 @@ a file of more than 2 MiB or 50 000 lines are not laid out so, and the page says
 says are changed, and below them those it does not keep, each with its icon, its folder and its
 letter. A click, or an arrow, shows the file beside the last commit and leaves the keys in the
 panel, so that you go through a change set file by file; `⏎` goes into the editor. A file the
-panel opened that you did nothing in is closed as the next comes.
+panel opened that you did nothing in is closed as the next comes. The button at its head, or `t`,
+stands the files under their folders, as the tree of the project has them, and back.
 
 **Every colour is the terminal's.** A terminal gives its view a handful of colours — its
 background and foreground, a dimmed one, an accent, and the colours it says success, danger,
@@ -235,7 +236,8 @@ The tree has the keys once you click a row in it, or press `⇧⌘E` or `F6`; th
 the arrows move, `h` `l` fold and unfold, `⏎` opens, `a` makes a file and `A` a folder, `r`
 renames or moves, `d` deletes, `y` copies the path, `.` opens the menu of the row. `Esc`
 goes back to the editor from anywhere. The panel of the changed files has the same keys that go
-through it (`j` `k` and the arrows, `⏎` into the editor, `y` copies the path, `.` opens its menu). The keys the status line shows are buttons too: a
+through it (`j` `k` and the arrows, `⏎` into the editor, `y` copies the path, `.` opens its menu),
+and under its folders `h` `l` fold and unfold. The keys the status line shows are buttons too: a
 click does what the key does.
 
 `⌃C` always reaches textpen and ends it, whatever has the keyboard; what is not saved is

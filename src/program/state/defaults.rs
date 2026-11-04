@@ -131,6 +131,9 @@ pub struct UiState {
     pub recent: Vec<String>,
     /// The files shown as their Markdown preview.
     pub preview: Vec<String>,
+    /// Whether the panel of changes stands its files under their folders.
+    #[serde(rename = "changesTree")]
+    pub changes_tree: bool,
 }
 
 #[cfg(test)]

@@ -378,6 +378,25 @@ fn the_pictures_of_the_comparison() -> Result<(), Error> {
         let png = page.shot_in(&fonts, palette).expect("a picture");
         std::fs::write(out.join(format!("{name}.png")), png).expect("the picture written");
     }
+    // The same panel with its files under their folders.
+    for (name, size, palette) in [
+        ("panel-tree-dark-wide", (1280.0, 800.0), Palette::Dark),
+        ("panel-tree-light-wide", (1280.0, 800.0), Palette::Light),
+        ("panel-tree-dark-80x24", PANE, Palette::Dark),
+    ] {
+        let project = lantern();
+        with_changed_server(&project);
+        std::fs::remove_file(project.root().join("src/lib/orders.ts")).expect("removed");
+        project.write("notes/todo.txt", "ship the lantern\n");
+        let mut page = open(&project, &["README.md"], size, &fonts)?;
+        page.press("cmd+shift+g")?;
+        wait(&mut page, |page| shows(page, "Unversioned Files"))?;
+        page.press("t")?;
+        page.advance(1.0)?;
+        page.settle()?;
+        let png = page.shot_in(&fonts, palette).expect("a picture");
+        std::fs::write(out.join(format!("{name}.png")), png).expect("the picture written");
+    }
     // The tree, with what git ignores quiet all the way down.
     for (name, palette) in [
         ("tree-ignored-dark", Palette::Dark),

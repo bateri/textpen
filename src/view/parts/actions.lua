@@ -532,6 +532,7 @@ local function ui_state()
 		places = places,
 		recent = list(S.recent),
 		preview = list(S.preview),
+		changesTree = S.changes_tree,
 	}
 end
 
@@ -609,6 +610,7 @@ function act.start(boot)
 	S.recent = ui.recent or {}
 	S.places = ui.places or {}
 	S.preview = ui.preview or {}
+	S.changes_tree = ui.changesTree == true
 	S.tabs = {}
 	for _, path in ui.tabs or {} do
 		local tab = { path = path, status = "loading" }

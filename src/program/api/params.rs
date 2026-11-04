@@ -329,6 +329,7 @@ impl Param for UiState {
             places: fields.required("places")?,
             recent: fields.required("recent")?,
             preview: fields.required("preview")?,
+            changes_tree: fields.required("changesTree")?,
         })
     }
 }
@@ -367,7 +368,7 @@ mod tests {
     use serde_json::json;
 
     fn ui() -> Value {
-        json!({ "tabs": [], "active": null, "expanded": [], "places": {}, "recent": [], "preview": [] })
+        json!({ "tabs": [], "active": null, "expanded": [], "places": {}, "recent": [], "preview": [], "changesTree": false })
     }
 
     fn ui_with(key: &str, value: Option<Value>) -> Value {

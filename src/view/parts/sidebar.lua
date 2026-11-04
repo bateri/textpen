@@ -44,6 +44,9 @@ local function head(drawer)
 		row:child(kit.icon_button("sidebar-new-file", "file-plus", "New file", { keys = "cmd+alt+n" }))
 		row:child(kit.icon_button("sidebar-new-folder", "folder-plus", "New folder"))
 		row:child(kit.icon_button("sidebar-collapse", "list-tree", "Collapse folders"))
+	elseif S.sidebar == "changes" and S.git ~= nil then
+		row:child(kit.icon_button("changes-tree", "list-tree", S.changes_tree and "Show as list" or "Show as tree",
+			{ keys = "t", pressed = S.changes_tree }))
 	end
 	row:child(kit.icon_button("sidebar-hide", "layout-sidebar-left-collapse", drawer and "Close" or "Hide sidebar", { keys = "cmd+b" }))
 	return b.div():col():no_shrink():child(row):child(kit.rule_x())

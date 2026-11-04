@@ -501,7 +501,7 @@ function act.hint(name)
 		local keys = { ["search-open"] = "enter", ["search-show"] = " ", ["search-field"] = "escape" }
 		act.search_key(keys[name], {})
 	elseif string.sub(name, 1, 8) == "changes-" then
-		local keys = { ["changes-open"] = "enter", ["changes-next"] = "down", ["changes-previous"] = "up" }
+		local keys = { ["changes-open"] = "enter", ["changes-next"] = "down", ["changes-previous"] = "up", ["changes-tree"] = "t" }
 		act.sidebar_key(keys[name], {})
 	elseif string.sub(name, 1, 5) == "tree-" then
 		local keys = { ["tree-open"] = "enter", ["tree-new"] = "a", ["tree-rename"] = "r", ["tree-delete"] = "d", ["tree-menu"] = "." }

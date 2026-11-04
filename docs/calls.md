@@ -95,6 +95,7 @@ UiState     = {
   places: { [path]: Place },
   recent: string[],      -- opened lately, the latest first: the quick open's order with nothing typed
   preview: string[],     -- the files shown as their Markdown preview
+  changesTree: boolean,  -- the panel of changes stands its files under their folders
 }
 Returned    = { exitCode: number | null, duration: number, error?: string }
               -- the shell the pane was handed to: its status (null: ended by a signal), ms it ran

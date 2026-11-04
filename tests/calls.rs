@@ -187,7 +187,8 @@ fn params_that_are_not_what_a_call_asks_are_refused_with_bad_params_and_nothing_
     let place = json!({ "anchor": 0, "head": 0, "top": 0 });
     let ui = |key: &str, value: Option<Value>| {
         let mut ui = json!({
-            "tabs": [], "active": null, "expanded": [], "places": {}, "recent": [], "preview": []
+            "tabs": [], "active": null, "expanded": [], "places": {}, "recent": [], "preview": [],
+            "changesTree": false
         });
         match value {
             Some(value) => ui[key] = value,
@@ -307,6 +308,7 @@ fn every_key_of_the_pages_places_is_a_key_and_comes_back() {
         "places": { "__proto__": place, "constructor": place, "__index": place, "src/a.ts": place },
         "recent": [],
         "preview": [],
+        "changesTree": true,
     });
     let mut emptied = ui.clone();
     emptied["active"] = Value::Null;

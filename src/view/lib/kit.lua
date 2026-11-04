@@ -35,6 +35,9 @@ local S = {
 	-- The file the changes panel has chosen, and the one it opened last with nothing of the person's in it.
 	changes_selection = nil,
 	changes_preview = nil,
+	-- Whether that panel stands its files under their folders, and the folders it has folded.
+	changes_tree = false,
+	changes_folded = {},
 	drawer = false,
 	-- Where the keys are, as the page has it: "editor" or "sidebar".
 	focus = "editor",

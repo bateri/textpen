@@ -955,6 +955,79 @@ fn the_panel_says_when_there_is_nothing_and_makes_only_the_rows_in_view() -> Res
     Ok(())
 }
 
+/// The panel stands its files under their folders at its button or T and back: a press on a file does
+/// what it does in the list, a folder folds at a press and at the keys of the tree, and the next page
+/// finds the panel as it was left.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_panel_stands_its_files_under_folders_that_fold() -> Result<(), Error> {
+    let project = panel_project();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+shift+g")?;
+    wait(&mut page, |page| shows(page, "Unversioned Files"))?;
+    const SRC: &str = "change-dir:dir:Changes:src";
+    const LIB: &str = "change-dir:dir:Changes:src/lib";
+    const FORMAT: &str = "change:src/lib/format.ts";
+    assert!(page.bounds(SRC).is_none(), "a list to begin with");
+    page.click("changes-tree")?;
+    for row in [
+        SRC,
+        LIB,
+        "change-dir:dir:Changes:src/routes",
+        "change-dir:dir:Unversioned Files:notes",
+        FORMAT,
+        "change:src/server.ts",
+        "change:src/routes/returns.ts",
+        "change:notes/new.txt",
+    ] {
+        assert!(page.bounds(row).is_some(), "{row} is listed");
+    }
+    // Folders before the files beside them, and each row further in than its folder.
+    let top = |page: &Page, row: &str| page.bounds(row).expect(row).y;
+    assert!(top(&page, LIB) < top(&page, "change:src/server.ts"));
+    let (lib, format) = (
+        page.bounds(LIB).expect("lib"),
+        page.bounds(FORMAT).expect("file"),
+    );
+    assert!(lib.y < format.y);
+    assert!(!shows(&page, "src/lib"), "{:?}", page_words(&page));
+    // A file shows as it does in the list.
+    page.click("change:src/server.ts")?;
+    wait(&mut page, |page| {
+        page.bounds("compare-count").is_some() || shows(page, "1 of")
+    })?;
+    // A press folds a folder and unfolds it; the rows of the other folders stay.
+    page.click(LIB)?;
+    assert!(page.bounds(FORMAT).is_none());
+    assert!(page.bounds("change:src/server.ts").is_some());
+    page.click(LIB)?;
+    assert!(page.bounds(FORMAT).is_some());
+    // The keys of the tree: h to the folder, h folds it, l unfolds it, l goes in.
+    page.click("change:src/server.ts")?;
+    page.click(FORMAT)?;
+    page.press("h")?;
+    assert!(page.bounds(FORMAT).is_some(), "only chosen the folder");
+    page.press("h")?;
+    assert!(page.bounds(FORMAT).is_none(), "folded");
+    page.press("l")?;
+    assert!(page.bounds(FORMAT).is_some(), "unfolded");
+    page.press("t")?;
+    assert!(page.bounds(SRC).is_none(), "a list again");
+    assert!(page.bounds(FORMAT).is_some());
+    page.press("t")?;
+    assert!(page.bounds(SRC).is_some());
+    // The next page has it as it was left.
+    page.advance(2.5)?;
+    page.settle()?;
+    drop(page);
+    let mut again = project.open(&session, WIDE)?;
+    again.press("cmd+shift+g")?;
+    wait(&mut again, |page| shows(page, "Unversioned Files"))?;
+    assert!(again.bounds(SRC).is_some());
+    Ok(())
+}
+
 /// In an 80×24 pane the panel is a drawer, and a press on a row closes it on the comparison. The menus
 /// of a row, a tab and a file in the tree have the comparison too.
 #[test]

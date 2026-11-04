@@ -29,9 +29,10 @@ local function hints(has_file)
 		}
 	elseif S.focus == "sidebar" and S.sidebar == "changes" then
 		return {
-			{ "enter", "edit", "hint:changes-open" },
+			{ "enter", act.changes_enter_word(), "hint:changes-open" },
 			{ "down", "next", "hint:changes-next" },
 			{ "up", "previous", "hint:changes-previous" },
+			{ "t", S.changes_tree and "list" or "tree", "hint:changes-tree" },
 			{ "escape", "editor", "hint:editor" },
 		}
 	elseif S.focus == "sidebar" and search.in_results() then

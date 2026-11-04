@@ -7,6 +7,13 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Added
+
+- **The changed files under their folders.** The button at the head of the panel of changes, `t` in
+  it, or Toggle Changes as a Tree stands the files as the tree of the project has them, folders first:
+  a press or `h` `l` folds a folder, which says the strongest of what git says of what is in it, and
+  the panel stays that way for the project.
+
 ### Changed
 
 - **What git ignores is grey in the tree, and so is all that is in a folder it ignores.** Grey used to

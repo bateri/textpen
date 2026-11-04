@@ -274,6 +274,12 @@ add({ id = "show-files", title = "Show Files", category = "View", keys = "cmd+sh
 add({ id = "show-changes", title = "Show Changes", category = "View", keys = "cmd+shift+g",
 	when = function() return not S.find.open end,
 	run = function() act.focus_sidebar("changes") end })
+add({ id = "changes-tree", title = "Toggle Changes as a Tree", category = "View",
+	when = function() return S.git ~= nil end,
+	run = function()
+		act.focus_sidebar("changes")
+		act.toggle_changes_tree()
+	end })
 add({ id = "focus", title = "Move Focus Between Sidebar and Editor", category = "View", keys = "f6", run = function() act.cycle_focus() end })
 add({ id = "wrap", title = "Toggle Word Wrap", category = "View",
 	run = function() act.change_settings({ wrap = not S.settings.wrap }) end })
