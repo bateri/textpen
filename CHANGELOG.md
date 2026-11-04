@@ -14,6 +14,11 @@ change what the previous one did.
   (228 points, from 160).
 - **The search's field keeps its buttons inside it.** In a narrow sidebar `.*` stood past the field's
   edge, and the line under it was cut off; the field gives way and the line goes on to a second.
+- **The field of a dialog and of the sheet of keys has room around its text.** The words stood against
+  the field's edge: the room asked for around them was not there.
+- **The pointer says what is under it over the palette, a dialog and the sheet of keys.** It was the hand
+  everywhere, ground and card alike; it is now the hand on what a press does something on, the I-beam on
+  the field and the arrow on the rest.
 - **Dragging the sidebar's edge no longer selects text.** A press on the right of the edge also went to the
   editor beside it, which selected from there as the edge was dragged.
 

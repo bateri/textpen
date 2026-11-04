@@ -723,6 +723,16 @@ impl Git {
 mod tests {
     use super::*;
 
+    /// What is said once every file was counted: an asking starts on at least one, and leaves the rest to
+    /// the next where it took long, as a machine under load does.
+    fn counted_stats(git: &Git) -> BTreeMap<String, [u64; 2]> {
+        let files = git.status(Duration::ZERO).unwrap().changes.len();
+        for _ in 0..files {
+            git.status(Duration::ZERO).unwrap();
+        }
+        git.status(Duration::ZERO).unwrap().stats
+    }
+
     /// A repository with no commit yet.
     fn repository() -> (tempfile::TempDir, std::path::PathBuf) {
         let dir = tempfile::tempdir().unwrap();
@@ -770,7 +780,7 @@ mod tests {
         write("empty.txt", b"");
         write("new.bin", b"\0");
         let git = Git::new(root.to_str().unwrap());
-        let stats = git.status(Duration::ZERO).unwrap().stats;
+        let stats = counted_stats(&git);
         let stats: Vec<(&str, [u64; 2])> = stats
             .iter()
             .map(|(path, counts)| (path.as_str(), *counts))
@@ -795,7 +805,7 @@ mod tests {
         git_in(&root, &["add", "staged.txt"]);
         std::fs::write(root.join("new.txt"), "a\n").unwrap();
         let git = Git::new(root.to_str().unwrap());
-        let stats = git.status(Duration::ZERO).unwrap().stats;
+        let stats = counted_stats(&git);
         assert_eq!(stats.get("staged.txt"), Some(&[2, 0]));
         assert_eq!(stats.get("new.txt"), Some(&[1, 0]));
     }
@@ -812,7 +822,7 @@ mod tests {
         std::fs::write(root.join("sub/a.txt"), "a\nb\n").unwrap();
         std::fs::write(root.join("b.txt"), "a\nb\n").unwrap();
         let git = Git::new(root.join("sub").to_str().unwrap());
-        let stats = git.status(Duration::ZERO).unwrap().stats;
+        let stats = counted_stats(&git);
         assert_eq!(stats.len(), 1);
         assert_eq!(stats.get("a.txt"), Some(&[1, 0]));
     }
@@ -842,7 +852,7 @@ mod tests {
         git_in(&root, &["config", "filter.evil.clean", command]);
         std::fs::write(root.join("a.txt"), "a\nb\n").unwrap();
         let git = Git::new(root.to_str().unwrap());
-        let stats = git.status(Duration::ZERO).unwrap().stats;
+        let stats = counted_stats(&git);
         assert_eq!(stats.get("a.txt"), Some(&[1, 0]));
         assert!(!marker.exists(), "the repository's own command was run");
     }

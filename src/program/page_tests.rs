@@ -2147,6 +2147,112 @@ fn the_sidebar_at_its_narrowest_keeps_its_buttons_and_the_search_its_toggles() -
     Ok(())
 }
 
+/// What is said under the pointer over a palette, a dialog and the sheet of keys: the hand on what a press
+/// does something on, the I-beam on the field and the arrow on the ground, which is no button.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_pointer_over_what_is_over_the_page_says_what_is_under_it() -> Result<(), Error> {
+    use pencere_view::Cursor;
+    let project = lantern();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    let says = |page: &mut Page, at: Point| -> Result<Option<Cursor>, Error> {
+        page.move_to(at)?;
+        Ok(page.cursor())
+    };
+    let middle =
+        |rect: pencere_view::Rect| Point::new(rect.x + rect.w / 2.0, rect.y + rect.h / 2.0);
+    // The palette.
+    page.press("cmd+k")?;
+    page.settle()?;
+    let card = page.bounds("palette-box").expect("the card");
+    let field = page.bounds("palette-query").expect("the field");
+    let item = page.bounds("palette-item:1").expect("a row");
+    assert_eq!(
+        says(&mut page, Point::new(4.0, WIDE.1 - 40.0))?,
+        Some(Cursor::Arrow),
+        "the ground"
+    );
+    assert_eq!(
+        says(&mut page, Point::new(card.x + 2.0, card.y + card.h - 2.0))?,
+        Some(Cursor::Arrow),
+        "the card"
+    );
+    assert_eq!(
+        says(&mut page, middle(field))?,
+        Some(Cursor::Text),
+        "the field"
+    );
+    assert_eq!(
+        says(&mut page, middle(item))?,
+        Some(Cursor::Pointer),
+        "a row"
+    );
+    page.press("escape")?;
+    // A dialog: the same, and its field stands in from the edge of its box.
+    page.press("cmd+alt+n")?;
+    page.settle()?;
+    let dialog = page.bounds("dialog-box").expect("the dialog");
+    let field = page.bounds("dialog-input").expect("the field");
+    let boxed = page.bounds("dialog-input-box").expect("the field's box");
+    assert!(field.x >= boxed.x + 8.0, "{field:?} in {boxed:?}");
+    assert!(
+        field.x + field.w <= boxed.x + boxed.w - 8.0,
+        "{field:?} in {boxed:?}"
+    );
+    // A press in the room around the words leaves the keyboard in the field.
+    page.click_at(Point::new(boxed.x + 3.0, boxed.y + boxed.h / 2.0))?;
+    assert!(keyboard_is_in(&page, "dialog-input"), "{:?}", page.focus());
+    let action = page.bounds("dialog-action:1").expect("a button");
+    assert_eq!(
+        says(&mut page, Point::new(4.0, WIDE.1 - 40.0))?,
+        Some(Cursor::Arrow),
+        "the ground"
+    );
+    assert_eq!(
+        says(&mut page, Point::new(dialog.x + 4.0, dialog.y + 4.0))?,
+        Some(Cursor::Arrow),
+        "the box"
+    );
+    assert_eq!(
+        says(&mut page, middle(field))?,
+        Some(Cursor::Text),
+        "the field"
+    );
+    assert_eq!(
+        says(&mut page, middle(action))?,
+        Some(Cursor::Pointer),
+        "a button"
+    );
+    page.press("escape")?;
+    // The sheet of keys.
+    page.press("cmd+shift+/")?;
+    page.settle()?;
+    let sheet = page.bounds("sheet-box").expect("the sheet");
+    let field = page.bounds("help-filter").expect("the field");
+    let boxed = page.bounds("help-filter-box").expect("the field's box");
+    assert!(field.x >= boxed.x + 8.0, "{field:?} in {boxed:?}");
+    assert_eq!(
+        says(&mut page, Point::new(4.0, WIDE.1 - 40.0))?,
+        Some(Cursor::Arrow),
+        "the ground"
+    );
+    assert_eq!(
+        says(
+            &mut page,
+            Point::new(sheet.x + 40.0, sheet.y + sheet.h - 4.0)
+        )?,
+        Some(Cursor::Arrow),
+        "the sheet"
+    );
+    assert_eq!(
+        says(&mut page, middle(field))?,
+        Some(Cursor::Text),
+        "the field"
+    );
+    Ok(())
+}
+
 /// The palette's field is never said to be covered as the palette slides in, however its boxes fall on
 /// the pixels: a terminal hides a field the page's boxes cover, and the keyboard in it is then gone
 /// with no key reaching anything. Sizes and zooms where the field touched the line under it.

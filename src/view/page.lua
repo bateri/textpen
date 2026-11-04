@@ -196,17 +196,46 @@ local function released(event)
 	return true
 end
 
+-- What stands behind the buttons of what is over the page: a press there closes it or does nothing,
+-- or goes back to its field, and is no button.
+local GROUNDS = {
+	["palette-box"] = true,
+	["palette-scrim"] = true,
+	["dialog-box"] = true,
+	["dialog-scrim"] = true,
+	["dialog-input-box"] = true,
+	["sheet-box"] = true,
+	["sheet-scrim"] = true,
+	["help-filter-box"] = true,
+	["drawer-scrim"] = true,
+}
+
+local function inside(rect, event)
+	return rect ~= nil and event.x >= rect.x and event.x < rect.x + rect.w and event.y >= rect.y and event.y < rect.y + rect.h
+end
+
+-- Whether the pointer is over a field: over what is over the page only its own, for the search's and
+-- the find bar's are under it.
+local function over_field(event)
+	if S.overlay then
+		return S.field ~= nil and inside(layout.bounds(S.field), event)
+	end
+	return inside(layout.bounds("search-query"), event)
+		or inside(layout.bounds("find-query"), event)
+		or inside(layout.bounds("find-replace"), event)
+end
+
 -- The pointer's shape where it is. Every reply to the pointer says it: one that says none is the
 -- arrow, so a press or a release would otherwise turn the hand over a row into the arrow.
 local function cursor_at(event)
 	local over = ui.hover
-	if event.place then
+	if event.place or over_field(event) then
 		return "text"
 	elseif over == "resizer" then
 		return "resize_horizontal"
 	elseif ui:dragging() then
 		return "grabbing"
-	elseif over then
+	elseif over and not GROUNDS[over] then
 		return "pointer"
 	end
 	return "arrow"

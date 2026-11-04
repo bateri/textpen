@@ -112,14 +112,23 @@ function dialogs.view(size)
 	if spec.input then
 		box:child(
 			b.div()
-				:text_field(FIELD)
-				:label(spec.title)
+				:press("dialog-input-box")
+				:row()
+				:items_center()
 				:h(30)
 				:px(8)
 				:rounded(6)
 				:bg("background")
 				:border(1, b.alpha("accent", 0.7))
-				:child(b.text(spec.input.placeholder or ""))
+				:child(
+					b.div()
+						:text_field(FIELD)
+						:label(spec.title)
+						:grow(1)
+						:min_w(0)
+						:h_full()
+						:child(b.text(spec.input.placeholder or ""))
+				)
 		)
 		if spec.input.hint then
 			box:child(b.text(spec.input.hint):color("quiet"):text_size(11.5):wrap())
@@ -151,6 +160,11 @@ end
 function dialogs.press(id)
 	if id == "dialog-scrim" then
 		answer(nil)
+		return true
+	elseif id == "dialog-input-box" then
+		-- The room around the words is the field's: the keyboard stays in it.
+		S.field = FIELD
+		kit.gather({ redraw = true, keyboard = { field = FIELD } })
 		return true
 	end
 	local index = id and tonumber(string.match(id, "^dialog%-action:(%d+)$"))
