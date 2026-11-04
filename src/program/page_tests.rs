@@ -2104,6 +2104,46 @@ fn a_field_opens_with_its_text_selected_and_the_keyboard_in_it() -> Result<(), E
     Ok(())
 }
 
+/// The palette's field is never said to be covered as the palette slides in, however its boxes fall on
+/// the pixels: a terminal hides a field the page's boxes cover, and the keyboard in it is then gone
+/// with no key reaching anything. Sizes and zooms where the field touched the line under it.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_palette_keeps_its_field_uncovered_on_its_way_in() -> Result<(), Error> {
+    let project = lantern();
+    for ((width, height), zoom) in [
+        ((884.0, 520.0), 1.04),
+        ((1000.0, 700.0), 1.12),
+        ((1280.0, 800.0), 1.2),
+        ((1437.0, 871.0), 1.28),
+    ] {
+        let session = project.session(&["src/server.ts"]);
+        let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
+        let mut page = Headless::app(env!("CARGO_MANIFEST_DIR"))
+            .size(width, height)
+            .scale(2.0)
+            .limits(limits(None))
+            .peer(program)
+            .open()?;
+        page.wait_for(WITHIN, |page| shown(page).is_some())?;
+        page.zoom(zoom)?;
+        page.settle()?;
+        page.press("cmd+k")?;
+        assert!(keyboard_is_in(&page, "palette-query"), "{:?}", page.focus());
+        for step in 0..30 {
+            page.advance(1.0 / 240.0)?;
+            let laid = page.laid().expect("the page laid out");
+            let field = laid
+                .fields()
+                .into_iter()
+                .find(|field| field.id == Id::named("palette-query"))
+                .expect("the field");
+            assert!(!field.covered, "{width}x{height} at {zoom}, step {step}");
+        }
+    }
+    Ok(())
+}
+
 /// The colour the page writes the name `word` in.
 fn ink_of(page: &Page, word: &str) -> String {
     use pencere_view::wire::Kind;

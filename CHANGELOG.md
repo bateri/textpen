@@ -20,6 +20,12 @@ change what the previous one did.
   go by the name alone (`target`, `node_modules`, a dotfile) and stop at that row: a file `.gitignore`
   matches by another name stayed plain, and so did all that was inside the grey folder.
 
+### Fixed
+
+- **`⌘K` opens the palette with the keyboard in its field.** On some window sizes and text sizes the
+  field lost the keyboard as the palette slid in: nothing typed reached it and no key did anything until
+  a click.
+
 ## [0.3.0] - 2026-11-04
 
 ### Added

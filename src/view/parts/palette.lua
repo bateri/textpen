@@ -542,6 +542,9 @@ function palette.view(size)
 	-- Whole rows only: the list is as high as the rows that go into what the card has left.
 	local left = high - 44 - 1 - (roomy and 30 or 0) - 10 - 2
 	shown_rows = math.clamp(math.floor(left / ROW), 3, MOST_ROWS)
+	-- The field stops short of the line under it: as the card slides in the two fall on the pixels apart
+	-- and, touching, the line would be over the field for a frame, which the terminal hides and the
+	-- keyboard in it is gone.
 	local field = b.div()
 		:row()
 		:items_center()
@@ -553,7 +556,7 @@ function palette.view(size)
 		:child(b.div():row():items_center():gap(5):h(22):px(7):rounded(5):bg(b.alpha("accent", 0.14)):no_shrink()
 			:child(kit.icon(mode.icon, 14, "accent"))
 			:child(b.text(mode.label):text_size(11):weight(650):color("accent")))
-		:child(b.div():text_field(FIELD):label(mode.label):grow(1):h_full():text_size(13.5)
+		:child(b.div():text_field(FIELD):label(mode.label):grow(1):h(40):text_size(13.5)
 			:child(b.text(mode.hint):color("quiet")))
 	local list = b.div():id(LIST):col():max_h(shown_rows * ROW):scroll()
 	if #overlay.items == 0 then
