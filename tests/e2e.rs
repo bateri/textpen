@@ -94,7 +94,7 @@ fn the_program_tells_the_page_what_changed_and_the_page_hears_it() {
     let pushes = common::pushes(&log);
     assert_eq!(
         pushes.first(),
-        Some(&json!({ "buffers": [], "dirs": [], "git": null }))
+        Some(&json!({ "buffers": [], "dirs": [], "roots": [] }))
     );
 }
 

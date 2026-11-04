@@ -78,7 +78,8 @@ function tree.rows()
 		open[dir] = true
 	end
 	local dirs, changes, ignored = dir_states(), S.git and S.git.changes or {}, ignored_paths()
-	local function walk(dir, depth, quiet_above)
+	local by_root = S.git and S.git.by_root or {}
+	local function walk(dir, depth, quiet_above, in_repo)
 		local listing = S.listings[dir]
 		if not listing then
 			return
@@ -91,16 +92,19 @@ function tree.rows()
 			if not HIDDEN[entry.name] and not (coming and coming.state ~= "asking") then
 				local is_open = entry.kind == "dir" and open[entry.path] == true
 				local state = entry.kind == "dir" and dirs[entry.path] or changes[entry.path]
-				local quiet_within = quiet_above or ignored[entry.path] == true or (S.git == nil and QUIET[entry.name] == true)
+				local repo = by_root[entry.path]
+				local repo_within = in_repo or repo ~= nil
+				local quiet_within = quiet_above or ignored[entry.path] == true or (not repo_within and QUIET[entry.name] == true)
 				out[#out + 1] = {
 					entry = entry,
 					depth = depth,
 					open = is_open,
 					loading = is_open and not S.listings[entry.path],
 					quiet = quiet_within or QUIET[entry.name] == true or (string.sub(entry.name, 1, 1) == "." and not state),
+					repo = repo,
 				}
 				if is_open then
-					walk(entry.path, depth + 1, quiet_within)
+					walk(entry.path, depth + 1, quiet_within, repo_within)
 				end
 			end
 		end
@@ -113,7 +117,7 @@ function tree.rows()
 			end
 		end
 	end
-	walk("", 0, false)
+	walk("", 0, false, by_root[""] ~= nil)
 	return out
 end
 
@@ -296,6 +300,9 @@ local function row_view(row, index, ctx)
 	-- The name is whole: a tree narrower than its names scrolls across.
 	local name = entry.name .. (entry.link and " ↗" or "")
 	line:child(b.text(name):color(color):weight(path == S.active and 650 or 400):no_shrink())
+	if row.repo and row.repo.branch then
+		line:child(b.text(row.repo.branch):color("quiet"):text_size(11.5):no_shrink())
+	end
 	line:child(b.spacer())
 	if row.loading then
 		line:child(kit.spinner(12, "quiet"))

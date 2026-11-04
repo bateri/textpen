@@ -1065,6 +1065,156 @@ fn the_panel_says_how_many_lines_each_change_adds_and_takes_away() -> Result<(),
     Ok(())
 }
 
+/// `root/dir` a repository of its own, on the branch `branch`, with what is in it committed.
+fn repository_at(project: &Project, dir: &str, branch: &str) {
+    let folder = project.root().join(dir);
+    let in_it = |args: &[&str]| {
+        let status = Command::new("git")
+            .args(args)
+            .current_dir(&folder)
+            .env("GIT_AUTHOR_NAME", "textpen")
+            .env("GIT_AUTHOR_EMAIL", "textpen@example.com")
+            .env("GIT_COMMITTER_NAME", "textpen")
+            .env("GIT_COMMITTER_EMAIL", "textpen@example.com")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .status()
+            .expect("git");
+        assert!(status.success(), "git {args:?}");
+    };
+    in_it(&["init", "-q", "-b", branch]);
+    in_it(&["add", "."]);
+    in_it(&["commit", "-qm", "one"]);
+}
+
+/// A project in no repository, with three in its folders: one with changes and a file git does not keep,
+/// one with a change, one with nothing to say, and a folder that is none.
+fn project_of_repositories() -> Project {
+    let project = lantern();
+    project.write("alpha/one.txt", "a\nb\n");
+    project.write("alpha/deep/two.txt", "x\n");
+    project.write("alpha/.gitignore", "out/\n");
+    project.write("beta/three.txt", "a\n");
+    project.write("calm/four.txt", "a\n");
+    project.write("loose/five.txt", "a\n");
+    repository_at(&project, "alpha", "main");
+    repository_at(&project, "beta", "other");
+    repository_at(&project, "calm", "main");
+    project.write("alpha/one.txt", "a\nb\nc\n");
+    project.write("alpha/new.txt", "n\n");
+    project.write("alpha/out/made.txt", "m\n");
+    project.write("beta/three.txt", "a\nb\n");
+    project
+}
+
+/// The panel has each repository with something to say, its branch and its lines, and its files under it;
+/// a press shows a file beside the last commit of its own repository; a repository folds as a folder does,
+/// and the keys go through; those with nothing to say are one line. The status line has the branch of the
+/// file shown, the tree has each repository's and what it ignores, and the quick open has what git lists.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_project_of_repositories_has_each_in_the_panel_and_the_tree() -> Result<(), Error> {
+    const ALPHA: &str = "change-dir:repo:alpha";
+    const BETA: &str = "change-dir:repo:beta";
+    const ONE: &str = "change:alpha/one.txt";
+    const THREE: &str = "change:beta/three.txt";
+    let project = project_of_repositories();
+    let session = project.session(&[]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+shift+g")?;
+    wait(&mut page, |page| page.bounds(ALPHA).is_some())?;
+    for row in [ALPHA, BETA, ONE, "change:alpha/new.txt", THREE] {
+        assert!(page.bounds(row).is_some(), "{row} is listed");
+    }
+    assert!(page.bounds("change-dir:repo:calm").is_none());
+    let words = page_words(&page);
+    assert!(
+        words.iter().any(|said| said == "1 repo with no changes"),
+        "{words:?}"
+    );
+    assert!(words.iter().any(|said| said == "3 repos"), "{words:?}");
+    assert!(words.iter().any(|said| said == "other"), "{words:?}");
+    assert!(!shows(&page, "Unversioned Files"), "{words:?}");
+    // What git keeps comes before what it does not, each below its repository, further in.
+    let top = |page: &Page, row: &str| page.bounds(row).expect(row).y;
+    assert!(top(&page, ALPHA) < top(&page, ONE));
+    assert!(top(&page, ONE) < top(&page, "change:alpha/new.txt"));
+    assert!(top(&page, "change:alpha/new.txt") < top(&page, BETA));
+    // A file is shown beside its own repository's last commit; the status line has its branch.
+    page.click(ONE)?;
+    wait(&mut page, |page| shows(page, "Last Commit"))?;
+    assert_eq!(status_branch(&page), "main");
+    page.click(THREE)?;
+    wait(&mut page, |page| status_branch(page) == "other")?;
+    // A repository folds at a press and by the keys, and the keys go through its rows.
+    page.click(ALPHA)?;
+    assert!(page.bounds(ONE).is_none());
+    assert!(page.bounds(BETA).is_some());
+    page.click(ALPHA)?;
+    assert!(page.bounds(ONE).is_some());
+    page.click(ONE)?;
+    wait(&mut page, |page| status_branch(page) == "main")?;
+    page.press("h")?;
+    assert!(page.bounds(ONE).is_some(), "only chosen the repository");
+    page.press("h")?;
+    assert!(page.bounds(ONE).is_none(), "folded");
+    page.press("l")?;
+    page.press("j")?;
+    wait(&mut page, |page| {
+        page.bounds(ONE).is_some() && shows(page, "Last Commit")
+    })?;
+    // Under their folders, inside the repository.
+    page.press("t")?;
+    assert!(page.bounds("change-dir:repo:alpha").is_some());
+    page.press("t")?;
+    // The tree: each repository's branch beside its folder, and what it ignores quiet.
+    page.press("cmd+shift+e")?;
+    wait(&mut page, |page| page.bounds("row:alpha").is_some())?;
+    let words = page_words(&page);
+    let beside = words.iter().position(|said| said == "beta").expect("beta");
+    assert_eq!(words[beside + 1], "other", "{words:?}");
+    // The quick open: what the repository's git lists, and what is in none.
+    page.press("cmd+k")?;
+    page.fill("palette-query", "made")?;
+    assert!(!shows(&page, "made.txt"), "{:?}", page_words(&page));
+    page.fill("palette-query", "five")?;
+    wait(&mut page, |page| shows(page, "five.txt"))?;
+    page.press("escape")?;
+    Ok(())
+}
+
+/// The words of the status line's branch: the word before what the status line has of the file.
+fn status_branch(page: &Page) -> String {
+    let words = page_words(page);
+    let at = words
+        .iter()
+        .rposition(|said| said.starts_with("Ln "))
+        .unwrap_or(words.len());
+    words[..at]
+        .iter()
+        .rev()
+        .find(|said| matches!(said.as_str(), "main" | "other"))
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// A project of repositories with nothing to say says so, and how many there are.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_project_of_repositories_with_nothing_to_say_says_so() -> Result<(), Error> {
+    let project = lantern();
+    project.write("alpha/one.txt", "a\n");
+    repository_at(&project, "alpha", "main");
+    project.write("beta/one.txt", "a\n");
+    repository_at(&project, "beta", "main");
+    let session = project.session(&[]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+shift+g")?;
+    wait(&mut page, |page| shows(page, "No changes"))?;
+    assert!(shows(&page, "2 repos"), "{:?}", page_words(&page));
+    Ok(())
+}
+
 /// In an 80×24 pane the panel is a drawer, and a press on a row closes it on the comparison. The menus
 /// of a row, a tab and a file in the tree have the comparison too.
 #[test]

@@ -22,6 +22,10 @@ local S = {
 	boot = nil,
 	boot_error = nil,
 	settings = nil,
+	-- The folders of the project's repositories, what each said (by its folder), and the two as one
+	-- (`lib/repos.lua`): none where the project has no repository.
+	roots = {},
+	repos = {},
 	git = nil,
 	-- The tree: each listed directory's listing ({ dir =, entries =, truncated = }) and why one
 	-- could not be read, the directories open, the row the keys act on.

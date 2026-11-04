@@ -62,6 +62,9 @@ GitInfo     = { branch: string, ahead: number, behind: number, changes: { [path]
               -- disk, by the blocks of `compare` (all its lines added for one git does not keep). None for a
               -- file that is not text, more than 2 MiB or 2 000 blocks, or where no line differs. 64 KiB of
               -- paths at most, and what takes long is told at a later `changes`.
+Repo        = { root: string, git: GitInfo | null }
+              -- what git says of the repository in the folder `root`, every path from the project's root;
+              -- null where it cannot say
 Eol         = "lf" | "crlf"
 BufferInfo  = {
   path: string,          -- relative to the root, or absolute outside it; also the buffer's id
@@ -108,7 +111,9 @@ Boot        = {
   root: string, rootName: string, home: string, user: string, hostname: string,
   remote: boolean,       -- ssh in the program's environment
   version: string,
-  git: GitInfo | null,
+  roots: string[],       -- the folders of the project's repositories: `""` is the one the project is in,
+                         -- and it is alone then; else those in its folders, two levels down at most
+  repos: Repo[],         -- what they say, as many as go in the message; the rest come by the topic
   settings: Settings, ui: UiState, buffers: BufferInfo[],
   handoff: boolean,      -- the pane can be handed to a shell
   closeQuits: boolean,   -- the command line named the files (as $EDITOR is run): closing the last
@@ -118,7 +123,8 @@ Boot        = {
   problems: string[],    -- paths on the command line that could not be opened
 }
 Changes     = {
-  git?: GitInfo | null,  -- left out when it is what it was last told
+  roots?: string[],      -- left out when they are what they were last told
+  repo?: Repo,           -- one that says something else now; one a message, as each may fill it
   buffers: BufferInfo[], -- open files that changed on disk or went
   dirs: string[],        -- listed directories that changed
   handoffFailed?: string,
@@ -212,6 +218,8 @@ then asks.
 ## Topic
 
 `changes`, no params: one `Changes` at once, then one only when something differs from what it
-told. A buffer whose file changed and that has no changes of its own is read again by the program
+told. The repository of the file in front is asked every two seconds or so; those of the project's
+folders that are not are asked in turn, each every ten seconds or so, and the folders are looked in again
+as often. A buffer whose file changed and that has no changes of its own is read again by the program
 (its `version` goes up: the page reads its text with `buffer` `text`); one with changes is marked
 `conflict` for the page to ask.

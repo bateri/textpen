@@ -119,6 +119,10 @@ panel, so that you go through a change set file by file; `⏎` goes into the edi
 panel opened that you did nothing in is closed as the next comes. The button at its head, or `t`,
 stands the files under their folders, as the tree of the project has them, and back.
 
+**A folder of repositories.** Opened on a folder that is in no repository, textpen finds those in its
+folders, two levels down: the panel has each with its branch and its lines, its files under it, the tree has
+its branch beside it and greys what it ignores, and the status line has the branch of the file you are in.
+
 **Every colour is the terminal's.** A terminal gives its view a handful of colours — its
 background and foreground, a dimmed one, an accent, and the colours it says success, danger,
 warning and information with — and textpen draws code with those, as the theme's author

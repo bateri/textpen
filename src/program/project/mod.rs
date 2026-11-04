@@ -6,6 +6,7 @@ pub mod diff;
 pub mod git;
 pub mod image;
 pub mod paths;
+pub mod repos;
 pub mod search;
 pub mod tree;
 pub mod watch;

@@ -16,13 +16,13 @@ use std::time::{Duration, Instant, SystemTime};
 
 use serde::Serialize;
 
-use super::git::Git;
 use super::paths;
+use super::repos::{Repo, Repos};
 use super::said;
 use super::watch::Listed;
 
 /// Directories nobody means to browse or search: version control and installed packages.
-const SKIPPED: [&str; 14] = [
+pub(super) const SKIPPED: [&str; 14] = [
     ".git",
     ".hg",
     ".svn",
@@ -179,7 +179,7 @@ pub struct Renamed {
 pub struct Tree {
     /// Absolute, worked out, as the system names the directory the program is in.
     pub root: String,
-    pub git: Git,
+    pub repos: Repos,
     /// Directories that were listed, and whether they changed since.
     listed: Mutex<Listed>,
     /// Held while the index is made, so that the callers who ask at once wait for one.
@@ -195,7 +195,7 @@ impl Tree {
     pub fn new(root: &str) -> Self {
         let root = paths::normalize(root);
         Self {
-            git: Git::new(&root),
+            repos: Repos::new(&root),
             root,
             listed: Mutex::new(Listed::default()),
             index: Mutex::new(None),
@@ -292,7 +292,7 @@ impl Tree {
     /// Forgets what was learnt of the files: after the page created, renamed, removed or saved one.
     pub fn forget(&self) {
         self.forgotten.fetch_add(1, AtomicOrdering::SeqCst);
-        self.git.forget();
+        self.repos.forget();
     }
 
     /// Every file of the project, for the quick open: git's list in a repository, a walk elsewhere.
@@ -304,13 +304,18 @@ impl Tree {
                 return known.index.clone();
             }
         }
-        let (files, truncated) = match self.git.files() {
+        let repos = self.repos.list();
+        let whole = repos
+            .first()
+            .filter(|repo| repo.root.is_empty())
+            .and_then(|repo| repo.git.files());
+        let (files, truncated) = match whole {
             Some(mut files) => {
                 let truncated = files.len() > INDEX_LIMIT;
                 files.truncate(INDEX_LIMIT);
                 (files, truncated)
             }
-            None => self.walk(),
+            None => self.walk(&repos),
         };
         let index = Index {
             files: Arc::new(files),
@@ -344,14 +349,25 @@ impl Tree {
             .cloned()
     }
 
-    /// The files under the root, a level at a time; a link is a file and is not followed. Whether
+    /// The files under the root, a level at a time; a link is a file and is not followed. A folder that
+    /// is a repository has the files its git lists, so that what it ignores is not among them. Whether
     /// there were more than the index holds.
-    fn walk(&self) -> (Vec<String>, bool) {
+    fn walk(&self, repos: &[Arc<Repo>]) -> (Vec<String>, bool) {
         let mut files = Vec::new();
         let mut queue = VecDeque::from([self.root.clone()]);
         while let Some(dir) = queue.pop_front() {
             if files.len() >= INDEX_LIMIT {
                 break;
+            }
+            let named = self.name(&dir);
+            if let Some(listed) = repos
+                .iter()
+                .find(|repo| !repo.root.is_empty() && repo.root == named)
+                .and_then(|repo| repo.git.files().map(|files| (repo, files)))
+            {
+                let (repo, listed) = listed;
+                files.extend(listed.iter().map(|file| repo.outer(file)));
+                continue;
             }
             let Ok(items) = fs::read_dir(&dir) else {
                 continue;

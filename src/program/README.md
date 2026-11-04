@@ -27,6 +27,7 @@ subscription, a push, a `code`. What the page is told is made in `api/` from wha
 | `api/changes.rs`           | the topic `changes`: the disk and git, as they change                                                       |
 | `api/tests.rs`             | the calls in a conversation in the same process: calls sent together, the pane lent and given back          |
 | `project/tree.rs`          | the project on disk: listing, the index of every file, create, rename, remove, the order of names           |
+| `project/repos.rs`         | the repositories of the project: the one it is in, or those in its folders, and which a file is of          |
 | `project/git.rs`           | git with a time limit: the repository, its files, its branch and changes, what the last commit keeps of a file |
 | `project/compare.rs`       | the blocks that make the commit's text the file's, and the words that differ in a changed line, within limits |
 | `project/watch.rs`         | which of the listed directories changed                                                                     |

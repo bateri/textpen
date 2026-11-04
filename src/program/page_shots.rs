@@ -419,6 +419,97 @@ fn the_pictures_of_the_comparison() -> Result<(), Error> {
         let png = page.shot_in(&fonts, Palette::Dark).expect("a picture");
         std::fs::write(out.join(format!("{name}.png")), png).expect("the picture written");
     }
+    // A project of repositories, in its folders: the panel as a list and under folders, and the tree.
+    for (name, keys, size, palette) in [
+        (
+            "repos-list-dark",
+            vec!["cmd+shift+g"],
+            (1280.0, 800.0),
+            Palette::Dark,
+        ),
+        (
+            "repos-tree-dark",
+            vec!["cmd+shift+g", "t"],
+            (1280.0, 800.0),
+            Palette::Dark,
+        ),
+        (
+            "repos-list-light",
+            vec!["cmd+shift+g"],
+            (1280.0, 800.0),
+            Palette::Light,
+        ),
+        ("repos-list-80x24", vec!["cmd+shift+g"], PANE, Palette::Dark),
+        (
+            "repos-files-dark",
+            vec!["cmd+shift+e"],
+            (1280.0, 800.0),
+            Palette::Dark,
+        ),
+    ] {
+        let project = lantern();
+        project.write("api/src/routes/orders.ts", "export const orders = [];\n");
+        project.write("api/src/server.ts", "a\nb\nc\n");
+        project.write("api/README.md", "# api\n");
+        project.write("site/index.html", "<!doctype html>\n");
+        project.write("site/.gitignore", "dist/\n");
+        project.write("worker/main.ts", "a\n");
+        project.write("libs/kit/kit.ts", "a\n");
+        for (dir, branch) in [
+            ("api", "main"),
+            ("site", "redesign"),
+            ("worker", "main"),
+            ("libs/kit", "main"),
+        ] {
+            let folder = project.root().join(dir);
+            let git = |args: &[&str]| {
+                let status = Command::new("git")
+                    .args(args)
+                    .current_dir(&folder)
+                    .env("GIT_AUTHOR_NAME", "textpen")
+                    .env("GIT_AUTHOR_EMAIL", "textpen@example.com")
+                    .env("GIT_COMMITTER_NAME", "textpen")
+                    .env("GIT_COMMITTER_EMAIL", "textpen@example.com")
+                    .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                    .env("GIT_CONFIG_SYSTEM", "/dev/null")
+                    .status()
+                    .expect("git");
+                assert!(status.success(), "git {args:?}");
+            };
+            git(&["init", "-q", "-b", branch]);
+            git(&["add", "."]);
+            git(&["commit", "-qm", "one"]);
+        }
+        project.write("api/src/server.ts", "a\nB\nc\nd\ne\n");
+        project.write(
+            "api/src/routes/refunds.ts",
+            "export const refunds = [];\nexport const more = 1;\n",
+        );
+        std::fs::remove_file(project.root().join("api/README.md")).expect("removed");
+        project.write(
+            "site/index.html",
+            "<!doctype html>\n<title>Lantern</title>\n",
+        );
+        project.write("site/dist/bundle.js", "x\n");
+        let mut page = open(&project, &["README.md"], size, &fonts)?;
+        for key in &keys {
+            page.press(key)?;
+            page.settle()?;
+        }
+        wait(&mut page, |page| shows(page, "repos"))?;
+        if name == "repos-files-dark" {
+            for dir in ["api", "site", "site/dist"] {
+                wait(&mut page, |page| {
+                    page.bounds(&format!("row:{dir}")).is_some()
+                })?;
+                page.click(&format!("row:{dir}"))?;
+            }
+        }
+        page.advance(1.0)?;
+        page.settle()?;
+        let png = page.shot_in(&fonts, palette).expect("a picture");
+        std::fs::write(out.join(format!("{name}.png")), png).expect("the picture written");
+    }
     // The tree, with what git ignores quiet all the way down.
     for (name, palette) in [
         ("tree-ignored-dark", Palette::Dark),

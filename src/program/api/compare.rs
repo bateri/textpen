@@ -63,8 +63,11 @@ fn run(session: &Session, args: OnePath, gone: &Gone<'_>) -> Result<Compared, Fa
     if linked || gone() {
         return Ok(nothing(version, None, "outside"));
     }
-    let git = &session.project.git;
-    let kept = git.committed(&path);
+    let Some((repo, inner)) = session.project.repos.of(&path) else {
+        return Ok(nothing(version, None, "outside"));
+    };
+    let git = &repo.git;
+    let kept = git.committed(&inner);
     if gone() {
         return Ok(nothing(version, None, "outside"));
     }
@@ -87,7 +90,7 @@ fn run(session: &Session, args: OnePath, gone: &Gone<'_>) -> Result<Compared, Fa
             base: Some(Base {
                 id: committed.id,
                 length: committed.text.len(),
-                path: committed.path,
+                path: repo.outer(&committed.path),
             }),
             blocks: Some(blocks),
         },
@@ -115,8 +118,13 @@ impl Params for BaseOf {
 /// The piece of the commit's text of `path` that begins at `from`, if the commit still keeps the
 /// blob the page was told of.
 fn base(session: &Session, args: BaseOf, _: &Gone<'_>) -> Result<Slice, Failure> {
-    match session.project.git.committed(&args.path) {
-        Kept::Text(committed) if committed.id.as_deref() == Some(args.id.as_str()) => {
+    let kept = session
+        .project
+        .repos
+        .of(&args.path)
+        .map(|(repo, inner)| repo.git.committed(&inner));
+    match kept {
+        Some(Kept::Text(committed)) if committed.id.as_deref() == Some(args.id.as_str()) => {
             Ok(piece(&committed.text, args.from, WIRE_BUDGET))
         }
         _ => Err(Failure::OutOfSync(format!(

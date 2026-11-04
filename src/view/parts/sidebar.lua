@@ -2,6 +2,7 @@
 -- (its edge dragged to make it wider), over it as a drawer in a narrow one.
 
 local kit = require("../lib/kit")
+local repos = require("../lib/repos")
 local text = require("../lib/text")
 local docs = require("./docs")
 local tree = require("./tree")
@@ -65,8 +66,9 @@ local function project_line()
 		for _ in git.changes or {} do
 			changed += 1
 		end
-		line:child(b.text(git.branch .. (changed > 0 and (" · " .. changed .. " changed") or "")):color("quiet")
-			:text_size(11.5):truncate():min_w(0))
+		-- Of many, how many changed is said by each in the panel of changes, and would not fit here.
+		local where = git.many and repos.counted(#git.repos) or (git.branch .. (changed > 0 and (" · " .. changed .. " changed") or ""))
+		line:child(b.text(where):color("quiet"):text_size(11.5):truncate():min_w(0))
 	end
 	return line
 end

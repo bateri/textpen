@@ -345,7 +345,8 @@ fn boot_tells_what_the_page_starts_from_with_null_where_there_is_nothing() {
         boot["rootName"],
         json!(pane.dir.path().file_name().unwrap().to_str().unwrap())
     );
-    assert_eq!(boot["git"], Value::Null);
+    assert_eq!(boot["roots"], json!([]));
+    assert_eq!(boot["repos"], json!([]));
     assert_eq!(boot["buffers"], json!([]));
     assert_eq!(boot["problems"], json!([]));
     assert_eq!(boot["ui"]["active"], Value::Null);
@@ -846,7 +847,10 @@ fn a_git_repository_is_read_for_the_quick_open_and_for_the_changes() {
     pane.write("ignored.txt", "");
     pane.write("ünï/çödé.txt", "");
     let heard = ask(&pane, &[("boot", json!({})), ("files", json!({}))]);
-    let git_info = &heard[0].result()["git"];
+    let boot = heard[0].result();
+    assert_eq!(boot["roots"], json!([""]));
+    assert_eq!(boot["repos"][0]["root"], json!(""));
+    let git_info = &boot["repos"][0]["git"];
     assert_eq!(git_info["branch"], json!("trunk"));
     assert_eq!(git_info["ahead"], json!(0));
     assert_eq!(
@@ -861,6 +865,82 @@ fn a_git_repository_is_read_for_the_quick_open_and_for_the_changes() {
         [".gitignore", "kept.txt", "new file.txt", "ünï/çödé.txt"]
     );
     assert_eq!(heard[1].result()["next"], Value::Null);
+}
+
+/// A project in no repository, with repositories in its folders: each is said by paths from the project's
+/// root; a file of one is compared and marked by its own git, what it ignores is not among the files, and a
+/// file in none has no git to ask.
+#[test]
+fn repositories_in_the_folders_of_a_project_are_each_asked_of_what_is_theirs() {
+    let pane = Pane::new();
+    let in_repo = |dir: &str, args: &[&str]| {
+        let mut all = vec!["-C", dir];
+        all.extend_from_slice(args);
+        git(&pane, &all);
+    };
+    for dir in ["alpha", "group/beta"] {
+        pane.write(&format!("{dir}/kept.txt"), "one\ntwo\n");
+        pane.write(&format!("{dir}/.gitignore"), "out.log\n");
+        in_repo(dir, &["init", "-q", "-b", dir.rsplit('/').next().unwrap()]);
+        in_repo(dir, &["config", "user.email", "t@example.com"]);
+        in_repo(dir, &["config", "user.name", "t"]);
+        in_repo(dir, &["add", "."]);
+        in_repo(dir, &["commit", "-q", "-m", "one"]);
+    }
+    pane.write("loose.txt", "x\n");
+    pane.write("alpha/kept.txt", "one\ntwo\nthree\n");
+    pane.write("alpha/new.txt", "a\nb\n");
+    pane.write("alpha/out.log", "");
+    let heard = ask(
+        &pane,
+        &[
+            ("boot", json!({})),
+            ("files", json!({})),
+            ("open", json!({ "path": "alpha/kept.txt" })),
+            ("diff", json!({ "path": "alpha/kept.txt" })),
+            ("compare", json!({ "path": "alpha/kept.txt" })),
+            ("open", json!({ "path": "loose.txt" })),
+            ("diff", json!({ "path": "loose.txt" })),
+            ("compare", json!({ "path": "loose.txt" })),
+        ],
+    );
+    let boot = heard[0].result();
+    assert_eq!(boot["roots"], json!(["alpha", "group/beta"]));
+    let alpha = &boot["repos"][0];
+    assert_eq!(alpha["root"], json!("alpha"));
+    assert_eq!(alpha["git"]["branch"], json!("alpha"));
+    assert_eq!(
+        alpha["git"]["changes"],
+        json!({ "alpha/kept.txt": "modified", "alpha/new.txt": "untracked" })
+    );
+    assert_eq!(
+        alpha["git"]["stats"],
+        json!({ "alpha/kept.txt": [1, 0], "alpha/new.txt": [2, 0] })
+    );
+    assert_eq!(alpha["git"]["ignored"], json!(["alpha/out.log"]));
+    let beta = &boot["repos"][1];
+    assert_eq!(beta["root"], json!("group/beta"));
+    assert_eq!(beta["git"]["branch"], json!("beta"));
+    assert_eq!(beta["git"]["changes"], json!({}));
+    let mut files = strings(&heard[1].result()["files"]);
+    files.sort();
+    assert_eq!(
+        files,
+        [
+            "alpha/.gitignore",
+            "alpha/kept.txt",
+            "alpha/new.txt",
+            "group/beta/.gitignore",
+            "group/beta/kept.txt",
+            "loose.txt",
+        ]
+    );
+    assert_eq!(heard[3].result()["hunks"][0]["count"], json!(1));
+    let compared = heard[4].result();
+    assert_eq!(compared["base"]["path"], json!("alpha/kept.txt"));
+    assert_eq!(compared["why"], Value::Null);
+    assert_eq!(heard[6].result()["hunks"], Value::Null);
+    assert_eq!(heard[7].result()["why"], json!("outside"));
 }
 
 #[test]
@@ -915,9 +995,9 @@ fn the_changes_topic_tells_the_disk_at_once_then_what_changed_under_a_listed_dir
     let _ = writer.wait();
     let pushes = pushes(&log);
     assert!(pushes.len() >= 2, "two pushes:\n{log}");
-    assert_eq!(pushes[0], json!({ "buffers": [], "dirs": [], "git": null }));
+    assert_eq!(pushes[0], json!({ "buffers": [], "dirs": [], "roots": [] }));
     assert!(
-        pushes[1].get("git").is_none(),
+        pushes[1].get("roots").is_none() && pushes[1].get("repo").is_none(),
         "git said what it said before"
     );
     assert_eq!(pushes[1]["buffers"][0]["path"], json!("c.txt"));

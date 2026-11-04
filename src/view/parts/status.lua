@@ -6,6 +6,7 @@ local kit = require("../lib/kit")
 local text = require("../lib/text")
 local docs = require("./docs")
 local search = require("./search")
+local repos = require("../lib/repos")
 
 local b, S, SIZE, act = kit.b, kit.S, kit.SIZE, kit.act
 local layout = b.layout
@@ -102,8 +103,9 @@ function status.view()
 	local info = tab and tab.info
 	local wide = S.layout == "wide"
 	local row = b.div():row():items_center():gap(4):h(SIZE.status):px(8):no_shrink():bg("raised1"):color("dim"):text_size(11.5)
-	local git = S.git
-	if git then
+	-- The branch of the repository the file shown is in.
+	local git = repos.of(S.git, S.active) or (S.git and not S.git.many and S.git) or nil
+	if git and git.branch then
 		local branch = b.div():row():items_center():gap(4):px(4):min_w(0)
 			:child(kit.icon("git-branch", 13, "dim"))
 			:child(b.text(git.branch):truncate():min_w(0))

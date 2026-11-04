@@ -9,12 +9,16 @@
 -- of the project has them: a folder folds as it does there, and says the strongest of what git says of
 -- what is in it.
 --
+-- Where the project's repositories are in its folders each is a row that folds as a folder does, with its
+-- branch, and its files under it; those with nothing to say are one line at the end.
+--
 -- What it lists is what git said (`S.git.changes`, asked every two seconds by the topic), so it follows
 -- the repository with nothing of its own to keep. Only the rows in view are made, as the tree's are.
 
 local kit = require("../lib/kit")
 local text = require("../lib/text")
 local files = require("../lib/files")
+local repos = require("../lib/repos")
 local docs = require("./docs")
 local compare = require("./compare")
 
@@ -29,8 +33,9 @@ local ROW = SIZE.row
 -- The rows as the panel shows them: a heading and the files under it, for each group that has any.
 -- Kept while what git said is the same, the panel stands as it did and no folder folded. A row of a file
 -- is `{ path =, state =, added =, removed = }`, with `depth =` under its folders; a row of a folder
--- `{ key =, dir =, name =, depth =, open =, state =, added =, removed = }`. The same folder can be in both
--- groups, each with its own row: `key` is which.
+-- `{ key =, dir =, name =, depth =, open =, state =, added =, removed = }`, and `repo =` where it is a
+-- repository. The same folder can be in both groups, each with its own row: `key` is which. Files in a list
+-- under a repository have `indent =` and `folder =`, from its root; the last line may be `{ note =, tip = }`.
 local cached = nil
 
 local function by_lower(a, c)
@@ -38,18 +43,18 @@ local function by_lower(a, c)
 end
 
 -- The rows of `entries` (in the order of their paths) under their folders, folders first as the tree
--- has them, after the rows that are there.
-local function tree_rows(group, entries, rows)
+-- has them, after the rows that are there: from `base` in, the paths from `prefix` on.
+local function tree_rows(group, entries, rows, base, prefix)
 	local root = { dirs = {}, entries = {} }
 	for _, entry in entries do
 		local node, at = root, nil
-		local parts = string.split(entry.path, "/")
+		local parts = string.split(string.sub(entry.path, #prefix + 1), "/")
 		for index = 1, #parts - 1 do
 			local name = parts[index]
 			at = at and (at .. "/" .. name) or name
 			local dir = node.dirs[name]
 			if not dir then
-				dir = { name = name, path = at, dirs = {}, entries = {}, added = 0, removed = 0 }
+				dir = { name = name, path = prefix .. at, dirs = {}, entries = {}, added = 0, removed = 0 }
 				node.dirs[name] = dir
 			end
 			dir.added += entry.added
@@ -83,7 +88,72 @@ local function tree_rows(group, entries, rows)
 			rows[#rows + 1] = { path = entry.path, state = entry.state, added = entry.added, removed = entry.removed, depth = depth }
 		end
 	end
-	walk(root, 0)
+	walk(root, base)
+end
+
+local function entry_of(git, path, state)
+	local counts = git.stats[path]
+	return { path = path, state = state, added = counts and counts[1] or 0, removed = counts and counts[2] or 0 }
+end
+
+local function by_path(a, c)
+	return text.lower(a.path) < text.lower(c.path)
+end
+
+-- The rows of a project whose repositories are in its folders: each that has something to say, in the
+-- order of their folders, what git keeps before what it does not; the others one line.
+local function rows_of_many(git, rows)
+	local kept, unversioned = {}, {}
+	for path, state in git.changes do
+		local repo = repos.of(git, path)
+		if repo then
+			local group = state == "untracked" and unversioned or kept
+			group[repo.root] = group[repo.root] or {}
+			table.insert(group[repo.root], entry_of(git, path, state))
+		end
+	end
+	local clean = {}
+	for _, repo in git.repos do
+		local first, second = kept[repo.root] or {}, unversioned[repo.root] or {}
+		if #first + #second == 0 then
+			if repo.known then
+				clean[#clean + 1] = repo.root
+			end
+		else
+			table.sort(first, by_path)
+			table.sort(second, by_path)
+			local entries = table.move(second, 1, #second, #first + 1, first)
+			local added, removed, state = 0, 0, nil
+			for _, entry in entries do
+				added += entry.added
+				removed += entry.removed
+				if (files.GIT_RANK[entry.state] or 0) > (state and files.GIT_RANK[state] or 0) then
+					state = entry.state
+				end
+			end
+			local key = "repo:" .. repo.root
+			local open = not S.changes_folded[key]
+			rows[#rows + 1] = {
+				key = key, dir = repo.root, name = repo.root, depth = 0, open = open, state = state,
+				added = added, removed = removed, repo = repo,
+			}
+			if open and S.changes_tree then
+				tree_rows(repo.root, entries, rows, 1, repo.root .. "/")
+			elseif open then
+				for _, entry in entries do
+					entry.indent = 1
+					entry.folder = text.dirname(string.sub(entry.path, #repo.root + 2))
+					rows[#rows + 1] = entry
+				end
+			end
+		end
+	end
+	if #rows > 0 and #clean > 0 then
+		rows[#rows + 1] = {
+			note = repos.counted(#clean) .. " with no changes",
+			tip = table.concat(clean, ", "),
+		}
+	end
 end
 
 function changes_list.rows()
@@ -91,22 +161,23 @@ function changes_list.rows()
 	if cached and cached.git == git and cached.tree == S.changes_tree then
 		return cached.rows
 	end
+	if git and git.many then
+		local rows = {}
+		rows_of_many(git, rows)
+		cached = { git = git, tree = S.changes_tree, rows = rows }
+		return rows
+	end
 	local kept, unversioned = {}, {}
-	local stats = git and git.stats or {}
 	for path, state in git and git.changes or {} do
-		local counts = stats[path]
-		local entry = { path = path, state = state, added = counts and counts[1] or 0, removed = counts and counts[2] or 0 }
+		local entry = entry_of(git, path, state)
 		if state == "untracked" then
 			unversioned[#unversioned + 1] = entry
 		else
 			kept[#kept + 1] = entry
 		end
 	end
-	local function order(a, c)
-		return text.lower(a.path) < text.lower(c.path)
-	end
-	table.sort(kept, order)
-	table.sort(unversioned, order)
+	table.sort(kept, by_path)
+	table.sort(unversioned, by_path)
 	local rows = {}
 	for _, group in { { "Changes", kept }, { "Unversioned Files", unversioned } } do
 		if #group[2] > 0 then
@@ -117,7 +188,7 @@ function changes_list.rows()
 			end
 			rows[#rows + 1] = { heading = group[1], count = #group[2], added = added, removed = removed }
 			if S.changes_tree then
-				tree_rows(group[1], group[2], rows)
+				tree_rows(group[1], group[2], rows, 0, "")
 			else
 				for _, entry in group[2] do
 					rows[#rows + 1] = entry
@@ -184,9 +255,14 @@ local function folder_view(row)
 		:bg(ground_of(id, row.key)):role("button"):label(row.name):expanded(row.open)
 		:selected(S.changes_selection == row.key):tip(row.dir)
 	kit.indent_guides(element, row.depth)
+	element:child(kit.icon(row.open and "folder-open" or "folder", 15, "accent"))
+		:child(b.text(row.name):color(files.GIT_COLOR[row.state] or "foreground"):weight(row.repo and 650 or 400):truncate():min_w(0))
+	if row.repo then
+		local ahead, behind = row.repo.ahead or 0, row.repo.behind or 0
+		local where = (row.repo.branch or "") .. (ahead > 0 and (" ↑" .. ahead) or "") .. (behind > 0 and (" ↓" .. behind) or "")
+		element:child(b.text(where):color("quiet"):text_size(11.5):truncate():min_w(0))
+	end
 	return element
-		:child(kit.icon(row.open and "folder-open" or "folder", 15, "accent"))
-		:child(b.text(row.name):color(files.GIT_COLOR[row.state] or "foreground"):truncate():min_w(0))
 		:child(b.spacer())
 		:child(lines_view(row))
 		:child(b.div():size(6, 6):rounded(3):bg(files.GIT_COLOR[row.state] or "dim"):no_shrink())
@@ -201,18 +277,22 @@ local function row_view(row)
 			:child(lines_view(row))
 	elseif row.dir then
 		return folder_view(row)
+	elseif row.note then
+		return b.div():row():items_center():h(ROW):pl(12):pr(10):no_shrink():tip(row.tip)
+			:child(b.text(row.note):text_size(11.5):color("quiet"):truncate():min_w(0))
 	end
 	local path = row.path
 	local id = "change:" .. path
 	local selected = S.changes_selection == path
 	local name = text.basename(path)
-	local folder = text.dirname(path)
+	local folder = row.folder or text.dirname(path)
 	local kind = files.kind(path)
 	local nested = row.depth ~= nil
-	local element = b.div():press(id):row():items_center():gap(6):h(ROW):pl(nested and (8 + row.depth * kit.INDENT) or 10):pr(10):no_shrink()
+	local level = row.depth or row.indent
+	local element = b.div():press(id):row():items_center():gap(6):h(ROW):pl(level and (8 + level * kit.INDENT) or 10):pr(10):no_shrink()
 		:bg(ground_of(id, path, path)):role("button"):label(name):selected(selected):tip(path)
-	if nested then
-		kit.indent_guides(element, row.depth)
+	if level then
+		kit.indent_guides(element, level)
 	end
 	element:child(kit.icon(kind.icon, 15, kind.color))
 	local words = b.text(name):color(files.GIT_COLOR[row.state] or "foreground")
@@ -246,7 +326,7 @@ function changes_list.view(width)
 	end
 	local rows = changes_list.rows()
 	if #rows == 0 then
-		return words("No changes")
+		return words("No changes", S.git.many and repos.counted(#S.git.repos) or nil)
 	end
 	return b.div()
 		:id(changes_list.LIST)
@@ -308,12 +388,13 @@ function changes_list.open(path, to_editor)
 	kit.gather(true)
 end
 
--- What the keys go through, in order: every row but the headings.
+-- What the keys go through, in order: every row of a file or a folder.
 local function stops()
 	local out = {}
 	for _, row in changes_list.rows() do
-		if not row.heading then
-			out[#out + 1] = chosen_by(row)
+		local chosen = chosen_by(row)
+		if chosen then
+			out[#out + 1] = chosen
 		end
 	end
 	return out
@@ -432,11 +513,11 @@ function changes_list.key(key, mods)
 		end
 	elseif row and row.dir and (key == "left" or key == "h") and row.open then
 		fold(row, false)
-	elseif row and row.depth and (key == "left" or key == "h") then
+	elseif row and (row.depth or row.indent) and (key == "left" or key == "h") then
 		-- The folder it is in, as the tree of the project goes.
 		for index = at - 1, 1, -1 do
 			local above = changes_list.rows()[index]
-			if above.dir and above.depth == row.depth - 1 then
+			if above.dir and above.depth == (row.depth or row.indent) - 1 then
 				choose(above.key)
 				break
 			end

@@ -12,9 +12,10 @@ use pencere::Options;
 use serde::Serialize;
 use serde_json::{Value, json};
 
+use super::changes::Repo;
 use super::params::{Checked, Fields, Params};
+use super::pieces::fitting;
 use super::{Failure, Gone, call};
-use crate::project::git::GitInfo;
 use crate::project::paths;
 use crate::state::buffers::Info;
 use crate::state::defaults::{Settings, UiState};
@@ -66,7 +67,10 @@ struct Boot {
     hostname: String,
     remote: bool,
     version: &'static str,
-    git: Option<GitInfo>,
+    /// The folders of the project's repositories: the one it is in is `""`.
+    roots: Vec<String>,
+    /// What each says, as many as go in the message; the rest come by the topic.
+    repos: Vec<Repo>,
     settings: Settings,
     ui: UiState,
     buffers: Vec<Info>,
@@ -84,6 +88,17 @@ struct Boot {
 fn boot(session: &Session, (): (), _: &Gone<'_>) -> Result<Boot, Failure> {
     let root = session.project.root.clone();
     let name = paths::basename(&root);
+    let mut repos: Vec<Repo> = session
+        .project
+        .repos
+        .all()
+        .into_iter()
+        .map(|(root, git)| Repo { root, git })
+        .collect();
+    let roots = repos.iter().map(|repo| repo.root.clone()).collect();
+    repos.truncate(fitting(&repos, |repo| {
+        serde_json::to_string(repo).map_or(0, |told| told.len())
+    }));
     Ok(Boot {
         root_name: if name.is_empty() {
             root.clone()
@@ -95,7 +110,8 @@ fn boot(session: &Session, (): (), _: &Gone<'_>) -> Result<Boot, Failure> {
         hostname: machine::hostname(),
         remote: session.remote(),
         version: env!("CARGO_PKG_VERSION"),
-        git: session.project.git.status(Duration::ZERO),
+        roots,
+        repos,
         settings: session.settings(),
         ui: session.ui(),
         buffers: session.buffers().all(),

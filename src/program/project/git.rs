@@ -87,6 +87,34 @@ pub struct GitInfo {
     pub stats: BTreeMap<String, [u64; 2]>,
 }
 
+impl GitInfo {
+    /// What it says, by paths from the project's root where its repository is in the folder `root`.
+    #[must_use]
+    pub fn under(mut self, root: &str) -> Self {
+        if root.is_empty() {
+            return self;
+        }
+        let outer = |path: &str| format!("{root}/{path}");
+        self.changes = self
+            .changes
+            .into_iter()
+            .map(|(path, state)| (outer(&path), state))
+            .collect();
+        self.renames = self
+            .renames
+            .into_iter()
+            .map(|(to, from)| (outer(&to), outer(&from)))
+            .collect();
+        self.ignored = self.ignored.iter().map(|path| outer(path)).collect();
+        self.stats = self
+            .stats
+            .into_iter()
+            .map(|(path, lines)| (outer(&path), lines))
+            .collect();
+        self
+    }
+}
+
 /// The last commit: its id and the first line of its message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Commit {

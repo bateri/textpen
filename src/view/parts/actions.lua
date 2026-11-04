@@ -4,6 +4,7 @@
 
 local kit = require("../lib/kit")
 local text = require("../lib/text")
+local repos = require("../lib/repos")
 local docs = require("./docs")
 local marks = require("./changes")
 local compare = require("./compare")
@@ -564,9 +565,20 @@ end
 
 -- What the program says happens to the files (`changes`).
 local function apply(changes)
-	-- `git: null` is the repository gone, no `git` that nothing changed there.
-	if json.has(changes, "git") then
-		S.git = changes.git
+	if changes.roots then
+		S.roots = changes.roots
+		local held = {}
+		for _, root in S.roots do
+			held[root] = S.repos[root]
+		end
+		S.repos = held
+	end
+	-- `git: null` is a repository gone or that cannot say, no `repo` that nothing changed in any.
+	if changes.repo then
+		S.repos[changes.repo.root] = changes.repo.git
+	end
+	if changes.roots or changes.repo then
+		S.git = repos.merged(S.roots, S.repos)
 		-- What differs from git's index may have: asked again for the files open.
 		marks.refresh_all()
 		-- And what differs from the last commit, for the files shown beside it.
@@ -605,7 +617,11 @@ function act.start(boot)
 	local ui = boot.ui
 	S.boot = boot
 	S.settings = boot.settings
-	S.git = boot.git
+	S.roots = boot.roots
+	for _, repo in boot.repos do
+		S.repos[repo.root] = repo.git
+	end
+	S.git = repos.merged(S.roots, S.repos)
 	S.expanded = ui.expanded or {}
 	S.recent = ui.recent or {}
 	S.places = ui.places or {}

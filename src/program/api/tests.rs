@@ -675,7 +675,7 @@ fn a_new_file_a_file_taken_away_and_a_file_renamed_are_compared_with_what_the_co
     git(&project, &["mv", "old name.txt", "renamed.txt"]);
     std::fs::write(project.join("renamed.txt"), "keep\nlines\nof\nTEXT\n").unwrap();
     // What git said of the renames a moment ago is not what it says now.
-    session.project.git.forget();
+    session.project.repos.forget();
     open(&mut conversation, 6, "renamed.txt");
     let told = compared(&mut conversation, 7, "renamed.txt");
     assert_eq!(told["base"]["path"], json!("old name.txt"));

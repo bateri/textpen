@@ -2,6 +2,7 @@
 -- files opened lately.
 
 local kit = require("../lib/kit")
+local repos = require("../lib/repos")
 local text = require("../lib/text")
 local files = require("../lib/files")
 local commands = require("./commands")
@@ -54,7 +55,8 @@ function act.welcome_view(size)
 		:child(b.text(text.friendly(boot.root, boot.home)):truncate():min_w(0))
 	if S.git then
 		where:child(b.div():row():items_center():gap(4):no_shrink()
-			:child(kit.icon("git-branch", 13, "dim")):child(b.text(S.git.branch)))
+			:child(kit.icon("git-branch", 13, "dim"))
+			:child(b.text(S.git.many and repos.counted(#S.git.repos) or S.git.branch)))
 	end
 	if boot.remote then
 		where:child(b.text("on " .. boot.hostname):color("quiet"):no_shrink())

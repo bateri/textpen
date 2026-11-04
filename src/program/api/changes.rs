@@ -1,7 +1,7 @@
 //! The `changes` topic: the disk and git, as they change. The page is told one value at once and
 //! then one only when something differs from what it was told: the open files that changed on disk,
-//! the listed directories that did, git's own state when it changed, and a hand-off of the pane the
-//! terminal could not make.
+//! the listed directories that did, what each repository says when it changed, and a hand-off of the
+//! pane the terminal could not make.
 //!
 //! It looks every two seconds while it is subscribed, on a thread of its own. Looking is a `stat` of
 //! each listed directory and open file and, every few seconds, a `git status`: a watch of the
@@ -10,6 +10,7 @@
 //!
 //! This is api/'s: the files of api/ know the page, and project/, state/ and terminal/ do not.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -28,11 +29,22 @@ const EVERY: Duration = Duration::from_secs(2);
 /// How long what git said is used before it is asked again.
 const GIT_AGE: Duration = Duration::from_millis(2500);
 
+/// What git says of one repository of the project, by paths from the project's root: none where it
+/// cannot say.
+#[derive(Serialize)]
+pub struct Repo {
+    pub root: String,
+    pub git: Option<GitInfo>,
+}
+
 #[derive(Serialize)]
 struct Changes<'a> {
-    /// Left out when it is what the page was told last.
+    /// The folders of the project's repositories, where they are not what the page was told last.
     #[serde(skip_serializing_if = "Option::is_none")]
-    git: Option<&'a Option<GitInfo>>,
+    roots: Option<&'a [String]>,
+    /// A repository that says something else now; one a message, as each may fill it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repo: Option<Repo>,
     buffers: Vec<Info>,
     dirs: Vec<String>,
     #[serde(rename = "handoffFailed", skip_serializing_if = "Option::is_none")]
@@ -47,28 +59,70 @@ fn words_of(failed: Failed) -> &'static str {
     }
 }
 
+/// Tells the page; whether it could be told.
+fn say(feed: &Subscription, changes: &Changes<'_>) -> bool {
+    serde_json::to_value(changes).is_ok_and(|value| feed.push(value))
+}
+
 /// Looks until the page stops listening, and tells it what changed.
 fn watch(session: &Session, feed: &Subscription) {
-    // What the page was told of git: nothing yet.
-    let mut told: Option<Option<GitInfo>> = None;
+    // What the page was told of the repositories: nothing yet.
+    let mut told_roots: Option<Vec<String>> = None;
+    let mut told: HashMap<String, Option<GitInfo>> = HashMap::new();
     loop {
-        let git = session.project.git.status(GIT_AGE);
+        let repos = &session.project.repos;
+        repos.look_again();
+        let roots: Vec<String> = repos.list().iter().map(|repo| repo.root.clone()).collect();
+        told.retain(|root, _| roots.contains(root));
+        let mut news = repos
+            .due(session.ui().active.as_deref())
+            .into_iter()
+            .map(|repo| (repo.root.clone(), repo.status(GIT_AGE)))
+            .filter(|(root, git)| told.get(root) != Some(git))
+            .collect::<Vec<_>>()
+            .into_iter();
         // A buffer whose file changed is read again, or marked as in conflict, as it is told.
         let buffers = session.buffers().changed_on_disk();
         let dirs = session.project.changed_dirs();
         let handoff_failed = session.desk.take_failed().map(words_of);
-        let new_git = told.as_ref() != Some(&git);
-        if new_git || !buffers.is_empty() || !dirs.is_empty() || handoff_failed.is_some() {
+        let new_roots = told_roots.as_ref() != Some(&roots);
+        let first = news.next();
+        if new_roots
+            || first.is_some()
+            || !buffers.is_empty()
+            || !dirs.is_empty()
+            || handoff_failed.is_some()
+        {
             let changes = Changes {
-                git: new_git.then_some(&git),
+                roots: new_roots.then_some(roots.as_slice()),
+                repo: first.as_ref().map(|(root, git)| Repo {
+                    root: root.clone(),
+                    git: git.clone(),
+                }),
                 buffers,
                 dirs,
                 handoff_failed,
             };
-            if let Ok(value) = serde_json::to_value(&changes) {
-                if feed.push(value) {
-                    told = Some(git);
+            if say(feed, &changes) {
+                if new_roots {
+                    told_roots = Some(roots);
                 }
+                told.extend(first);
+            }
+        }
+        for (root, git) in news {
+            let changes = Changes {
+                roots: None,
+                repo: Some(Repo {
+                    root: root.clone(),
+                    git: git.clone(),
+                }),
+                buffers: Vec::new(),
+                dirs: Vec::new(),
+                handoff_failed: None,
+            };
+            if say(feed, &changes) {
+                told.insert(root, git);
             }
         }
         if feed.sleep(EVERY) {

@@ -47,7 +47,10 @@ fn run(session: &Session, args: OnePath, gone: &Gone<'_>) -> Result<Diffed, Fail
     if linked || gone() {
         return Ok(none(version));
     }
-    let Some(old) = session.project.git.index_text(&path) else {
+    let Some((repo, inner)) = session.project.repos.of(&path) else {
+        return Ok(none(version));
+    };
+    let Some(old) = repo.git.index_text(&inner) else {
         return Ok(none(version));
     };
     if gone() {

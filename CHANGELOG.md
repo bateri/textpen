@@ -15,6 +15,17 @@ change what the previous one did.
   for what textpen asks of git, those of your own config (a global `git lfs install`) stay, and nothing
   textpen asks goes to the network.
 
+### Added
+
+- **A folder of repositories.** Opened on a folder that is in no repository, textpen finds those in its
+  folders, two levels down, and each is one in its own right: the panel of changes has each with its branch
+  and its lines, folding as a folder does, its files under it, and those with no changes one line at the end;
+  the tree has its branch beside it and greys what it ignores; the status line has the branch of the file
+  shown, and a file is compared and marked by its own repository. Folders that begin with a dot, `node_modules`,
+  `target` and the like are not looked in, a link is not followed, and a project in a repository has that one
+  alone. The repository of the file in front is asked as often as ever; the others take turns, every ten seconds
+  or so.
+
 ### Fixed
 
 - **The sidebar keeps every button of its head.** Its edge could be dragged so narrow that Collapse
