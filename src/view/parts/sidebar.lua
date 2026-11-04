@@ -12,7 +12,10 @@ local b, S, SIZE, act = kit.b, kit.S, kit.SIZE, kit.act
 
 local sidebar = {}
 
-local MIN_W, MAX_W = 160, 520
+-- As narrow as its edge goes is as wide as the head of the panel with the most buttons: narrower, the
+-- last of them would be out of reach. The program keeps to the same (`SIDEBAR_WIDTHS`).
+local MIN_W, MAX_W = 228, 520
+sidebar.MIN_W = MIN_W
 
 -- One of the two panels' buttons, an icon alone (its name in its tooltip).
 local function segment(id, icon_name, words, on, keys)
@@ -89,25 +92,25 @@ function act.sidebar_view(width)
 	return sidebar.view(width, false)
 end
 
--- The edge between the sidebar and the editor, dragged.
+-- The edge between the sidebar and the editor, dragged. It stands wholly on the sidebar's side: an editor
+-- takes a press in its room whatever else is there, and would select text as the edge is dragged.
 function act.resizer_view()
 	local on = kit.hovered("resizer") or S.resizing ~= nil
 	return b.div()
 		:press("resizer")
 		:w(5)
-		:ml(-2)
-		:mr(-3)
+		:ml(-5)
 		:h_full()
 		:no_shrink()
 		:row()
-		:justify_center()
+		:justify_end()
 		:label("Sidebar width")
 		:child(b.div():w(on and 2 or 1):h_full():bg(on and "accent" or "border"):motion({ seconds = 0.12, color = true }))
 end
 
 -- The sidebar over the editor, in a narrow page.
 function act.drawer_view(size)
-	local width = math.min(math.max(size.w - 64, MIN_W), 320)
+	local width = math.min(math.max(size.w - 64, MIN_W), 320, size.w)
 	return b.div()
 		:overlay()
 		:inset(0, 0, SIZE.status, 0)

@@ -397,6 +397,28 @@ fn the_pictures_of_the_comparison() -> Result<(), Error> {
         let png = page.shot_in(&fonts, palette).expect("a picture");
         std::fs::write(out.join(format!("{name}.png")), png).expect("the picture written");
     }
+    // The sidebar as narrow as its edge goes, at a terminal's larger text: the buttons of its head and
+    // the search's field.
+    for (name, keys) in [
+        ("sidebar-narrow-files", "cmd+shift+e"),
+        ("sidebar-narrow-search", "cmd+shift+f"),
+    ] {
+        let project = lantern();
+        let mut page = open(&project, &["README.md"], (1280.0, 800.0), &fonts)?;
+        page.zoom(1.12)?;
+        page.settle()?;
+        let edge = page.bounds("resizer").expect("the edge");
+        let at = edge.y + edge.h / 2.0;
+        page.drag_between(
+            pencere_view::Point::new(edge.x + edge.w / 2.0, at),
+            pencere_view::Point::new(1.0, at),
+        )?;
+        page.press(keys)?;
+        page.advance(1.0)?;
+        page.settle()?;
+        let png = page.shot_in(&fonts, Palette::Dark).expect("a picture");
+        std::fs::write(out.join(format!("{name}.png")), png).expect("the picture written");
+    }
     // The tree, with what git ignores quiet all the way down.
     for (name, palette) in [
         ("tree-ignored-dark", Palette::Dark),

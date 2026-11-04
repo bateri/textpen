@@ -2104,6 +2104,49 @@ fn a_field_opens_with_its_text_selected_and_the_keyboard_in_it() -> Result<(), E
     Ok(())
 }
 
+/// Dragged as narrow as it goes, the sidebar still has every button of its head, which a press reaches;
+/// and the search's field keeps its toggles inside it however narrow the sidebar is.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_sidebar_at_its_narrowest_keeps_its_buttons_and_the_search_its_toggles() -> Result<(), Error>
+{
+    let project = lantern();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    let edge = page
+        .bounds("resizer")
+        .ok_or_else(|| Error::NoSuch("resizer".to_owned()))?;
+    let at = edge.y + edge.h / 2.0;
+    page.drag_between(Point::new(edge.x + edge.w / 2.0, at), Point::new(1.0, at))?;
+    let panel = page.bounds("sidebar").expect("the sidebar");
+    assert!(panel.w >= 228.0, "{panel:?}");
+    assert!(
+        !shows(&page, "selected"),
+        "the drag selected text: {:?}",
+        page_words(&page)
+    );
+    let right = panel.x + panel.w;
+    page.press("cmd+shift+e")?;
+    for button in [
+        "sidebar-new-file",
+        "sidebar-new-folder",
+        "sidebar-collapse",
+        "sidebar-hide",
+    ] {
+        let rect = page.bounds(button).expect(button);
+        assert!(rect.x + rect.w <= right, "{button} {rect:?} past {right}");
+    }
+    page.press("cmd+shift+f")?;
+    let toggle = page.bounds("search-regex").expect("the toggle");
+    assert!(
+        toggle.x + toggle.w <= right - 10.0,
+        "{toggle:?} past {right}"
+    );
+    page.click("sidebar-hide")?;
+    assert!(page.bounds("sidebar").is_none(), "the last button reached");
+    Ok(())
+}
+
 /// The palette's field is never said to be covered as the palette slides in, however its boxes fall on
 /// the pixels: a terminal hides a field the page's boxes cover, and the keyboard in it is then gone
 /// with no key reaching anything. Sizes and zooms where the field touched the line under it.

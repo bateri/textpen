@@ -7,6 +7,16 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The sidebar keeps every button of its head.** Its edge could be dragged so narrow that Collapse
+  folders and Hide sidebar were cut off and could not be pressed: it now stops where they all fit
+  (228 points, from 160).
+- **The search's field keeps its buttons inside it.** In a narrow sidebar `.*` stood past the field's
+  edge, and the line under it was cut off; the field gives way and the line goes on to a second.
+- **Dragging the sidebar's edge no longer selects text.** A press on the right of the edge also went to the
+  editor beside it, which selected from there as the edge was dragged.
+
 ## [0.4.0] - 2026-11-04
 
 ### Added

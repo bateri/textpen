@@ -73,7 +73,7 @@ local function help_view(size)
 	local query = S.overlay.query
 	local head = b.div():row():items_center():gap(10):h(44):px(14):no_shrink()
 		:child(b.text("Keyboard"):weight(700))
-		:child(b.div():text_field(FILTER):label("Filter the keys"):grow(1):h(28):px(8):rounded(6):bg("background"):border(1, "border")
+		:child(b.div():text_field(FILTER):label("Filter the keys"):grow(1):min_w(0):h(28):px(8):rounded(6):bg("background"):border(1, "border")
 			:child(b.text("Filter the keys")))
 		:child(kit.icon_button("sheet-close", "x", "Close", { keys = "escape" }))
 	local body = b.div():id(HELP_BODY):col():gap(14):px(16):py(12):grow(1):min_h(0):scroll()

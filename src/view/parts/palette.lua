@@ -556,7 +556,7 @@ function palette.view(size)
 		:child(b.div():row():items_center():gap(5):h(22):px(7):rounded(5):bg(b.alpha("accent", 0.14)):no_shrink()
 			:child(kit.icon(mode.icon, 14, "accent"))
 			:child(b.text(mode.label):text_size(11):weight(650):color("accent")))
-		:child(b.div():text_field(FIELD):label(mode.label):grow(1):h(40):text_size(13.5)
+		:child(b.div():text_field(FIELD):label(mode.label):grow(1):min_w(0):h(40):text_size(13.5)
 			:child(b.text(mode.hint):color("quiet")))
 	local list = b.div():id(LIST):col():max_h(shown_rows * ROW):scroll()
 	if #overlay.items == 0 then

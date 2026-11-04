@@ -93,7 +93,7 @@ local function render(size, now)
 	local main = b.div():col():grow(1):min_w(0):min_h(0):child(tabs.view(docked)):child(area.view(size))
 	local body = b.div():row():grow(1):min_h(0)
 	if docked then
-		body:child(act.sidebar_view(math.clamp(S.settings.sidebarWidth, 160, math.max(size.w - 280, 160))))
+		body:child(act.sidebar_view(math.clamp(S.settings.sidebarWidth, sidebar.MIN_W, math.max(size.w - 280, sidebar.MIN_W))))
 		body:child(act.resizer_view())
 	end
 	body:child(main)

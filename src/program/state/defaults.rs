@@ -94,7 +94,7 @@ impl Default for Settings {
 
 /// The sizes a setting may have.
 pub const TAB_SIZES: (u32, u32) = (1, 8);
-pub const SIDEBAR_WIDTHS: (u32, u32) = (160, 520);
+pub const SIDEBAR_WIDTHS: (u32, u32) = (228, 520);
 
 /// A number as a setting has it: whole, and within its sizes.
 pub fn clamp(value: f64, (minimum, maximum): (u32, u32)) -> u32 {
@@ -146,7 +146,7 @@ mod tests {
         assert_eq!(clamp(3.4, TAB_SIZES), 3);
         assert_eq!(clamp(3.5, TAB_SIZES), 4);
         assert_eq!(clamp(99.0, TAB_SIZES), 8);
-        assert_eq!(clamp(-1e300, SIDEBAR_WIDTHS), 160);
+        assert_eq!(clamp(-1e300, SIDEBAR_WIDTHS), 228);
         assert_eq!(clamp(300.2, SIDEBAR_WIDTHS), 300);
     }
 }

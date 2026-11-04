@@ -286,7 +286,7 @@ function act.search_view()
 		:bg("background")
 		:border(1, S.field == FIELD and b.alpha("accent", 0.8) or "border")
 		:child(kit.icon("search", 14, "quiet"))
-		:child(b.div():text_field(FIELD):label("Search in files"):grow(1):h_full():child(b.text("Search in files")))
+		:child(b.div():text_field(FIELD):label("Search in files"):grow(1):min_w(0):h_full():child(b.text("Search in files")))
 		:child(toggle("search-case", Q.case, "Match case", "Aa"))
 		:child(toggle("search-word", Q.word, "Whole words", "ab"))
 		:child(toggle("search-regex", Q.regex, "Regular expression", ".*"))
@@ -298,15 +298,15 @@ function act.search_view()
 		summary = b.text(Q.error):color("error"):wrap()
 	elseif result then
 		if result.matches == 0 then
-			summary = b.text("No results in " .. result.searched .. " files"):color("dim")
+			summary = b.text("No results in " .. result.searched .. " files"):color("dim"):wrap()
 		else
 			summary = b.rich({
 				b.span(result.matches .. (result.truncated and "+" or "") .. " results in " .. #result.files .. " files"),
 				b.span(" · " .. result.ms .. " ms"):color("quiet"),
-			})
+			}):wrap()
 		end
 	else
-		summary = b.text("⏎ searches · ↓ goes to the results"):color("quiet")
+		summary = b.text("⏎ searches · ↓ goes to the results"):color("quiet"):wrap()
 	end
 	local panel = b.div():col():grow(1):min_h(0)
 		:child(b.div():col():gap(6):p(10):no_shrink():child(field):child(b.div():text_size(11.5):child(summary)))

@@ -459,7 +459,7 @@ fn settings_are_kept_within_their_bounds_where_the_xdg_directories_say() {
     let heard = ask(&pane, &[("settings", json!({ "settings": settings }))]);
     let saved = &heard[0].result()["settings"];
     assert_eq!(saved["tabSize"], json!(1));
-    assert_eq!(saved["sidebarWidth"], json!(160));
+    assert_eq!(saved["sidebarWidth"], json!(228));
     assert_eq!(saved["diffDecorations"], json!(false));
     assert!(
         saved.get("vim").is_none(),

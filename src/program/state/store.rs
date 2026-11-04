@@ -302,7 +302,7 @@ mod tests {
         let read = settings_of(&old);
         assert_eq!(read.whitespace, Whitespace::All);
         assert_eq!(read.tab_size, 8);
-        assert_eq!(read.sidebar_width, 160);
+        assert_eq!(read.sidebar_width, 228);
         assert!(!read.wrap);
         assert!(read.indent_guides);
         assert_eq!(read.line_numbers, LineNumbers::Relative);
