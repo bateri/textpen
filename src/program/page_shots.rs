@@ -378,6 +378,33 @@ fn the_pictures_of_the_comparison() -> Result<(), Error> {
         let png = page.shot_in(&fonts, palette).expect("a picture");
         std::fs::write(out.join(format!("{name}.png")), png).expect("the picture written");
     }
+    // The tree, with what git ignores quiet all the way down.
+    for (name, palette) in [
+        ("tree-ignored-dark", Palette::Dark),
+        ("tree-ignored-light", Palette::Light),
+    ] {
+        let project = lantern();
+        project.write(".gitignore", "out/\n*.log\n");
+        project.write("out/deep/inner.txt", "x\n");
+        project.write("logs/today.log", "x\n");
+        project.write("logs/kept.txt", "x\n");
+        with_git(&project);
+        let mut page = open(&project, &[], (1280.0, 800.0), &fonts)?;
+        page.press("cmd+shift+e")?;
+        for dir in ["out", "out/deep", "logs"] {
+            wait(&mut page, |page| {
+                page.bounds(&format!("row:{dir}")).is_some()
+            })?;
+            page.click(&format!("row:{dir}"))?;
+        }
+        wait(&mut page, |page| {
+            page.bounds("row:out/deep/inner.txt").is_some()
+        })?;
+        page.advance(1.0)?;
+        page.settle()?;
+        let png = page.shot_in(&fonts, palette).expect("a picture");
+        std::fs::write(out.join(format!("{name}.png")), png).expect("the picture written");
+    }
     Ok(())
 }
 

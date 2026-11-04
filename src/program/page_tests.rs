@@ -2104,6 +2104,64 @@ fn a_field_opens_with_its_text_selected_and_the_keyboard_in_it() -> Result<(), E
     Ok(())
 }
 
+/// The colour the page writes the name `word` in.
+fn ink_of(page: &Page, word: &str) -> String {
+    use pencere_view::wire::Kind;
+    let root = page.root().expect("a page");
+    let node = root
+        .fold()
+        .into_iter()
+        .find(|node| matches!(&node.kind, Kind::Text(words) if words == word))
+        .unwrap_or_else(|| panic!("{word} is not on the page: {:?}", page_words(page)));
+    format!("{:?}", node.style.text.color)
+}
+
+/// What git ignores is quiet in the tree, and all that is in a folder it ignores: not only the folder.
+/// Nothing git keeps is quiet for being in a folder, whatever that folder is called.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn what_git_ignores_is_quiet_all_the_way_down_in_the_tree() -> Result<(), Error> {
+    let project = lantern();
+    project.write(".gitignore", "out/\n*.log\n");
+    project.write("out/deep/inner.txt", "x\n");
+    project.write("logs/today.log", "x\n");
+    project.write("logs/kept.txt", "x\n");
+    project.write("build/source.txt", "x\n");
+    crate::page_changes::committed(&project);
+    let session = project.session(&[]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+shift+e")?;
+    for dir in ["out", "out/deep", "logs", "build"] {
+        wait(&mut page, |page| {
+            page.bounds(&format!("row:{dir}")).is_some()
+        })?;
+        page.click(&format!("row:{dir}"))?;
+    }
+    wait(&mut page, |page| {
+        [
+            "row:out/deep/inner.txt",
+            "row:logs/today.log",
+            "row:build/source.txt",
+        ]
+        .iter()
+        .all(|row| page.bounds(row).is_some())
+    })?;
+    let quiet = ink_of(&page, "out");
+    let plain = ink_of(&page, "kept.txt");
+    assert_ne!(quiet, plain);
+    assert_eq!(ink_of(&page, "deep"), quiet);
+    assert_eq!(ink_of(&page, "inner.txt"), quiet);
+    assert_eq!(ink_of(&page, "today.log"), quiet);
+    assert_eq!(
+        ink_of(&page, "logs"),
+        plain,
+        "only what is in it is ignored"
+    );
+    assert_eq!(ink_of(&page, "build"), quiet, "quiet by its name");
+    assert_eq!(ink_of(&page, "source.txt"), plain, "git keeps it");
+    Ok(())
+}
+
 /// ⌫ in a palette with nothing typed goes back to the files, from the commands and from a line.
 #[test]
 #[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]

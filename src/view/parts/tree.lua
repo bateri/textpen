@@ -16,7 +16,7 @@ local tree = {}
 
 tree.LIST = "tree"
 local ROW = SIZE.row
-local INDENT = 16
+local INDENT = kit.INDENT
 
 -- How wide the rows are where a name is wider than the tree (`tree.measure`); 0 where none is.
 tree.width = 0
@@ -37,44 +37,6 @@ local QUIET = {
 	venv = true,
 }
 
--- The rows as the tree shows them: each listed entry under its open directory.
-function tree.rows()
-	local out = {}
-	local open = {}
-	for _, dir in S.expanded do
-		open[dir] = true
-	end
-	local function walk(dir, depth)
-		local listing = S.listings[dir]
-		if not listing then
-			return
-		end
-		local listed = {}
-		for _, entry in listing.entries do
-			listed[entry.path] = true
-			-- A file on its way takes the place of the one it is replacing.
-			local coming = uploads.of(entry.path)
-			if not HIDDEN[entry.name] and not (coming and coming.state ~= "asking") then
-				local is_open = entry.kind == "dir" and open[entry.path] == true
-				out[#out + 1] = { entry = entry, depth = depth, open = is_open, loading = is_open and not S.listings[entry.path] }
-				if is_open then
-					walk(entry.path, depth + 1)
-				end
-			end
-		end
-		-- The files on their way into the directory, faint, after what is there; one whose name is
-		-- taken is shown once the person has said what to do.
-		for _, coming in uploads.in_dir(dir) do
-			if not (coming.state == "asking" and listed[coming.path]) then
-				local entry = { name = coming.name, path = coming.path, kind = "file", size = coming.size }
-				out[#out + 1] = { entry = entry, depth = depth, upload = coming }
-			end
-		end
-	end
-	walk("", 0)
-	return out
-end
-
 -- What git says of each directory: the strongest of what it says of the files in it.
 local function dir_states()
 	local states = {}
@@ -88,6 +50,71 @@ local function dir_states()
 		end
 	end
 	return states
+end
+
+-- What git ignores, as a set; made once for each thing git says.
+local ignored_of = nil
+
+local function ignored_paths()
+	local git = S.git
+	if not (ignored_of and ignored_of.git == git) then
+		local paths = {}
+		for _, path in git and git.ignored or {} do
+			paths[path] = true
+		end
+		ignored_of = { git = git, paths = paths }
+	end
+	return ignored_of.paths
+end
+
+-- The rows as the tree shows them: each listed entry under its open directory. A row is quiet where git
+-- ignores it or a folder it is in, and outside a repository where it is in a folder of what tools put
+-- there. In a repository such a folder and a dotfile git says nothing of are quiet by their own name
+-- alone: what is in them may be kept.
+function tree.rows()
+	local out = {}
+	local open = {}
+	for _, dir in S.expanded do
+		open[dir] = true
+	end
+	local dirs, changes, ignored = dir_states(), S.git and S.git.changes or {}, ignored_paths()
+	local function walk(dir, depth, quiet_above)
+		local listing = S.listings[dir]
+		if not listing then
+			return
+		end
+		local listed = {}
+		for _, entry in listing.entries do
+			listed[entry.path] = true
+			-- A file on its way takes the place of the one it is replacing.
+			local coming = uploads.of(entry.path)
+			if not HIDDEN[entry.name] and not (coming and coming.state ~= "asking") then
+				local is_open = entry.kind == "dir" and open[entry.path] == true
+				local state = entry.kind == "dir" and dirs[entry.path] or changes[entry.path]
+				local quiet_within = quiet_above or ignored[entry.path] == true or (S.git == nil and QUIET[entry.name] == true)
+				out[#out + 1] = {
+					entry = entry,
+					depth = depth,
+					open = is_open,
+					loading = is_open and not S.listings[entry.path],
+					quiet = quiet_within or QUIET[entry.name] == true or (string.sub(entry.name, 1, 1) == "." and not state),
+				}
+				if is_open then
+					walk(entry.path, depth + 1, quiet_within)
+				end
+			end
+		end
+		-- The files on their way into the directory, faint, after what is there; one whose name is
+		-- taken is shown once the person has said what to do.
+		for _, coming in uploads.in_dir(dir) do
+			if not (coming.state == "asking" and listed[coming.path]) then
+				local entry = { name = coming.name, path = coming.path, kind = "file", size = coming.size }
+				out[#out + 1] = { entry = entry, depth = depth, upload = coming }
+			end
+		end
+	end
+	walk("", 0, false)
+	return out
 end
 
 local function dirty_paths()
@@ -137,9 +164,7 @@ local function upload_view(row, ctx)
 	else
 		element:role("progress"):label(uploads.spoken(up)):value(uploads.words(up))
 	end
-	for depth = 0, row.depth - 1 do
-		element:child(b.div():absolute():inset(0, nil, 0, 15 + depth * INDENT):w(1):bg(b.alpha("border", 0.7)))
-	end
+	kit.indent_guides(element, row.depth)
 	-- The line is as wide as the tree and no wider: what is said at its end gives way to the name, and
 	-- where it does not fit its last 22 points fade, the whole of it in the tip.
 	local line = b.div()
@@ -227,8 +252,7 @@ local function row_view(row, index, ctx)
 	elseif over then
 		ground = b.alpha("foreground", 0.045)
 	end
-	local quiet = QUIET[entry.name] or (string.sub(entry.name, 1, 1) == "." and not state)
-	local color = quiet and "quiet" or "foreground"
+	local color = row.quiet and "quiet" or "foreground"
 	if state and files.GIT_COLOR[state] then
 		color = files.GIT_COLOR[state]
 	end
@@ -251,10 +275,7 @@ local function row_view(row, index, ctx)
 	if is_dir and uploads.dropping(path) then
 		element:border(1, "accent")
 	end
-	-- A guide under the middle of each ancestor's icon.
-	for depth = 0, row.depth - 1 do
-		element:child(b.div():absolute():inset(0, nil, 0, 15 + depth * INDENT):w(1):bg(b.alpha("border", 0.7)))
-	end
+	kit.indent_guides(element, row.depth)
 	local line = b.div()
 		:id("rowline:" .. path)
 		:row()

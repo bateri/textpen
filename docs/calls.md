@@ -49,12 +49,14 @@ Entry       = { name: string, path: string, kind: "file" | "dir", link?: true, s
               -- link: a symbolic link, followed (kind is what it points to).
 Listing     = { dir: string, entries: Entry[], truncated: boolean }
 GitInfo     = { branch: string, ahead: number, behind: number, changes: { [path]: GitState },
-              index: number, head: string, renames?: { [path]: string } }
+              index: number, head: string, renames?: { [path]: string }, ignored?: string[] }
               -- index: when git's index file was last written (ms; 0 if not said): staging or unstaging
               -- moves it, so the page asks `diff` again for the files it marks.
               -- head: the commit the project is at (git's `# branch.oid`; "" before the first commit): a
               -- commit moves it, and the page asks `compare` again for the files it shows against it.
               -- renames: for a file git has renamed (or copied), the path it had, both under the root.
+              -- ignored: what git ignores, under the root: a folder that matches stands for all in it,
+              -- which is not named. 64 KiB of paths at most; those past that are not told.
 Eol         = "lf" | "crlf"
 BufferInfo  = {
   path: string,          -- relative to the root, or absolute outside it; also the buffer's id

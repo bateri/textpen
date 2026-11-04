@@ -851,6 +851,7 @@ fn a_git_repository_is_read_for_the_quick_open_and_for_the_changes() {
         git_info["changes"],
         json!({ "kept.txt": "modified", "new file.txt": "untracked", "ünï/çödé.txt": "untracked" })
     );
+    assert_eq!(git_info["ignored"], json!(["ignored.txt"]));
     let mut files = strings(&heard[1].result()["files"]);
     files.sort();
     assert_eq!(

@@ -33,6 +33,10 @@ const SAID_NOTHING: &str = "git failed";
 /// How long what git said of the renames is used when a file is looked for under its old name.
 const RENAME_AGE: Duration = Duration::from_millis(2500);
 
+/// The most bytes of ignored paths told to the page: a pattern can match thousands of files in folders
+/// that are kept, and what git says of the project goes in one message with the rest of what it says.
+const IGNORED_BYTES: usize = 64 * 1024;
+
 /// What git says of a file that is not as it was committed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -61,6 +65,10 @@ pub struct GitInfo {
     /// For a file git has renamed or copied, the path it had, both under the project's root.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub renames: BTreeMap<String, String>,
+    /// What git ignores, from the project's root: a folder that matches stands for all that is in it,
+    /// which is not named. Those past `IGNORED_BYTES` are not told.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub ignored: Vec<String>,
 }
 
 /// The last commit: its id and the first line of its message.
@@ -213,7 +221,9 @@ fn parse_status(out: &[u8], prefix: &str) -> GitInfo {
         index: 0,
         head: String::new(),
         renames: BTreeMap::new(),
+        ignored: Vec::new(),
     };
+    let mut ignored_bytes = 0;
     let mut renames = BTreeMap::new();
     let mut head = String::new();
     // git names paths from the top of the repository; the page names them from the root, and is
@@ -274,6 +284,15 @@ fn parse_status(out: &[u8], prefix: &str) -> GitInfo {
             }
         } else if let Some(path) = record.strip_prefix("? ") {
             note(path, GitState::Untracked);
+        } else if let Some(path) = record.strip_prefix("! ") {
+            // The project's own folder ignored names nothing in it: the project is what was opened.
+            let path = path.trim_end_matches('/');
+            if let Some(rest) = path.strip_prefix(prefix).filter(|rest| !rest.is_empty()) {
+                ignored_bytes += rest.len();
+                if ignored_bytes <= IGNORED_BYTES {
+                    info.ignored.push(rest.to_owned());
+                }
+            }
         }
     }
     info.branch = branch;
@@ -323,6 +342,9 @@ fn read(root: &str) -> Result<GitInfo, String> {
             "--branch",
             "-z",
             "--untracked-files=all",
+            // A folder that matches is named and not gone through, so this costs little in a
+            // project with a large `target` or `node_modules`.
+            "--ignored=matching",
         ],
         root,
         32 << 20,
@@ -582,6 +604,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn only_so_many_ignored_paths_are_told() {
+        let long = "x".repeat(40_000);
+        let out = format!("! {long}a\0! {long}b\0! short\0");
+        let info = parse_status(out.as_bytes(), "");
+        assert_eq!(info.ignored, [format!("{long}a")]);
+    }
+
+    #[test]
     fn the_records_of_git_status_are_the_branch_and_the_changes_under_the_root() {
         let out = [
             "# branch.oid 0123456789abcdef",
@@ -597,10 +627,15 @@ mod tests {
             "u UU N... 100644 100644 100644 100644 a b c sub/both.txt",
             "? sub/untracked.txt",
             "? outside.txt",
+            "! sub/target/",
+            "! sub/deep/one.log",
+            "! elsewhere/two.log",
+            "! sub/",
             "",
         ]
         .join("\0");
         let info = parse_status(out.as_bytes(), "sub/");
+        assert_eq!(info.ignored, ["target", "deep/one.log"]);
         assert_eq!(info.branch, "trunk");
         assert_eq!((info.ahead, info.behind), (2, 3));
         assert_eq!(info.head, "0123456789abcdef");

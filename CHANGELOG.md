@@ -7,6 +7,12 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Changed
+
+- **What git ignores is grey in the tree, and so is all that is in a folder it ignores.** Grey used to
+  go by the name alone (`target`, `node_modules`, a dotfile) and stop at that row: a file `.gitignore`
+  matches by another name stayed plain, and so did all that was inside the grey folder.
+
 ## [0.3.0] - 2026-11-04
 
 ### Added

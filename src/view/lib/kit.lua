@@ -307,6 +307,16 @@ local function button(id, words, options)
 	return element
 end
 
+-- How far a row of a tree of files stands in for each folder it is in, points.
+local INDENT = 16
+
+-- A guide under the middle of each ancestor's icon, on a row of a tree of files.
+local function indent_guides(element, depth)
+	for at = 0, depth - 1 do
+		element:child(b.div():absolute():inset(0, nil, 0, 15 + at * INDENT):w(1):bg(b.alpha("border", 0.7)))
+	end
+end
+
 -- A line across or down, in the theme's colour of rules.
 local function rule_x(color)
 	return b.div():h(1):w_full():no_shrink():bg(color or "border")
@@ -357,6 +367,8 @@ return {
 	kbd = kbd,
 	icon_button = icon_button,
 	button = button,
+	INDENT = INDENT,
+	indent_guides = indent_guides,
 	rule_x = rule_x,
 	rule_y = rule_y,
 	toast = toast,

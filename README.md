@@ -70,7 +70,7 @@ files cross the stream once; after that the terminal keeps them.
 </table>
 
 **The files of the project**, as a tree with what git says of each — changed, new, in
-conflict — and of the folders that hold them; which files are open and which have changes
+conflict, ignored, with all that is in a folder it ignores — and of the folders that hold them; which files are open and which have changes
 that are not saved. Make, rename, move and delete files and folders from it. It follows the
 file you are in, and shows every name whole: a tree narrower than its names scrolls across.
 
