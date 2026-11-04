@@ -113,8 +113,8 @@ name, and one git does not keep is all added. A binary file, a file outside a gi
 a file of more than 2 MiB or 50 000 lines are not laid out so, and the page says why.
 
 **The changed files.** The sidebar has a third panel beside Files and Search, `⇧⌘G`: the files git
-says are changed, and below them those it does not keep, each with its icon, its folder and its
-letter. A click, or an arrow, shows the file beside the last commit and leaves the keys in the
+says are changed, and below them those it does not keep, each with its icon, its folder, its letter
+and how many lines it adds and takes away (`+12 −3`), as it is on the disk. A click, or an arrow, shows the file beside the last commit and leaves the keys in the
 panel, so that you go through a change set file by file; `⏎` goes into the editor. A file the
 panel opened that you did nothing in is closed as the next comes. The button at its head, or `t`,
 stands the files under their folders, as the tree of the project has them, and back.

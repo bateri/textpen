@@ -1,6 +1,7 @@
 -- The files git says are changed, as a panel of the sidebar beside the files and the search: those
 -- with changes (`Changes`) and those git does not keep (`Unversioned Files`), each a row with its
--- icon, its name, the folder it is in and the letter git says of it. A press on a row, or a key that
+-- icon, its name, the folder it is in, the lines it adds and takes away as it is on the disk, and the
+-- letter git says of it; a group and a folder say the lines of what is in them. A press on a row, or a key that
 -- moves to it, shows the file beside the last commit (`compare`); the keys stay in the panel, so that
 -- it is gone through file after file, and ⏎ goes into the editor.
 --
@@ -27,9 +28,9 @@ local ROW = SIZE.row
 
 -- The rows as the panel shows them: a heading and the files under it, for each group that has any.
 -- Kept while what git said is the same, the panel stands as it did and no folder folded. A row of a file
--- is `{ path =, state = }`, with `depth =` under its folders; a row of a folder `{ key =, dir =, name =,
--- depth =, open =, state = }`. The same folder can be in both groups, each with its own row: `key` is
--- which.
+-- is `{ path =, state =, added =, removed = }`, with `depth =` under its folders; a row of a folder
+-- `{ key =, dir =, name =, depth =, open =, state =, added =, removed = }`. The same folder can be in both
+-- groups, each with its own row: `key` is which.
 local cached = nil
 
 local function by_lower(a, c)
@@ -48,9 +49,11 @@ local function tree_rows(group, entries, rows)
 			at = at and (at .. "/" .. name) or name
 			local dir = node.dirs[name]
 			if not dir then
-				dir = { name = name, path = at, dirs = {}, entries = {} }
+				dir = { name = name, path = at, dirs = {}, entries = {}, added = 0, removed = 0 }
 				node.dirs[name] = dir
 			end
+			dir.added += entry.added
+			dir.removed += entry.removed
 			if (files.GIT_RANK[entry.state] or 0) > (dir.state and files.GIT_RANK[dir.state] or 0) then
 				dir.state = entry.state
 			end
@@ -68,13 +71,16 @@ local function tree_rows(group, entries, rows)
 			local dir = node.dirs[name]
 			local key = "dir:" .. group .. ":" .. dir.path
 			local open = not S.changes_folded[key]
-			rows[#rows + 1] = { key = key, dir = dir.path, name = name, depth = depth, open = open, state = dir.state }
+			rows[#rows + 1] = {
+				key = key, dir = dir.path, name = name, depth = depth, open = open, state = dir.state,
+				added = dir.added, removed = dir.removed,
+			}
 			if open then
 				walk(dir, depth + 1)
 			end
 		end
 		for _, entry in node.entries do
-			rows[#rows + 1] = { path = entry.path, state = entry.state, depth = depth }
+			rows[#rows + 1] = { path = entry.path, state = entry.state, added = entry.added, removed = entry.removed, depth = depth }
 		end
 	end
 	walk(root, 0)
@@ -86,8 +92,10 @@ function changes_list.rows()
 		return cached.rows
 	end
 	local kept, unversioned = {}, {}
+	local stats = git and git.stats or {}
 	for path, state in git and git.changes or {} do
-		local entry = { path = path, state = state }
+		local counts = stats[path]
+		local entry = { path = path, state = state, added = counts and counts[1] or 0, removed = counts and counts[2] or 0 }
 		if state == "untracked" then
 			unversioned[#unversioned + 1] = entry
 		else
@@ -102,7 +110,12 @@ function changes_list.rows()
 	local rows = {}
 	for _, group in { { "Changes", kept }, { "Unversioned Files", unversioned } } do
 		if #group[2] > 0 then
-			rows[#rows + 1] = { heading = group[1], count = #group[2] }
+			local added, removed = 0, 0
+			for _, entry in group[2] do
+				added += entry.added
+				removed += entry.removed
+			end
+			rows[#rows + 1] = { heading = group[1], count = #group[2], added = added, removed = removed }
 			if S.changes_tree then
 				tree_rows(group[1], group[2], rows)
 			else
@@ -153,6 +166,18 @@ local function ground_of(id, chosen, path)
 	return nil
 end
 
+-- How many lines a row adds and takes away; what is none is not said.
+local function lines_view(row)
+	local line = b.div():row():items_center():gap(4):no_shrink()
+	if row.added > 0 then
+		line:child(b.text("+" .. row.added):color("success"):text_size(11))
+	end
+	if row.removed > 0 then
+		line:child(b.text("−" .. row.removed):color("error"):text_size(11))
+	end
+	return line
+end
+
 local function folder_view(row)
 	local id = "change-dir:" .. row.key
 	local element = b.div():press(id):row():items_center():gap(6):h(ROW):pl(8 + row.depth * kit.INDENT):pr(10):no_shrink()
@@ -163,14 +188,17 @@ local function folder_view(row)
 		:child(kit.icon(row.open and "folder-open" or "folder", 15, "accent"))
 		:child(b.text(row.name):color(files.GIT_COLOR[row.state] or "foreground"):truncate():min_w(0))
 		:child(b.spacer())
+		:child(lines_view(row))
 		:child(b.div():size(6, 6):rounded(3):bg(files.GIT_COLOR[row.state] or "dim"):no_shrink())
 end
 
 local function row_view(row)
 	if row.heading then
-		return b.div():row():items_center():gap(6):h(ROW):px(12):no_shrink()
+		return b.div():row():items_center():gap(6):h(ROW):pl(12):pr(10):no_shrink()
 			:child(b.text(row.heading):weight(700):text_size(11.5):color("dim"))
 			:child(b.text(tostring(row.count)):text_size(11.5):color("quiet"))
+			:child(b.spacer())
+			:child(lines_view(row))
 	elseif row.dir then
 		return folder_view(row)
 	end
@@ -197,6 +225,7 @@ local function row_view(row)
 		end
 	end
 	element:child(b.spacer())
+	element:child(lines_view(row))
 	element:child(b.text(files.GIT_LETTER[row.state] or ""):color(files.GIT_COLOR[row.state] or "dim"):weight(700):text_size(11):no_shrink())
 	return element
 end

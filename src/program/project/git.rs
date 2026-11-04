@@ -5,14 +5,14 @@
 //!
 //! Plain values in and out: this file knows nothing of the page.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use serde::Serialize;
 
@@ -36,6 +36,16 @@ const RENAME_AGE: Duration = Duration::from_millis(2500);
 /// The most bytes of ignored paths told to the page: a pattern can match thousands of files in folders
 /// that are kept, and what git says of the project goes in one message with the rest of what it says.
 const IGNORED_BYTES: usize = 64 * 1024;
+
+/// The most bytes of paths told with how many lines each file differs by, for the same reason.
+const STATS_BYTES: usize = 64 * 1024;
+
+/// How long one asking starts counting a file's lines for: what is past this is counted at the next, and
+/// what was counted is not read again until it changes.
+const COUNT_TIME: Duration = Duration::from_millis(200);
+
+/// What `compare::blocks` may fill with the words that differ while lines are counted.
+const COUNT_BLOCKS_BYTES: usize = 64 * 1024;
 
 /// What git says of a file that is not as it was committed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -69,6 +79,12 @@ pub struct GitInfo {
     /// which is not named. Those past `IGNORED_BYTES` are not told.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub ignored: Vec<String>,
+    /// How many lines each changed file adds to and takes from the last commit, as it is on the disk, by
+    /// the blocks a comparison shows; all of them added for one git does not keep. None for one that is not
+    /// text, one that is too long to compare, or where no line differs; those past `STATS_BYTES` are not
+    /// told, and those not counted yet are told at a later asking.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub stats: BTreeMap<String, [u64; 2]>,
 }
 
 /// The last commit: its id and the first line of its message.
@@ -222,6 +238,7 @@ fn parse_status(out: &[u8], prefix: &str) -> GitInfo {
         head: String::new(),
         renames: BTreeMap::new(),
         ignored: Vec::new(),
+        stats: BTreeMap::new(),
     };
     let mut ignored_bytes = 0;
     let mut renames = BTreeMap::new();
@@ -303,6 +320,14 @@ fn parse_status(out: &[u8], prefix: &str) -> GitInfo {
     info
 }
 
+/// A changed file as its lines were counted: the commit against, its size and time on the disk (none: it
+/// is not there), and the lines it adds and takes away (none: it cannot be compared).
+struct Counted {
+    head: String,
+    disk: Option<(u64, Option<SystemTime>)>,
+    lines: Option<[u64; 2]>,
+}
+
 /// A file's bytes as textpen holds a buffer's text: none for one that is not UTF-8 text.
 fn normalized(bytes: Vec<u8>) -> Option<String> {
     if super::tree::is_binary(&bytes) {
@@ -377,6 +402,8 @@ pub struct Git {
     /// The text of the last blob read, by its id: a file compared again as it is typed in is not read
     /// from git every time.
     blobs: Mutex<Option<(String, Arc<String>)>>,
+    /// The changed files whose lines were counted, by their path.
+    counted: Mutex<HashMap<String, Counted>>,
 }
 
 impl Git {
@@ -387,6 +414,7 @@ impl Git {
             said: Mutex::new(None),
             forgotten: AtomicU64::new(0),
             blobs: Mutex::new(None),
+            counted: Mutex::new(HashMap::new()),
         }
     }
 
@@ -584,13 +612,105 @@ impl Git {
         if !self.is_repository() {
             return None;
         }
-        let value = read(&self.root).ok();
+        let value = read(&self.root).ok().map(|mut info| {
+            info.stats = self.stats(&info);
+            info
+        });
         *said = Some(Said {
             at: Instant::now(),
             forgotten,
             value: value.clone(),
         });
         value
+    }
+
+    /// How many lines each changed file adds and takes away. Not by `git diff`, which runs the clean
+    /// filter a repository's config names on the files on the disk: a project that was only unpacked here
+    /// would run it as soon as it is opened. The commit's text is read from git and the file's from the
+    /// disk, as a comparison reads them, so the two say the same.
+    fn stats(&self, info: &GitInfo) -> BTreeMap<String, [u64; 2]> {
+        let began = Instant::now();
+        let mut counted = self.counted.lock().unwrap_or_else(PoisonError::into_inner);
+        counted.retain(|path, _| info.changes.contains_key(path));
+        let mut stats = BTreeMap::new();
+        let mut told = 0;
+        for (path, state) in &info.changes {
+            told += path.len() + 24;
+            if told > STATS_BYTES {
+                break;
+            }
+            if !under_root(path) {
+                continue;
+            }
+            let file = std::path::Path::new(&self.root).join(path);
+            // A link, a folder and a submodule are no text to count.
+            let disk = match std::fs::symlink_metadata(&file) {
+                Ok(meta) if meta.is_file() => Some((meta.len(), meta.modified().ok())),
+                Err(why) if why.kind() == std::io::ErrorKind::NotFound => None,
+                _ => continue,
+            };
+            let known = counted
+                .get(path)
+                .filter(|known| known.head == info.head && known.disk == disk);
+            let lines = if let Some(known) = known {
+                known.lines
+            } else if began.elapsed() > COUNT_TIME {
+                continue;
+            } else {
+                let lines = self.lines_of(path, *state, info, disk.is_some());
+                counted.insert(
+                    path.clone(),
+                    Counted {
+                        head: info.head.clone(),
+                        disk,
+                        lines,
+                    },
+                );
+                lines
+            };
+            if let Some(lines) = lines.filter(|lines| *lines != [0, 0]) {
+                stats.insert(path.clone(), lines);
+            }
+        }
+        stats
+    }
+
+    /// The lines `path` adds to and takes from the last commit; none for what cannot be compared.
+    fn lines_of(
+        &self,
+        path: &str,
+        state: GitState,
+        info: &GitInfo,
+        on_disk: bool,
+    ) -> Option<[u64; 2]> {
+        let old = if state == GitState::Untracked {
+            String::new()
+        } else {
+            let from = info.renames.get(path).map_or(path, String::as_str);
+            match self.blob_of(from).ok()? {
+                Some(id) => {
+                    normalized(run(&["cat-file", "blob", &id], &self.root, INDEX_LIMIT).ok()?)?
+                }
+                None => String::new(),
+            }
+        };
+        let new = if on_disk {
+            let file = std::path::Path::new(&self.root).join(path);
+            let len = std::fs::symlink_metadata(&file).ok()?.len();
+            if len > u64::try_from(super::diff::TEXT_LIMIT).unwrap_or(u64::MAX) {
+                return None;
+            }
+            normalized(std::fs::read(file).ok()?)?
+        } else {
+            String::new()
+        };
+        let blocks = super::compare::blocks(&old, &new, COUNT_BLOCKS_BYTES).ok()?;
+        let (mut added, mut removed) = (0, 0);
+        for block in blocks {
+            added += u64::try_from(block.new_count).unwrap_or(0);
+            removed += u64::try_from(block.old_count).unwrap_or(0);
+        }
+        Some([added, removed])
     }
 
     /// Forgets what git said: the files changed.
@@ -602,6 +722,130 @@ impl Git {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A repository with no commit yet.
+    fn repository() -> (tempfile::TempDir, std::path::PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        git_in(&root, &["init", "-q"]);
+        (dir, root)
+    }
+
+    fn git_in(root: &std::path::Path, args: &[&str]) {
+        let made = Command::new("git")
+            .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+            .args(["-c", "commit.gpgsign=false"])
+            .args(args)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .current_dir(root)
+            .output()
+            .unwrap();
+        assert!(made.status.success(), "{args:?}: {made:?}");
+    }
+
+    /// What differs from the last commit, staged or not, whatever else differs; all the lines of a file
+    /// git does not keep; nothing for what is not text or what no line of differs in.
+    #[test]
+    fn a_change_says_how_many_lines_it_adds_and_takes_away() {
+        let (_dir, root) = repository();
+        let write = |name: &str, text: &[u8]| std::fs::write(root.join(name), text).unwrap();
+        write("changed.txt", b"a\nb\nc\n");
+        write("staged.txt", b"a\n");
+        write("gone.txt", b"a\nb\n");
+        write("moved.txt", b"a\nb\nc\nd\ne\nf\ng\nh\n");
+        write("renamed.txt", b"a\nb\nc\nd\ne\nf\ng\nh\n");
+        write("picture.bin", b"\0\0");
+        git_in(&root, &["add", "."]);
+        git_in(&root, &["commit", "-qm", "one"]);
+        write("changed.txt", b"a\nB\nc\nd\n");
+        write("staged.txt", b"a\nb\n");
+        git_in(&root, &["add", "staged.txt"]);
+        std::fs::remove_file(root.join("gone.txt")).unwrap();
+        git_in(&root, &["mv", "moved.txt", "there.txt"]);
+        git_in(&root, &["mv", "renamed.txt", "here.txt"]);
+        write("here.txt", b"a\nb\nc\nd\ne\nf\ng\nh\ni\n");
+        write("picture.bin", b"\0\0\0");
+        write("new.txt", b"a\nb\nc");
+        write("empty.txt", b"");
+        write("new.bin", b"\0");
+        let git = Git::new(root.to_str().unwrap());
+        let stats = git.status(Duration::ZERO).unwrap().stats;
+        let stats: Vec<(&str, [u64; 2])> = stats
+            .iter()
+            .map(|(path, counts)| (path.as_str(), *counts))
+            .collect();
+        assert_eq!(
+            stats,
+            [
+                ("changed.txt", [2, 1]),
+                ("gone.txt", [0, 2]),
+                ("here.txt", [1, 0]),
+                ("new.txt", [3, 0]),
+                ("staged.txt", [1, 0]),
+            ]
+        );
+    }
+
+    /// Before the first commit what is staged is what differs, and what is not is new as ever.
+    #[test]
+    fn before_the_first_commit_a_change_says_its_lines_too() {
+        let (_dir, root) = repository();
+        std::fs::write(root.join("staged.txt"), "a\nb\n").unwrap();
+        git_in(&root, &["add", "staged.txt"]);
+        std::fs::write(root.join("new.txt"), "a\n").unwrap();
+        let git = Git::new(root.to_str().unwrap());
+        let stats = git.status(Duration::ZERO).unwrap().stats;
+        assert_eq!(stats.get("staged.txt"), Some(&[2, 0]));
+        assert_eq!(stats.get("new.txt"), Some(&[1, 0]));
+    }
+
+    /// A project git keeps under a folder of a repository says what is in it, by its own paths.
+    #[test]
+    fn a_project_inside_a_repository_counts_its_own_files() {
+        let (_dir, root) = repository();
+        std::fs::create_dir(root.join("sub")).unwrap();
+        std::fs::write(root.join("sub/a.txt"), "a\n").unwrap();
+        std::fs::write(root.join("b.txt"), "a\n").unwrap();
+        git_in(&root, &["add", "."]);
+        git_in(&root, &["commit", "-qm", "one"]);
+        std::fs::write(root.join("sub/a.txt"), "a\nb\n").unwrap();
+        std::fs::write(root.join("b.txt"), "a\nb\n").unwrap();
+        let git = Git::new(root.join("sub").to_str().unwrap());
+        let stats = git.status(Duration::ZERO).unwrap().stats;
+        assert_eq!(stats.len(), 1);
+        assert_eq!(stats.get("a.txt"), Some(&[1, 0]));
+    }
+
+    /// The commands a repository's config can name for a diff or for a file on the disk are not run when
+    /// lines are counted.
+    #[test]
+    fn counting_lines_runs_no_command_a_repository_names() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_dir, root) = repository();
+        let marker = root.join("ran");
+        let hook = root.join("hook.sh");
+        std::fs::write(
+            &hook,
+            format!("#!/bin/sh\ntouch '{}'\ncat \"$1\"\n", marker.display()),
+        )
+        .unwrap();
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(root.join(".gitattributes"), "a.txt diff=evil filter=evil\n").unwrap();
+        std::fs::write(root.join("a.txt"), "a\n").unwrap();
+        git_in(&root, &["add", "a.txt", ".gitattributes"]);
+        git_in(&root, &["commit", "-qm", "one"]);
+        let command = hook.to_str().unwrap();
+        git_in(&root, &["config", "diff.external", command]);
+        git_in(&root, &["config", "diff.evil.textconv", command]);
+        git_in(&root, &["config", "diff.evil.command", command]);
+        git_in(&root, &["config", "filter.evil.clean", command]);
+        std::fs::write(root.join("a.txt"), "a\nb\n").unwrap();
+        let git = Git::new(root.to_str().unwrap());
+        let stats = git.status(Duration::ZERO).unwrap().stats;
+        assert_eq!(stats.get("a.txt"), Some(&[1, 0]));
+        assert!(!marker.exists(), "the repository's own command was run");
+    }
 
     #[test]
     fn only_so_many_ignored_paths_are_told() {

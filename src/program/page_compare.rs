@@ -1028,6 +1028,43 @@ fn the_panel_stands_its_files_under_folders_that_fold() -> Result<(), Error> {
     Ok(())
 }
 
+/// A file says how many lines it adds and takes away, and a group and a folder those of what is in them;
+/// what a row has none of is not said.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_panel_says_how_many_lines_each_change_adds_and_takes_away() -> Result<(), Error> {
+    let project = lantern();
+    committed(&project);
+    let readme = project.read("README.md");
+    project.write("README.md", &format!("{readme}one more\n"));
+    let format = project.read("src/lib/format.ts");
+    let lines = format.lines().count();
+    std::fs::remove_file(project.root().join("src/lib/format.ts")).expect("removed");
+    project.write("notes/new.txt", "a\nb\nc\n");
+    let session = project.session(&[]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+shift+g")?;
+    wait(&mut page, |page| shows(page, "Unversioned Files"))?;
+    let words = page_words(&page);
+    let count = |word: &str| words.iter().filter(|said| *said == word).count();
+    let taken = format!("−{lines}");
+    // Each file's and its group's.
+    assert_eq!(count("+1"), 2, "{words:?}");
+    assert_eq!(count(&taken), 2, "{words:?}");
+    assert_eq!(count("+3"), 2, "{words:?}");
+    // Under their folders: each folder on the way says it too.
+    page.press("t")?;
+    let words = page_words(&page);
+    let count = |word: &str| words.iter().filter(|said| *said == word).count();
+    assert_eq!(
+        count(&taken),
+        4,
+        "the file, lib, src and the group: {words:?}"
+    );
+    assert_eq!(count("+3"), 3, "the file, notes and the group: {words:?}");
+    Ok(())
+}
+
 /// In an 80×24 pane the panel is a drawer, and a press on a row closes it on the comparison. The menus
 /// of a row, a tab and a file in the tree have the comparison too.
 #[test]

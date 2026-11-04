@@ -13,6 +13,9 @@ change what the previous one did.
   it, or Toggle Changes as a Tree stands the files as the tree of the project has them, folders first:
   a press or `h` `l` folds a folder, which says the strongest of what git says of what is in it, and
   the panel stays that way for the project.
+- **How many lines each change adds and takes away.** The panel of changes says `+12 −3` beside each
+  file, as it is on the disk against the last commit, and the same for each group and folder of what is
+  in it. A file git does not keep says all its lines.
 
 ### Changed
 
