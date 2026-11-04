@@ -573,11 +573,18 @@ local function apply(changes)
 		end
 		S.repos = held
 	end
-	-- `git: null` is a repository gone or that cannot say, no `repo` that nothing changed in any.
+	-- `git: null` is a repository gone or that cannot say, no `repo` that nothing changed in any. What it
+	-- says as the topic starts is mostly what the page was told at the start: nothing is done again for it.
+	local news = changes.roots ~= nil
 	if changes.repo then
-		S.repos[changes.repo.root] = changes.repo.git
+		local root, git = changes.repo.root, changes.repo.git
+		local before = S.repos[root]
+		if (git == nil) ~= (before == nil) or (git and json.encode(git) ~= json.encode(before)) then
+			S.repos[root] = git
+			news = true
+		end
 	end
-	if changes.roots or changes.repo then
+	if news then
 		S.git = repos.merged(S.roots, S.repos)
 		-- What differs from git's index may have: asked again for the files open.
 		marks.refresh_all()
