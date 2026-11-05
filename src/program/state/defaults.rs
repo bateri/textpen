@@ -73,6 +73,8 @@ pub struct Settings {
     pub sidebar_width: u32,
     /// Mark in the gutter the lines that differ from what git keeps (VS Code's `scm.diffDecorations`).
     pub diff_decorations: bool,
+    /// Leave out of the tree what git ignores, which is otherwise shown quiet.
+    pub hide_ignored: bool,
 }
 
 impl Default for Settings {
@@ -88,6 +90,7 @@ impl Default for Settings {
             sidebar: true,
             sidebar_width: 240,
             diff_decorations: true,
+            hide_ignored: false,
         }
     }
 }

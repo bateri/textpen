@@ -90,10 +90,11 @@ Settings    = {
   autoSave: boolean,     -- save a file when the editor loses it: another tab, the shell, quitting
   sidebar: boolean, sidebarWidth: number,
   diffDecorations: boolean,   -- mark the lines that differ from git's index (VS Code's scm.diffDecorations)
+  hideIgnored: boolean,       -- leave out of the tree what git ignores, otherwise shown quiet
 }
               -- defaults: wrap false, lineNumbers "on", tabSize 2, insertSpaces true,
               -- whitespace "selection", indentGuides true, autoSave false, sidebar true,
-              -- sidebarWidth 240, diffDecorations true.
+              -- sidebarWidth 240, diffDecorations true, hideIgnored false.
               -- Gone from the web editor's: vim (no vim mode), fontSize (the terminal's text size
               -- is the page's; textpen has no zoom of its own). A settings file from an older
               -- textpen is read: unknown keys are dropped, `whitespace: true/false` is "all"/"none".

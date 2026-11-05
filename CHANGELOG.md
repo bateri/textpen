@@ -7,6 +7,11 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Added
+
+- **Leave what git ignores out of the tree.** The setting `Hide ignored files`, or Toggle Ignored Files in
+  the Tree in the palette. It is off to begin with, and what git ignores is shown grey as before.
+
 ## [0.5.1] - 2026-11-05
 
 ### Fixed

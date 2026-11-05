@@ -72,7 +72,8 @@ files cross the stream once; after that the terminal keeps them.
 **The files of the project**, as a tree with what git says of each — changed, new, in
 conflict, ignored, with all that is in a folder it ignores — and of the folders that hold them; which files are open and which have changes
 that are not saved. Make, rename, move and delete files and folders from it. It follows the
-file you are in, and shows every name whole: a tree narrower than its names scrolls across.
+file you are in, and shows every name whole: a tree narrower than its names scrolls across. The
+setting `Hide ignored files` (or Toggle Ignored Files in the Tree) leaves what git ignores out of it.
 
 **An editor**, the terminal's own, drawn in its font, that reads 33 languages: the C family
 (JavaScript, TypeScript, JSX, TSX, Rust, Go, C, C++, C#, Java, Kotlin, Swift, PHP), the

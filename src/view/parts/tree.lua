@@ -67,10 +67,27 @@ local function ignored_paths()
 	return ignored_of.paths
 end
 
--- The rows as the tree shows them: each listed entry under its open directory. A row is quiet where git
--- ignores it or a folder it is in, and outside a repository where it is in a folder of what tools put
--- there. In a repository such a folder and a dotfile git says nothing of are quiet by their own name
--- alone: what is in them may be kept.
+-- `path`, or where the setting leaves it out of the tree the nearest folder above it that is not left
+-- out: none where that is every folder it is in.
+local function nearest_shown(path)
+	if not (path and S.settings.hideIgnored) then
+		return path
+	end
+	local ignored = ignored_paths()
+	local shown = nil
+	for _, dir in text.ancestors(path) do
+		if ignored[dir] then
+			return shown
+		end
+		shown = dir
+	end
+	return if ignored[path] then shown else path
+end
+
+-- The rows as the tree shows them: each listed entry under its open directory, but for what git ignores
+-- where the setting leaves that out. A row is quiet where git ignores it or a folder it is in, and outside
+-- a repository where it is in a folder of what tools put there. In a repository such a folder and a dotfile
+-- git says nothing of are quiet by their own name alone: what is in them may be kept.
 function tree.rows()
 	local out = {}
 	local open = {}
@@ -79,6 +96,7 @@ function tree.rows()
 	end
 	local dirs, changes, ignored = dir_states(), S.git and S.git.changes or {}, ignored_paths()
 	local by_root = S.git and S.git.by_root or {}
+	local hide_ignored = S.settings.hideIgnored
 	local function walk(dir, depth, quiet_above, in_repo)
 		local listing = S.listings[dir]
 		if not listing then
@@ -89,7 +107,8 @@ function tree.rows()
 			listed[entry.path] = true
 			-- A file on its way takes the place of the one it is replacing.
 			local coming = uploads.of(entry.path)
-			if not HIDDEN[entry.name] and not (coming and coming.state ~= "asking") then
+			local left_out = hide_ignored and ignored[entry.path] == true
+			if not HIDDEN[entry.name] and not left_out and not (coming and coming.state ~= "asking") then
 				local is_open = entry.kind == "dir" and open[entry.path] == true
 				local state = entry.kind == "dir" and dirs[entry.path] or changes[entry.path]
 				local repo = by_root[entry.path]
@@ -345,6 +364,8 @@ end
 function tree.view(width)
 	local rows = tree.rows()
 	tree.current = rows
+	-- What is chosen is acted on (a new file goes in it, F2 renames it): never a row no one can see.
+	S.tree_selection = nearest_shown(S.tree_selection)
 	local error_words = S.listing_errors[""]
 	if error_words then
 		return b.div():p(12):child(b.text(error_words):color("error"):wrap())

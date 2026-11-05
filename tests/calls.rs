@@ -202,7 +202,7 @@ fn params_that_are_not_what_a_call_asks_are_refused_with_bad_params_and_nothing_
         let mut settings = json!({
             "wrap": false, "lineNumbers": "on", "tabSize": 2, "insertSpaces": true,
             "whitespace": "selection", "indentGuides": true, "autoSave": false, "sidebar": true,
-            "sidebarWidth": 240, "diffDecorations": true,
+            "sidebarWidth": 240, "diffDecorations": true, "hideIgnored": false,
         });
         match value {
             Some(value) => settings[key] = value,
@@ -364,6 +364,7 @@ fn boot_tells_what_the_page_starts_from_with_null_where_there_is_nothing() {
             "sidebar": true,
             "sidebarWidth": 240,
             "diffDecorations": true,
+            "hideIgnored": false,
         })
     );
     assert_eq!(boot["handoff"], json!(true));
@@ -455,6 +456,7 @@ fn settings_are_kept_within_their_bounds_where_the_xdg_directories_say() {
         "sidebar": false,
         "sidebarWidth": 10,
         "diffDecorations": false,
+        "hideIgnored": true,
         "vim": true,
     });
     let heard = ask(&pane, &[("settings", json!({ "settings": settings }))]);
@@ -462,6 +464,7 @@ fn settings_are_kept_within_their_bounds_where_the_xdg_directories_say() {
     assert_eq!(saved["tabSize"], json!(1));
     assert_eq!(saved["sidebarWidth"], json!(228));
     assert_eq!(saved["diffDecorations"], json!(false));
+    assert_eq!(saved["hideIgnored"], json!(true));
     assert!(
         saved.get("vim").is_none(),
         "what the program does not know is not kept"

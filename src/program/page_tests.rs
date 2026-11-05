@@ -2351,6 +2351,66 @@ fn what_git_ignores_is_quiet_all_the_way_down_in_the_tree() -> Result<(), Error>
     Ok(())
 }
 
+/// The setting leaves out of the tree what git ignores and nothing else: not a folder quiet by its name,
+/// not what is beside an ignored file. What was chosen goes to the folder it is in, and all comes back.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_setting_leaves_what_git_ignores_out_of_the_tree() -> Result<(), Error> {
+    let project = lantern();
+    project.write(".gitignore", "out/\n*.log\n");
+    project.write("out/deep/inner.txt", "x\n");
+    project.write("logs/today.log", "x\n");
+    project.write("logs/kept.txt", "x\n");
+    project.write("build/source.txt", "x\n");
+    crate::page_changes::committed(&project);
+    let session = project.session(&[]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+shift+e")?;
+    for dir in ["out", "logs", "build"] {
+        wait(&mut page, |page| {
+            page.bounds(&format!("row:{dir}")).is_some()
+        })?;
+        page.click(&format!("row:{dir}"))?;
+    }
+    let gone = ["row:out", "row:out/deep", "row:logs/today.log"];
+    let kept = [
+        "row:.gitignore",
+        "row:logs",
+        "row:logs/kept.txt",
+        "row:build",
+        "row:build/source.txt",
+    ];
+    wait(&mut page, |page| {
+        gone.iter()
+            .chain(&kept)
+            .all(|row| page.bounds(row).is_some())
+    })?;
+    page.click("row:logs/today.log")?;
+    page.press("f1")?;
+    page.type_text("Toggle Ignored Files in the Tree")?;
+    page.advance(0.3)?;
+    page.press("enter")?;
+    wait(&mut page, |page| {
+        gone.iter().all(|row| page.bounds(row).is_none())
+    })?;
+    for row in kept {
+        assert!(page.bounds(row).is_some(), "{row} is not ignored");
+    }
+    wait(&mut page, |_| session.settings().hide_ignored)?;
+    page.press("f2")?;
+    assert_eq!(page.field("dialog-input"), Some("logs"), "what it is in");
+    page.press("escape")?;
+    page.press("f1")?;
+    page.type_text("Toggle Ignored Files in the Tree")?;
+    page.advance(0.3)?;
+    page.press("enter")?;
+    wait(&mut page, |page| {
+        gone.iter().all(|row| page.bounds(row).is_some())
+    })?;
+    wait(&mut page, |_| !session.settings().hide_ignored)?;
+    Ok(())
+}
+
 /// ⌫ in a palette with nothing typed goes back to the files, from the commands and from a line.
 #[test]
 #[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]

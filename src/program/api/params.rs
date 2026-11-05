@@ -358,6 +358,7 @@ impl Param for Settings {
             sidebar: fields.required("sidebar")?,
             sidebar_width: size("sidebarWidth", SIDEBAR_WIDTHS)?,
             diff_decorations: fields.required("diffDecorations")?,
+            hide_ignored: fields.required("hideIgnored")?,
         })
     }
 }

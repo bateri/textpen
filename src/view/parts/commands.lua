@@ -306,6 +306,8 @@ add({ id = "preview", title = "Toggle Markdown Preview", category = "View", keys
 	run = function() act.toggle_preview() end })
 add({ id = "diff-decorations", title = "Toggle Changes in the Gutter", category = "View",
 	run = function() act.change_settings({ diffDecorations = not S.settings.diffDecorations }) end })
+add({ id = "hide-ignored", title = "Toggle Ignored Files in the Tree", category = "View",
+	run = function() act.change_settings({ hideIgnored = not S.settings.hideIgnored }) end })
 add({ id = "indentation", title = "Indentation", category = "View", run = function() act.open_palette("indent") end })
 add({ id = "settings", title = "Settings", category = "textpen", keys = "cmd+,", run = function() act.open_settings() end })
 add({ id = "help", title = "Keyboard Shortcuts", category = "textpen", keys = "cmd+shift+/", run = function() act.open_help() end })

@@ -178,6 +178,13 @@ local ROWS = {
 		step = function(s) return { diffDecorations = not s.diffDecorations } end,
 	},
 	{
+		key = "hideIgnored",
+		title = "Hide ignored files",
+		detail = "Leave what git ignores out of the tree",
+		value = function(s) return s.hideIgnored and "On" or "Off" end,
+		step = function(s) return { hideIgnored = not s.hideIgnored } end,
+	},
+	{
 		key = "autoSave",
 		title = "Save when leaving",
 		detail = "Before the shell, on another tab",
