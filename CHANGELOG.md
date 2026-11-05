@@ -7,6 +7,11 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Changed
+
+- **A new icon.** Beside textpen's name above the view, a "t" with a terminal's block cursor after it,
+  drawn on whole pixels, in place of lines that read as nothing at that size.
+
 ## [0.5.1] - 2026-11-05
 
 ### Fixed
