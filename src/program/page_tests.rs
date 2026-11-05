@@ -2411,6 +2411,35 @@ fn the_setting_leaves_what_git_ignores_out_of_the_tree() -> Result<(), Error> {
     Ok(())
 }
 
+/// In a pane too short for all the settings, the keys bring the one they come to into view.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_setting_the_keys_come_to_is_in_view() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&[]);
+    let mut page = project.open(&session, PANE)?;
+    page.press("cmd+,")?;
+    for _ in 0..8 {
+        page.press("down")?;
+    }
+    page.advance(0.5)?;
+    page.settle()?;
+    let body = page.bounds("settings-body").expect("the settings");
+    let last = page.bounds("setting:9").expect("the last setting");
+    assert!(
+        last.y + last.h <= body.y + body.h + 0.5,
+        "{last:?} is below {body:?}"
+    );
+    for _ in 0..8 {
+        page.press("up")?;
+    }
+    page.advance(0.5)?;
+    page.settle()?;
+    let first = page.bounds("setting:1").expect("the first setting");
+    assert!(first.y >= body.y - 0.5, "{first:?} is above {body:?}");
+    Ok(())
+}
+
 /// ⌫ in a palette with nothing typed goes back to the files, from the commands and from a line.
 #[test]
 #[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]

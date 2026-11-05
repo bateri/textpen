@@ -13,6 +13,9 @@ local sheets = {}
 
 local FILTER = "help-filter"
 local HELP_BODY = "help-body"
+local SETTINGS_BODY = "settings-body"
+-- The room the list of settings keeps inside its edges, points.
+local SETTINGS_PAD = 6
 
 local TREE_KEYS = {
 	{ "↑ ↓  j k", "Move" },
@@ -207,7 +210,7 @@ local function settings_view(size)
 		head:child(b.text("kept in ~/.config/textpen"):color("quiet"))
 	end
 	head:child(b.spacer()):child(kit.icon_button("sheet-close", "x", "Close", { keys = "escape" }))
-	local body = b.div():id("settings-body"):col():gap(2):p(6):grow(1):min_h(0):scroll()
+	local body = b.div():id(SETTINGS_BODY):col():gap(2):p(SETTINGS_PAD):grow(1):min_h(0):scroll()
 	for index, row in ROWS do
 		local value = row.value(S.settings)
 		local chosen = index == overlay.chosen
@@ -266,6 +269,22 @@ function act.overlay_press(id)
 	return id == "sheet"
 end
 
+-- Brings the setting the keys came to into view: a short pane does not have room for them all.
+local function show_chosen_setting(index)
+	local body, row = layout.bounds(SETTINGS_BODY), layout.bounds("setting:" .. index)
+	if not (body and row) then
+		return
+	end
+	local offset = layout.scroll_offset(SETTINGS_BODY)
+	local above = body.y + SETTINGS_PAD - row.y
+	local below = row.y + row.h + SETTINGS_PAD - (body.y + body.h)
+	if above > 0 then
+		layout.scroll_to(SETTINGS_BODY, { y = offset - above })
+	elseif below > 0 then
+		layout.scroll_to(SETTINGS_BODY, { y = offset + below })
+	end
+end
+
 function act.overlay_key(key, mods)
 	local overlay = S.overlay
 	if overlay.kind == "help" then
@@ -286,8 +305,10 @@ function act.overlay_key(key, mods)
 		local row = ROWS[overlay.chosen]
 		if key == "down" or key == "j" or (mods.control and key == "n") then
 			overlay.chosen = math.min(overlay.chosen + 1, #ROWS)
+			show_chosen_setting(overlay.chosen)
 		elseif key == "up" or key == "k" or (mods.control and key == "p") then
 			overlay.chosen = math.max(overlay.chosen - 1, 1)
+			show_chosen_setting(overlay.chosen)
 		elseif key == " " or key == "enter" or key == "right" or key == "l" then
 			act.change_settings(row.step(S.settings, 1))
 		elseif key == "left" or key == "h" then
