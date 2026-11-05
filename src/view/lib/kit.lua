@@ -178,6 +178,22 @@ local function hovered(id)
 end
 
 -- One of the pictures of src/assets/icons (Tabler's, MIT), `size` points, in a colour of the theme.
+-- What a language's colouring is told, in a file's own editor as on the left of a comparison. A call
+-- reads and colours what can be done between two frames, and goes on at the next, so that a turn of
+-- the wheel costs a frame no more than that; and the lines around those in view are a number of lines, as a
+-- view is not: where a comparison folds what is unchanged a view holds hundreds of lines, and as
+-- many again each way is what the kit colours unless it is told.
+local SYNTAX_STEP = 4096
+local SYNTAX_MARGIN = 60
+
+local function syntax_options()
+	return {
+		step = SYNTAX_STEP,
+		margin = SYNTAX_MARGIN,
+		tab_width = S.settings and S.settings.tabSize or 4,
+	}
+end
+
 local function icon(name, size, color)
 	size = size or 15
 	return b.image("assets/icons/" .. name .. ".svg"):size(size, size):tint(color or "dim"):no_shrink()
@@ -368,6 +384,7 @@ return {
 	syntaxes = syntaxes,
 	hovered = hovered,
 	icon = icon,
+	syntax_options = syntax_options,
 	keys_of = keys_of,
 	keys_all = keys_all,
 	spinner = spinner,

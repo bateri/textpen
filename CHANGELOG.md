@@ -7,6 +7,13 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Scrolling a comparison is smoother.** The two sides no longer have the whole page built again for
+  every line they pass, colouring the lines a fold hides no longer holds up a frame, and the hatching
+  of a tall gap, such as all of the left side of a new file, is cut into pieces that are the same
+  picture, which a bateri that keeps what it drew does not draw again.
+
 ## [0.5.0] - 2026-11-04
 
 ### Security

@@ -358,7 +358,7 @@ local function set_language(doc, lang)
 	doc.lang = lang
 	doc.syntax = nil
 	if lang.syntax then
-		doc.syntax = Syntax.new(lang.syntax, doc.id, { tab_width = S.settings and S.settings.tabSize or 4 })
+		doc.syntax = Syntax.new(lang.syntax, doc.id, kit.syntax_options())
 		kit.syntaxes[doc.id] = doc.syntax
 		if doc.loaded and doc.last > 0 then
 			doc.syntax:handle({ type = "viewport", editor = doc.id, first = doc.first, last = doc.last })

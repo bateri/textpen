@@ -269,6 +269,69 @@ fn a_long_file_changed_far_down(project: &Project) {
     project.write("src/long.ts", &changed.concat());
 }
 
+/// A tall gap is hatched in pieces that meet and fill what shows, and scrolling it brings the same
+/// few pictures back: a host that holds a picture does not draw it again, and a tall one takes tens of
+/// milliseconds, so that a new height at every turn of the wheel is what makes scrolling stutter.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_tall_gap_is_the_same_few_pictures_however_far_it_is_scrolled() -> Result<(), Error> {
+    let project = lantern();
+    project.write("src/long.ts", "export const first = 1;\n");
+    committed(&project);
+    let lines: String = (0..1500)
+        .map(|n| format!("export const line{n} = {n};\n"))
+        .collect();
+    project.write("src/long.ts", &format!("export const first = 1;\n{lines}"));
+    let session = project.session(&["src/long.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let (left, right) = compared(&mut page)?;
+    let room = page.bounds(&left).expect("the left side's box");
+    let mut pictures: Vec<(f32, Vec<pencere_view::Path>)> = Vec::new();
+    for turn in 0..60 {
+        page.wheel(&right, 0.0, 180.0)?;
+        page.advance(0.2)?;
+        page.settle()?;
+        let list = page.list();
+        let mut pieces: Vec<_> = list
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Paint::Figure(figure) if figure.rect.x < room.x + room.w => Some(figure),
+                _ => None,
+            })
+            .collect();
+        pieces.sort_by(|a, b| a.rect.y.total_cmp(&b.rect.y));
+        let first = pieces.first().expect("a piece");
+        let last = pieces.last().expect("a piece");
+        assert!(
+            first.rect.y <= room.y + 1.0 && last.rect.y + last.rect.h >= room.y + room.h - 1.0,
+            "turn {turn}: {} to {} does not fill {room:?}",
+            first.rect.y,
+            last.rect.y + last.rect.h
+        );
+        for pair in pieces.windows(2) {
+            let (above, below) = (pair[0], pair[1]);
+            assert!(
+                (above.rect.y + above.rect.h - below.rect.y).abs() < 0.5,
+                "turn {turn}: {:?} and {:?} do not meet",
+                above.rect,
+                below.rect
+            );
+        }
+        for piece in pieces {
+            if !pictures
+                .iter()
+                .any(|(h, paths)| (*h - piece.rect.h).abs() < 0.01 && *paths == piece.paths)
+            {
+                pictures.push((piece.rect.h, piece.paths.clone()));
+            }
+        }
+    }
+    // A piece, and what is left of a gap's parts at their ends.
+    assert!(pictures.len() <= 3, "{} pictures", pictures.len());
+    Ok(())
+}
+
 /// The hatching of a gap shows wherever the sides were scrolled to, on the side the wheel is on and on
 /// the one that follows it, and not only at the top of a file, where a picture of it would be taken.
 #[test]
@@ -389,19 +452,29 @@ fn a_tall_gap_is_hatched_where_it_shows() -> Result<(), Error> {
     page.advance(0.5)?;
     page.settle()?;
     let room = page.bounds(&left).expect("the side");
-    let shows = page.list().items.iter().any(|item| match item {
-        Paint::Figure(figure) => {
-            let cut = figure.clip.intersect(figure.rect);
-            figure.rect.x <= room.x + 1.0
-                && figure.rect.w > 100.0
-                && cut.y <= room.y + 1.0
-                && cut.y + cut.h >= room.y + room.h - 1.0
+    // Its pieces, in order, from the top of the room down with nothing between them.
+    let mut pieces: Vec<_> = page
+        .list()
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Paint::Figure(figure) if figure.rect.x <= room.x + 1.0 && figure.rect.w > 100.0 => {
+                Some(figure.clip.intersect(figure.rect))
+            }
+            _ => None,
+        })
+        .filter(|cut| cut.h > 0.0)
+        .collect();
+    pieces.sort_by(|a, b| a.y.total_cmp(&b.y));
+    let mut reached = room.y + 1.0;
+    for cut in pieces {
+        if cut.y <= reached {
+            reached = reached.max(cut.y + cut.h);
         }
-        _ => false,
-    });
+    }
     assert!(
-        shows,
-        "the left side's gap, all of the room, is not hatched"
+        reached >= room.y + room.h - 1.0,
+        "the left side's gap, all of the room, is not hatched: {reached} of {room:?}"
     );
     Ok(())
 }

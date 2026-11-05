@@ -58,14 +58,18 @@ local MIN_HIDDEN = 5
 local ZONE_ROWS = 200
 local ZONE_POINTS = 4096
 -- How many lines either side of what is in view a gap has an element for, how many gaps are hatched
--- at once, how tall a gap is hatched whole, how far beyond the room a taller one is (a canvas is drawn
--- anew with each frame, whether it shows or not), and how many words are marked on one side (a layer
--- holds 20 000 decorations).
+-- at once, how tall a gap is hatched whole, how far beyond the room a taller one is (a host that does
+-- not hold a canvas draws it, whether it shows or not), and how many words are marked on one side (a
+-- layer holds 20 000 decorations).
 local WINDOW = 60
 local HATCHED = 40
 local HATCHED_WHOLE = 400
 local HATCH_BEYOND = 300
 local HATCH_STEP = 9
+-- How tall the hatching of a taller gap is cut, points: more than a gap hatched whole, which so stays
+-- one piece. Each piece is the same picture, which a host draws once however far the gap is scrolled;
+-- whole steps of the lines, so that they go on from one to the next.
+local HATCH_TILE = 48 * HATCH_STEP
 local WORDS_MOST = 6000
 -- How many places told to a side are kept, to tell its echoes from what the person does.
 local ECHOES = 32
@@ -152,7 +156,7 @@ local function ensure_syntax(cmp, doc)
 	end
 	cmp.lang = doc.lang
 	if doc.lang.syntax then
-		cmp.syntax = Syntax.new(doc.lang.syntax, cmp.left, { tab_width = S.settings and S.settings.tabSize or 4 })
+		cmp.syntax = Syntax.new(doc.lang.syntax, cmp.left, kit.syntax_options())
 		kit.syntaxes[cmp.left] = cmp.syntax
 		if cmp.last and cmp.last > 0 then
 			cmp.syntax:handle({ type = "viewport", editor = cmp.left, first = cmp.first, last = cmp.last })
@@ -217,7 +221,7 @@ function compare.enter(path, how)
 		arrive = how or "caret",
 		asking = false,
 		again = false,
-		bucket = nil,
+		buckets = {},
 		tall = {},
 		closed = false,
 	}
@@ -1133,11 +1137,11 @@ function compare.moved(event)
 	if not cmp or not cmp.drawn then
 		return false
 	end
-	local bucket = math.floor((event.first or 1) / (WINDOW / 3)) .. ":" .. event.editor
-	if cmp.bucket == bucket then
+	local bucket = math.floor((event.first or 1) / (WINDOW / 3))
+	if cmp.buckets[event.editor] == bucket then
 		return false
 	end
-	cmp.bucket = bucket
+	cmp.buckets[event.editor] = bucket
 	return true
 end
 
@@ -1174,19 +1178,29 @@ local function hatch(width, height, start)
 end
 
 -- The part of a gap's height to hatch, from its top: the whole of one that is small, of a taller one what is
--- in or near the room, where the gap's element stood last. The part starts on a whole step of the lines,
--- so that they stay where they are as it moves.
+-- in or near the room, where the gap's element stood last. The part starts and ends on the pieces it is
+-- cut in, so that they stay where they are as it moves.
 local function hatched_part(name, height, room)
 	if height <= HATCHED_WHOLE then
 		return 0, height
 	end
 	local box = layout.bounds(name .. "/e")
 	if not (box and box.y and room and room.y) then
-		return 0, math.min(height, HATCHED_WHOLE)
+		return 0, math.min(height, HATCH_TILE)
 	end
-	local top = math.max(0, room.y - HATCH_BEYOND - box.y)
-	top = math.floor(top / HATCH_STEP) * HATCH_STEP
-	return top, math.min(height, room.y + room.h + HATCH_BEYOND - box.y)
+	local top = math.floor(math.max(0, room.y - HATCH_BEYOND - box.y) / HATCH_TILE) * HATCH_TILE
+	local bottom = math.ceil((room.y + room.h + HATCH_BEYOND - box.y) / HATCH_TILE) * HATCH_TILE
+	return top, math.min(height, bottom)
+end
+
+-- The hatching of a gap's element from `top` to `bottom`, in pieces where it is taller than one.
+local function hatched(zone, width, top, bottom, start)
+	local at = top
+	while at < bottom do
+		local piece = math.min(bottom - at, HATCH_TILE)
+		zone:child(hatch(width, piece, start):absolute():inset(at, nil, nil, 0))
+		at += piece
+	end
 end
 
 -- A box at `x` points across the top of a band.
@@ -1278,7 +1292,7 @@ function compare.gaps(tab, which, editor)
 	local width = math.ceil(S.width / 2) + 8
 	local start = which == "right" and APPLY.width or 0
 	local most = math.max(1, math.min(ZONE_ROWS, math.floor(ZONE_POINTS / cmp.row)))
-	local hatched = 0
+	local hatches = 0
 	local room = layout.bounds(which == "left" and cmp.left or doc.id)
 	local tall = {}
 	cmp.tall[which] = tall
@@ -1304,9 +1318,9 @@ function compare.gaps(tab, which, editor)
 				if height > HATCHED_WHOLE then
 					tall[#tall + 1] = { name = name, height = height, top = top, bottom = bottom }
 				end
-				if bottom > top and hatched < HATCHED then
-					hatched += 1
-					zone:child(hatch(width, bottom - top, start):absolute():inset(top, nil, nil, 0))
+				if bottom > top and hatches < HATCHED then
+					hatches += 1
+					hatched(zone, width, top, bottom, start)
 				end
 				editor:child(zone)
 				left -= take
