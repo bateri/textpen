@@ -7,6 +7,8 @@ change what the previous one did.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-05
+
 ### Fixed
 
 - **Scrolling a comparison is smoother.** The two sides no longer have the whole page built again for
