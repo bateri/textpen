@@ -9,7 +9,8 @@ change what the previous one did.
 
 ### Added
 
-- **A PDF opens in its tab.** Its pages are drawn one under the other and scrolled by the terminal;
+- **A PDF opens in its tab.** Its pages are drawn one under the other and scrolled by the terminal, in
+  the middle of the tab (a page wider than the tab scrolls across, 40 points in from its left);
   `⌘+`, `⌘-` and `⌘0` zoom and fit the width, `⌃G` (or the page in the status line) goes to a page, and
   the words can be selected (a double click a word, a triple click a line, `⌘A` all) and copied with
   `⌘C`. `⌘F` finds in every page, as words, whole words or patterns, with the matches marked on the

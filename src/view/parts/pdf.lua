@@ -20,7 +20,7 @@ local layout = b.layout
 local pdf = {}
 
 -- The room around the pages, points: between two pages and above the first and under the last, and
--- beside a page at the tab's width.
+-- beside a page at the tab's width (and beside one wider than the tab, at the left of the content).
 local GAP = 16
 local SIDE = 40
 
@@ -142,16 +142,32 @@ local function scale_of(v, avail, index)
 	return math.min(scale, LONGEST / longest)
 end
 
--- Where each page stands in the box (`tops`, from the top of the box, with a gap above the first), how
--- large it is drawn (`pw`, `ph`, whole points), the box's height and how wide its content is.
+-- Where a page `w` points wide stands across the content in a tab `avail` wide: one that fits with its
+-- sides is in the middle of the tab (the content scrolled to its left, as it is unless the person
+-- scrolls across a page wider than the tab), one that does not is the side's room from the left.
+local function across_of(avail, w)
+	if w + 2 * SIDE <= avail then
+		return math.floor((avail - w) / 2)
+	end
+	return SIDE
+end
+
+-- Whether page `index` fits in the tab with its sides, as the layout `g` draws it.
+local function fits(g, index)
+	return g.pw[index] + 2 * SIDE <= g.avail
+end
+
+-- Where each page stands in the box (`tops`, from the top of the box, with a gap above the first, and
+-- `xs`, from its left), how large it is drawn (`pw`, `ph`, whole points), the box's height and how wide
+-- its content is.
 local function compute(v, avail)
-	local tops, pw, ph = {}, {}, {}
+	local tops, xs, pw, ph = {}, {}, {}, {}
 	local y, widest = GAP, 0
 	for index = 1, v.count do
 		local scale = scale_of(v, avail, index)
 		local w = math.max(math.floor(v.widths[index] * scale + 0.5), 1)
 		local h = math.max(math.floor(v.heights[index] * scale + 0.5), 1)
-		tops[index], pw[index], ph[index] = y, w, h
+		tops[index], xs[index], pw[index], ph[index] = y, across_of(avail, w), w, h
 		y += h + GAP
 		widest = math.max(widest, w)
 	end
@@ -160,6 +176,7 @@ local function compute(v, avail)
 		zoom = v.zoom,
 		count = v.count,
 		tops = tops,
+		xs = xs,
 		pw = pw,
 		ph = ph,
 		total = y,
@@ -225,7 +242,8 @@ local function view_of(tab, v)
 end
 
 -- The layout for the tab's width, made again where the width or the zoom changed; the page that was at the
--- top of the view stays there.
+-- top of the view stays there, and across, the page most in view keeps the point that was in the middle of
+-- the tab there (one that fits in the tab is in its middle: the content is not scrolled across for it).
 local function geometry(tab, v, avail)
 	local g = v.geometry
 	if g and g.avail == avail and g.zoom == v.zoom then
@@ -242,10 +260,15 @@ local function geometry(tab, v, avail)
 			local along = math.max(math.min((y - old.tops[page]) / old.ph[page], 1), 0)
 			ny = g.tops[page] + along * g.ph[page]
 		end
-		local across = (x + old.avail / 2) / old.content_w
+		local page = math.max(math.min(v.current, g.count), 1)
+		local nx = 0
+		if not fits(g, page) then
+			local along = (x + old.avail / 2 - old.xs[page]) / old.pw[page]
+			nx = g.xs[page] + along * g.pw[page] - avail / 2
+		end
 		v.pending = {
 			y = math.max(math.min(ny, g.total - v.view_h), 0),
-			x = math.max(across * g.content_w - v.avail / 2, 0),
+			x = math.max(math.min(nx, g.content_w - avail), 0),
 		}
 	end
 	return g
@@ -647,7 +670,7 @@ function pdf.view(tab, size)
 	local from, to = built_of(g, first, last)
 	v.built, v.current = { from, to }, current
 	want(tab, v, from, to)
-	local sheet = b.div():col():items_center():no_shrink()
+	local sheet = b.div():col():items_start():no_shrink()
 	if g.content_w > avail then
 		sheet:w(g.content_w)
 	else
@@ -658,7 +681,7 @@ function pdf.view(tab, size)
 		if index > from then
 			sheet:child(b.div():h(GAP):no_shrink())
 		end
-		sheet:child(page_view(tab, v, g, index))
+		sheet:child(page_view(tab, v, g, index):ml(g.xs[index]))
 	end
 	sheet:child(b.div():h(math.max(g.total - (g.tops[to] + g.ph[to]), 0)):no_shrink())
 	return b.div():id(id):col():grow(1):min_w(0):min_h(0):scroll():bg(GROUND):child(sheet)
@@ -1075,8 +1098,11 @@ local function reveal(tab, v, at)
 	if top - GAP < y or bottom + GAP > y + view then
 		to_y = math.max(top - view / 3, 0)
 	end
-	local left = (g.content_w - g.pw[match.page]) / 2 + match.x * scale_x
-	if left < x or left + match.w * scale_x > x + v.avail then
+	local left = g.xs[match.page] + match.x * scale_x
+	if fits(g, match.page) then
+		-- A page that fits in the tab is in its middle, the content not scrolled across.
+		to_x = 0
+	elseif left < x or left + match.w * scale_x > x + v.avail then
 		to_x = math.max(left - v.avail / 3, 0)
 	end
 	if to_y ~= y or to_x ~= x then

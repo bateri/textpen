@@ -42,15 +42,12 @@ pub(crate) fn open_pdf(bytes: &[u8], size: (f32, f32)) -> Result<(Project, Page)
     Ok((project, page))
 }
 
-/// The numbers of the pages that are drawn.
+/// The numbers of the pages that are made (in view, or beside it): the terminal draws those of them
+/// that are in view.
 fn numbers(page: &Page) -> Vec<u32> {
-    let mut drawn: Vec<u32> = pages_drawn(page)
-        .iter()
-        .map(|(number, _)| *number)
-        .collect();
-    drawn.sort_unstable();
-    drawn.dedup();
-    drawn
+    (1..=100)
+        .filter(|n| page.bounds(&format!("pdf-page:{n}")).is_some())
+        .collect()
 }
 
 /// The pages are drawn one under the other as wide as the tab, with room between; only the page in
@@ -60,10 +57,10 @@ fn numbers(page: &Page) -> Vec<u32> {
 fn a_pdf_shows_its_pages_one_under_the_other_as_wide_as_its_tab() -> Result<(), Error> {
     let (_project, mut page) = open_pdf(PAGES, WIDE)?;
     let room = page.bounds("pdf:spec.pdf").expect("the box of the pages");
-    let drawn = pages_drawn(&page);
-    assert_eq!(numbers(&page), [1, 2], "{drawn:?}");
-    let first = drawn.iter().find(|(n, _)| *n == 1).expect("page 1").1;
-    let second = drawn.iter().find(|(n, _)| *n == 2).expect("page 2").1;
+    assert_eq!(numbers(&page), [1, 2]);
+    assert!(pages_drawn(&page).iter().any(|(n, _)| *n == 1));
+    let first = page.bounds("pdf-page:1").expect("page 1");
+    let second = page.bounds("pdf-page:2").expect("page 2");
     assert!(
         (first.w - (room.w - 80.0)).abs() < 1.5 && (first.x - (room.x + 40.0)).abs() < 1.5,
         "as wide as the tab, 40 points in from each side: {first:?} in {room:?}"
@@ -308,6 +305,75 @@ fn the_keys_scroll_the_pages() -> Result<(), Error> {
     page.press("page_down")?;
     page.press("page_down")?;
     wait(&mut page, |page| shows(page, "Page 2 of 3"))?;
+    Ok(())
+}
+
+/// At a zoom where a page is wider than the tab, the pages that are not are in the middle of the tab,
+/// as at Fit Width, and the wide one is 40 points in from its left and scrolls across. A match found
+/// on a page that fits brings the pages back across, the page in the middle.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn pages_narrower_than_the_tab_are_in_its_middle_beside_one_wider_than_it() -> Result<(), Error> {
+    let needle = |x: f32| Run {
+        font: 4,
+        size: 12.0,
+        x,
+        y: 150.0,
+        text: "needle".into(),
+    };
+    let bytes = pdf_of_runs(&[
+        (500.0, 300.0, vec![needle(40.0)]),
+        (1600.0, 300.0, Vec::new()),
+        (500.0, 300.0, vec![needle(400.0)]),
+    ]);
+    let (_project, mut page) = open_pdf(&bytes, WIDE)?;
+    let room = page.bounds("pdf:spec.pdf").expect("the box of the pages");
+    let in_the_middle = |page: &Page, n: u32| {
+        let at = page
+            .bounds(&format!("pdf-page:{n}"))
+            .expect("the page is made");
+        let middle = room.x + (room.w - at.w) / 2.0;
+        assert!(
+            (at.x - middle).abs() <= 1.0,
+            "page {n} in the middle of the tab: {at:?} in {room:?}"
+        );
+    };
+    in_the_middle(&page, 1);
+    for _ in 0..4 {
+        if shows(&page, "100%") {
+            break;
+        }
+        page.press("cmd+-")?;
+        page.advance(0.3)?;
+    }
+    wait(&mut page, |page| shows(page, "100%"))?;
+    page.advance(0.3)?;
+    in_the_middle(&page, 1);
+    let first = page.bounds("pdf-page:1").expect("page 1");
+    assert!((first.w - 500.0).abs() < 1.5, "{first:?}");
+    let wide = page.bounds("pdf-page:2").expect("page 2");
+    assert!(
+        wide.w > room.w && (wide.x - (room.x + 40.0)).abs() <= 1.0,
+        "the page wider than the tab, 40 points in: {wide:?} in {room:?}"
+    );
+
+    // Scrolled across, and a match on the first page: back in the middle.
+    for _ in 0..4 {
+        page.press("right")?;
+    }
+    page.advance(0.3)?;
+    let moved = page.bounds("pdf-page:1").expect("page 1");
+    assert!(moved.x < first.x - 100.0, "{moved:?} against {first:?}");
+    page.press("cmd+f")?;
+    page.type_text("needle")?;
+    wait(&mut page, |page| shows(page, "1 of 2"))?;
+    page.advance(0.3)?;
+    in_the_middle(&page, 1);
+    // The next is on the third, which fits too.
+    page.press("enter")?;
+    wait(&mut page, |page| shows(page, "2 of 2"))?;
+    page.advance(0.3)?;
+    in_the_middle(&page, 3);
     Ok(())
 }
 
