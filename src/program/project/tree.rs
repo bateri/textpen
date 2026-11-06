@@ -299,10 +299,11 @@ impl Tree {
     pub fn files(&self) -> Index {
         let mut made = self.index.lock().unwrap_or_else(PoisonError::into_inner);
         let forgotten = self.forgotten.load(AtomicOrdering::SeqCst);
-        if let Some(known) = made.as_ref() {
-            if known.forgotten == forgotten && known.at.elapsed() < INDEX_AGE {
-                return known.index.clone();
-            }
+        if let Some(known) = made.as_ref()
+            && known.forgotten == forgotten
+            && known.at.elapsed() < INDEX_AGE
+        {
+            return known.index.clone();
         }
         let repos = self.repos.list();
         let whole = repos

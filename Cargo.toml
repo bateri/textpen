@@ -2,7 +2,7 @@
 name = "textpen"
 version = "0.5.1"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.99"
 license = "GPL-3.0-or-later"
 description = "A code editor in the terminal pane: a file tree, tabs, search and the terminal's own colours, over plain ssh"
 repository = "https://github.com/bateri/textpen"

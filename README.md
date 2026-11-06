@@ -273,7 +273,7 @@ or smaller, and textpen has no zoom of its own.
 
 ## Work on it
 
-You need Rust 1.88 ([rustup](https://rustup.rs)) and git; nothing else is installed, and nothing
+You need Rust 1.99 ([rustup](https://rustup.rs)) and git; nothing else is installed, and nothing
 needs Node but the release tool (`tools/release.mjs`) and the one that draws the icons
 (`tools/icon.mjs`).
 

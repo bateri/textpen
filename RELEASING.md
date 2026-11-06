@@ -21,7 +21,7 @@ release only moves that section under a version and a date; it does not write it
 Each of the three files is the Rust program with its page (`src/view/`) and pictures
 (`src/assets/`) carried in it, built by cargo for one target. So a release needs:
 
-- Rust 1.88, the toolchain the gate runs with, on a machine of each target: a Mac on Apple silicon,
+- Rust 1.99, the toolchain the gate runs with, on a machine of each target: a Mac on Apple silicon,
   and Linux on `arm64` and on `x86_64`, each with its target added (`rustup target add
   aarch64-unknown-linux-musl`, and so on) and, on Linux, `musl-tools`. Each file is built where it
   runs, as sqlpen's are: no emulation and no cross toolchain.

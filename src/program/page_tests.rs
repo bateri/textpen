@@ -1676,7 +1676,7 @@ fn a_picture_opens_in_its_tab_fitted_with_its_size_under_it_and_is_let_go_when_i
         "{:?}",
         page_words(&page)
     );
-    assert_eq!(recorder.attached(), [name.clone()]);
+    assert_eq!(recorder.attached(), std::slice::from_ref(&name));
     assert!(bounds_of(&page, "tab:logo.png"), "its tab");
 
     // Large, it is made smaller to fit the room the tab has, in its proportions, and says its own size.
@@ -1865,7 +1865,7 @@ fn a_markdown_preview_draws_the_pictures_it_names_and_leaves_the_others_as_words
     assert!(!shows(&page, "Our logo"), "{:?}", page_words(&page));
     assert_eq!(pictures_drawn(&page).len(), 1);
     // Only the picture in the project was given to the terminal.
-    assert_eq!(recorder.attached(), [name.clone()]);
+    assert_eq!(recorder.attached(), std::slice::from_ref(&name));
     // Typing goes on beside it; the picture stays.
     let editor = shown(&page).expect("an editor");
     page.caret_to(&editor, 0)?;

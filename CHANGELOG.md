@@ -12,6 +12,10 @@ change what the previous one did.
 - **Leave what git ignores out of the tree.** The setting `Hide ignored files`, or Toggle Ignored Files in
   the Tree in the palette. It is off to begin with, and what git ignores is shown grey as before.
 
+### Changed
+
+- Building from source asks for Rust 1.99 (it was 1.88).
+
 ### Fixed
 
 - **The keys keep the setting they come to in view.** In a pane too short for all the settings, those below

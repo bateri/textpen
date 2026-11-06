@@ -468,10 +468,10 @@ fn read(root: &str) -> Result<GitInfo, String> {
     let out = run(&args, root, 32 << 20)?;
     let mut info = parse_status(&out, &prefix);
     info.index = index_written(root);
-    if info.branch == "(detached)" {
-        if let Ok(short) = run(&["rev-parse", "--short", "HEAD"], root, 1 << 20) {
-            info.branch = text_of(&short);
-        }
+    if info.branch == "(detached)"
+        && let Ok(short) = run(&["rev-parse", "--short", "HEAD"], root, 1 << 20)
+    {
+        info.branch = text_of(&short);
     }
     Ok(info)
 }
@@ -638,14 +638,14 @@ impl Git {
             });
         };
         let mut kept = self.blobs.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some((known, text)) = kept.as_ref() {
-            if *known == id {
-                return Kept::Text(Committed {
-                    path: at,
-                    id: Some(id),
-                    text: Arc::clone(text),
-                });
-            }
+        if let Some((known, text)) = kept.as_ref()
+            && *known == id
+        {
+            return Kept::Text(Committed {
+                path: at,
+                id: Some(id),
+                text: Arc::clone(text),
+            });
         }
         match run(&["cat-file", "blob", &id], &self.root, INDEX_LIMIT) {
             Ok(bytes) => match normalized(bytes) {
@@ -696,10 +696,11 @@ impl Git {
     pub fn status(&self, max_age: Duration) -> Option<GitInfo> {
         let mut said = self.said.lock().unwrap_or_else(PoisonError::into_inner);
         let forgotten = self.forgotten.load(Ordering::SeqCst);
-        if let Some(known) = said.as_ref() {
-            if known.forgotten == forgotten && known.at.elapsed() < max_age {
-                return known.value.clone();
-            }
+        if let Some(known) = said.as_ref()
+            && known.forgotten == forgotten
+            && known.at.elapsed() < max_age
+        {
+            return known.value.clone();
         }
         if !self.is_repository() {
             return None;

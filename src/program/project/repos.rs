@@ -158,10 +158,10 @@ impl Repos {
     /// The repository `path` (from the project's root) is in, and the path from its own root.
     pub fn of(&self, path: &str) -> Option<(Arc<Repo>, String)> {
         let list = self.list();
-        if let [only] = list.as_slice() {
-            if only.root.is_empty() {
-                return Some((Arc::clone(only), path.to_owned()));
-            }
+        if let [only] = list.as_slice()
+            && only.root.is_empty()
+        {
+            return Some((Arc::clone(only), path.to_owned()));
         }
         list.into_iter().find_map(|repo| {
             let inner = path

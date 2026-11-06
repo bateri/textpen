@@ -238,16 +238,14 @@ fn attribute(tag: &str, name: &str) -> Option<String> {
         let after = rest.get(at + name.len()..)?;
         let boundary = before.is_none_or(|ch| ch.is_whitespace() || ch == '"' || ch == '\'');
         let after = after.trim_start();
-        if boundary {
-            if let Some(value) = after.strip_prefix('=') {
-                let value = value.trim_start();
-                let quote = value
-                    .chars()
-                    .next()
-                    .filter(|ch| *ch == '"' || *ch == '\'')?;
-                let inside = value.get(1..)?;
-                return inside.split_once(quote).map(|(text, _)| text.to_owned());
-            }
+        if boundary && let Some(value) = after.strip_prefix('=') {
+            let value = value.trim_start();
+            let quote = value
+                .chars()
+                .next()
+                .filter(|ch| *ch == '"' || *ch == '\'')?;
+            let inside = value.get(1..)?;
+            return inside.split_once(quote).map(|(text, _)| text.to_owned());
         }
         rest = rest.get(at + name.len()..)?;
     }
