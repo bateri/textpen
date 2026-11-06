@@ -5,7 +5,9 @@
 //!
 //! Each opens the interpreter (compiled once a run): `make test-page` runs them, in `make check`.
 
-use pencere_drive::headless::Error;
+use std::sync::{Arc, Mutex};
+
+use pencere_drive::headless::{Error, Headless, InProcess};
 use pencere_view::{Button, Cursor, Input, Mods, Paint, Point, Rect};
 
 use crate::page_tests::{
@@ -530,8 +532,7 @@ fn selecting_the_words_of_a_pdf_and_copying_them() -> Result<(), Error> {
     Ok(())
 }
 
-/// A PDF that is being read says so; one past 8 MiB says so with its size and offers to close; a
-/// terminal that does not draw a page of a PDF is told nothing of the file.
+/// A PDF that is being read says so; one past 8 MiB says so with its size and offers to close.
 #[test]
 #[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
 fn a_pdf_too_large_to_preview_says_so_in_its_tabs_place() -> Result<(), Error> {
@@ -553,6 +554,61 @@ fn a_pdf_too_large_to_preview_says_so_in_its_tabs_place() -> Result<(), Error> {
     );
     assert!(shows(&page, "Close Tab") && pages_drawn(&page).is_empty());
     assert!(recorder.attached().is_empty());
+    Ok(())
+}
+
+/// The page as a terminal older than the kit that draws a page of a PDF runs it: its elements have
+/// no `page`, which the page is told by `pictures.draws_pdf`.
+const OLDER_TERMINAL: &str = r#"
+require("./parts/pictures").draws_pdf = false
+return require("./page")
+"#;
+
+/// The app's bundle, entered by `older.lua` (`OLDER_TERMINAL`).
+struct OlderTerminal(pencere_drive::headless::Files);
+
+impl pencere_sandbox::Assets for OlderTerminal {
+    fn read(&self, path: &str) -> Option<Arc<[u8]>> {
+        if path == "older.lua" {
+            return Some(OLDER_TERMINAL.as_bytes().into());
+        }
+        self.0.read(path)
+    }
+
+    fn media_type(&self, path: &str) -> Option<String> {
+        if path == "older.lua" {
+            return Some("text/x-lua".to_owned());
+        }
+        self.0.media_type(path)
+    }
+}
+
+/// A terminal that does not draw a page of a PDF is told nothing of the file: the tab says it does
+/// not show PDFs, and the rest of the page is as it is in any terminal.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_terminal_that_does_not_draw_pdfs_is_sent_none_and_the_tab_says_so() -> Result<(), Error> {
+    let project = lantern();
+    project.write_bytes("spec.pdf", PAGES);
+    let session = project.session(&["README.md"]);
+    let recorder = recording(&session);
+    let program = InProcess::new(crate::options(&session, &[], &Arc::new(Mutex::new(None))));
+    let files = OlderTerminal(pencere_drive::headless::Files::app(env!(
+        "CARGO_MANIFEST_DIR"
+    )));
+    let mut page = Headless::bundle(files, "older.lua")
+        .size(WIDE.0, WIDE.1)
+        .peer(program)
+        .open()?;
+    wait(&mut page, |page| page.bounds("row:spec.pdf").is_some())?;
+    page.click("row:spec.pdf")?;
+    wait(&mut page, |page| {
+        shows(page, "This terminal does not show PDFs")
+    })?;
+    assert!(pages_drawn(&page).is_empty());
+    assert!(recorder.attached().is_empty());
+    page.click("row:README.md")?;
+    wait(&mut page, |page| shows(page, "Markdown"))?;
     Ok(())
 }
 

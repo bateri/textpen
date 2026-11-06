@@ -15,6 +15,10 @@ local b, S = kit.b, kit.S
 
 local pictures = {}
 
+-- Whether the terminal draws a page of a PDF: the kit that does gave the elements `page`
+-- (`Element:page`), an older terminal's have none. A test of an older terminal sets it false.
+pictures.draws_pdf = b.div().page ~= nil
+
 -- How many answers have come, for the preview to know it is to be drawn again.
 local generation = 0
 
@@ -45,7 +49,7 @@ end
 -- terminal holds nothing for it: it opens as any file does. With `options.keep` the tab goes on
 -- showing what it showed (a picture on its way into the project) until the answer comes.
 function pictures.open(tab, plain, options)
-	if text.extension(tab.path) == "pdf" and b.div().page == nil then
+	if text.extension(tab.path) == "pdf" and not pictures.draws_pdf then
 		-- A terminal older than the kit that draws a page of a PDF: the file is not sent to it.
 		tab.status = "unopenable"
 		tab.unopenable = { path = tab.path, reason = "no-pdf", message = "This terminal does not show PDFs" }
