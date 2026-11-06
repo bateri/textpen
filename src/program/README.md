@@ -19,7 +19,7 @@ subscription, a push, a `code`. What the page is told is made in `api/` from wha
 | `api/pieces.rs`            | what one message to the page may carry                                                                      |
 | `api/files.rs`             | the calls `list`, `files`, `create`, `rename`, `delete`; a listing is cut to fit one message                |
 | `api/buffers.rs`           | the calls `open`, `edit`, `slice`, `save`, `buffer`, `discard`, `quit`; a long text read in pieces          |
-| `api/pictures.rs`          | the calls `picture` and `release`: a picture file read, measured and held by the terminal for a tab         |
+| `api/pictures.rs`          | the calls `picture`, `release`, `pdf-text` and `pdf-find`: a picture file read, measured and held by the terminal for a tab; the words of a PDF |
 | `api/transfers.rs`         | the calls `place` and `upload`: the files the person gave the page, received into the project              |
 | `api/compare.rs`           | the calls `compare` and `compare-base`: an open file against the last commit, and the commit's text in pieces |
 | `api/search.rs`            | the call `search`                                                                                           |
@@ -34,9 +34,10 @@ subscription, a push, a `code`. What the page is told is made in `api/` from wha
 | `project/search.rs`        | a search through the files of the project                                                                   |
 | `project/paths.rs`         | paths by their text alone                                                                                   |
 | `project/image.rs`         | the format and the size of a PNG, a JPEG or an SVG, from its first bytes                                    |
+| `project/pdf.rs`           | a PDF: its pages and their sizes, the words of a page with the place of every letter, a search through them |
 | `state/session.rs`         | the state of the program: its project, open files, settings, what is told once                              |
 | `state/buffers.rs`         | the open files, their versions, drafts                                                                      |
-| `state/pictures.rs`        | the pictures held for the page's tabs: attached to the terminal, let go when the last tab that had them closes |
+| `state/pictures.rs`        | the pictures held for the page's tabs: attached to the terminal, let go when the last tab that had them closes; a tab's PDF, read |
 | `state/transfers.rs`       | the files that cross the terminal: where a name is free, a file received beside its place, never over another unasked |
 | `state/store.rs`           | settings and each project's open files, where the XDG directories say                                       |
 | `state/defaults.rs`        | the settings and the page's state, their defaults and the names of their choices                            |

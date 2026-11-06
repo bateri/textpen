@@ -20,6 +20,112 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 use tempfile::TempDir;
 
+/// A PDF of pages of the sizes given (points, width and height), with nothing drawn on them: all
+/// that is read of it is its pages. The table of its objects is true, so that it is read as any is.
+/// Each page has contents, an empty stream they share: a page with none is not counted as a page by
+/// the reader the program and the terminal have.
+pub fn pdf_of_pages(sizes: &[(f32, f32)]) -> Vec<u8> {
+    fn object(out: &mut Vec<u8>, offsets: &mut Vec<usize>, body: &str) {
+        offsets.push(out.len());
+        let number = offsets.len();
+        out.extend(format!("{number} 0 obj\n{body}\nendobj\n").bytes());
+    }
+    let mut out = b"%PDF-1.4\n".to_vec();
+    let mut offsets = Vec::new();
+    object(&mut out, &mut offsets, "<< /Type /Catalog /Pages 2 0 R >>");
+    let kids: Vec<String> = (0..sizes.len())
+        .map(|at| format!("{} 0 R", at + 4))
+        .collect();
+    let pages = format!(
+        "<< /Type /Pages /Count {} /Kids [{}] >>",
+        sizes.len(),
+        kids.join(" ")
+    );
+    object(&mut out, &mut offsets, &pages);
+    object(
+        &mut out,
+        &mut offsets,
+        "<< /Length 0 >>\nstream\n\nendstream",
+    );
+    for (width, height) in sizes {
+        let page = format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {width} {height}] /Contents 3 0 R >>"
+        );
+        object(&mut out, &mut offsets, &page);
+    }
+    let table = out.len();
+    out.extend(format!("xref\n0 {}\n0000000000 65535 f \n", offsets.len() + 1).bytes());
+    for offset in &offsets {
+        out.extend(format!("{offset:010} 00000 n \n").bytes());
+    }
+    out.extend(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{table}\n%%EOF\n",
+            offsets.len() + 1
+        )
+        .bytes(),
+    );
+    out
+}
+
+/// A PDF of one page, 612 points wide and tall enough for them, with `lines` set one under the
+/// other in Helvetica 4: a page with more words than a message may carry.
+pub fn pdf_of_lines(lines: &[String]) -> Vec<u8> {
+    fn object(out: &mut Vec<u8>, offsets: &mut Vec<usize>, body: &str) {
+        offsets.push(out.len());
+        let number = offsets.len();
+        out.extend(format!("{number} 0 obj\n{body}\nendobj\n").bytes());
+    }
+    let height = lines.len() * 5 + 20;
+    let mut content = String::new();
+    for (at, line) in lines.iter().enumerate() {
+        let y = height - 10 - at * 5;
+        content.push_str(&format!("BT /F1 4 Tf 10 {y} Td ({line}) Tj ET\n"));
+    }
+    let mut out = b"%PDF-1.4\n".to_vec();
+    let mut offsets = Vec::new();
+    object(&mut out, &mut offsets, "<< /Type /Catalog /Pages 2 0 R >>");
+    object(
+        &mut out,
+        &mut offsets,
+        "<< /Type /Pages /Count 1 /Kids [3 0 R] >>",
+    );
+    object(
+        &mut out,
+        &mut offsets,
+        &format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 {height}] /Contents 4 0 R \
+             /Resources << /Font << /F1 5 0 R >> >> >>"
+        ),
+    );
+    object(
+        &mut out,
+        &mut offsets,
+        &format!(
+            "<< /Length {} >>\nstream\n{content}endstream",
+            content.len()
+        ),
+    );
+    object(
+        &mut out,
+        &mut offsets,
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    );
+    let table = out.len();
+    out.extend(format!("xref\n0 {}\n0000000000 65535 f \n", offsets.len() + 1).bytes());
+    for offset in &offsets {
+        out.extend(format!("{offset:010} 00000 n \n").bytes());
+    }
+    out.extend(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{table}\n%%EOF\n",
+            offsets.len() + 1
+        )
+        .bytes(),
+    );
+    out
+}
+
 /// The stand-in terminal, checked once.
 pub fn host() -> &'static Path {
     static HOST: OnceLock<PathBuf> = OnceLock::new();

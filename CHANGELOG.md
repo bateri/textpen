@@ -9,6 +9,11 @@ change what the previous one did.
 
 ### Added
 
+- **The program reads PDFs.** For a PDF the program tells the page how many pages it has and how large
+  each is, which of them have words and where every letter stands, and searches through all the pages
+  (regular expressions, case, whole words), so that the page can draw a PDF, select and copy from it
+  and find in it. A PDF with more than 10,000 pages, or past 8 MiB, is left as too large. The program
+  does not run what a PDF holds; it reads its pages.
 - **Leave what git ignores out of the tree.** The setting `Hide ignored files`, or Toggle Ignored Files in
   the Tree in the palette. It is off to begin with, and what git ignores is shown grey as before.
 

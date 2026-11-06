@@ -31,6 +31,14 @@ similar = "2"
 # What the standard library does not say: the machine's name, the user's, whether a file can be
 # written to.
 libc = "0.2"
+# A PDF's pages and the text on them, read in the program (the sandbox draws the pages): its
+# interpreter runs the page's content and says each letter it would draw and where. Pure Rust,
+# Apache-2.0 OR MIT. `embed-fonts` is on so that the letters of a page whose fonts are not in the
+# file (Helvetica and the other thirteen) are said too, as pencere's sandbox draws them, and the
+# predefined CMaps (`embed-cmaps`) are in so that the Chinese, Japanese and Korean text the sandbox
+# draws through them can be found and copied too. The shapes it hands out (a letter's matrix) are
+# its own `kurbo`, which it re-exports.
+hayro-interpret = { version = "0.9", default-features = false, features = ["embed-fonts", "embed-cmaps"] }
 
 [build-dependencies]
 pencere = "0.4"

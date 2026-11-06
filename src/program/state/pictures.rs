@@ -4,6 +4,10 @@
 //! (a picture tab, or a Markdown file shown with its preview), and let go (`detach`) when the last
 //! owner that held it lets go of it, which is when its tab closes.
 //!
+//! A PDF is a picture too: the terminal draws its pages, and the program keeps it read, for the
+//! owner that shows it, to say where its words are (`pdf-text`) and to search it (`pdf-find`). A
+//! PDF is a picture of a tab and not of a Markdown file: what a Markdown file shows is an image.
+//!
 //! The terminal's side of it is [`Attach`], which the program's hand on its view is
 //! (`pencere::ViewControl`) and which a test puts its own in the place of.
 //!
@@ -19,6 +23,7 @@ use serde::Serialize;
 
 use crate::project::image::{self, BYTES_LIMIT, SIDE_LIMIT, Size};
 use crate::project::paths;
+use crate::project::pdf::{self, Document, Unopened};
 use crate::project::tree::Tree;
 
 /// What holds the files the page draws: the terminal, by the program's hand on its view.
@@ -41,14 +46,29 @@ impl Attach for ViewControl {
 }
 
 /// A picture the page can draw.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Picture {
     /// What the page draws it by.
     pub name: String,
     /// The file's bytes.
     pub size: u64,
+    /// In pixels; of a PDF, the first page's, in points.
     pub width: u32,
     pub height: u32,
+    /// What a PDF has besides: its pages and whether it has words.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pdf: Option<Pages>,
+}
+
+/// The pages of a PDF, for the page to lay out before it asks for any of them.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Pages {
+    /// How many pages there are.
+    pub pages: usize,
+    /// Their sizes in points, as runs of pages of one size: `[how many, width, height]`.
+    pub sizes: Vec<(usize, f64, f64)>,
+    /// Whether any page has text to select and to search.
+    pub text: bool,
 }
 
 /// Why a file is not shown as a picture.
@@ -65,6 +85,8 @@ pub struct Pictures {
     attach: Mutex<Arc<dyn Attach>>,
     /// The names each owner holds.
     held: Mutex<BTreeMap<String, BTreeSet<String>>>,
+    /// The PDF each owner shows, read.
+    documents: Mutex<BTreeMap<String, Arc<Document>>>,
 }
 
 impl Pictures {
@@ -72,6 +94,7 @@ impl Pictures {
         Self {
             attach: Mutex::new(attach),
             held: Mutex::new(BTreeMap::new()),
+            documents: Mutex::new(BTreeMap::new()),
         }
     }
 
@@ -110,25 +133,55 @@ impl Pictures {
             Ok(read) => read,
             Err(refusal) => return Ok(Err(refusal)),
         };
-        let (bytes, size, Size { width, height }) = read;
-        if width > SIDE_LIMIT || height > SIDE_LIMIT {
-            return Ok(Err(Refusal::TooLarge { size }));
-        }
+        let (bytes, size, content) = read;
+        let (width, height, document) = match content {
+            Content::Image(Size { width, height }) => {
+                if width > SIDE_LIMIT || height > SIDE_LIMIT {
+                    return Ok(Err(Refusal::TooLarge { size }));
+                }
+                (width, height, None)
+            }
+            Content::Pdf(_) if from.is_some() => return Ok(Err(Refusal::NotAPicture)),
+            Content::Pdf(document) => {
+                let (width, height) = document.sizes().first().copied().unwrap_or((1.0, 1.0));
+                (whole(width), whole(height), Some(document))
+            }
+        };
         let name = lock(&self.attach).attach(bytes)?;
         lock(&self.held)
             .entry(owner.to_owned())
             .or_default()
             .insert(name.clone());
+        let pdf = document.map(|document| {
+            let pages = Pages {
+                pages: document.sizes().len(),
+                sizes: document.runs(),
+                text: document.has_text(),
+            };
+            lock(&self.documents).insert(owner.to_owned(), Arc::new(document));
+            pages
+        });
+        if pdf.is_none() {
+            // What the owner showed before is not what it shows now.
+            lock(&self.documents).remove(owner);
+        }
         Ok(Ok(Picture {
             name,
             size,
             width,
             height,
+            pdf,
         }))
+    }
+
+    /// The PDF `owner` shows, if it shows one.
+    pub fn document(&self, owner: &str) -> Option<Arc<Document>> {
+        lock(&self.documents).get(owner).cloned()
     }
 
     /// `owner` holds no picture any more: the files nobody else holds are let go.
     pub fn release(&self, owner: &str) {
+        lock(&self.documents).remove(owner);
         let mut held = lock(&self.held);
         let Some(names) = held.remove(owner) else {
             return;
@@ -194,8 +247,23 @@ fn inside(project: &Tree, absolute: &str) -> bool {
     file.starts_with(root)
 }
 
-/// A picture file's bytes, how many bytes it is, and its size in pixels.
-fn read(absolute: &str) -> Result<(Vec<u8>, u64, Size), Refusal> {
+/// What a picture file is: an image of a size in pixels, or a PDF, read.
+enum Content {
+    Image(Size),
+    Pdf(Document),
+}
+
+/// A page's size in points as the whole number the picture says it is: never below one.
+fn whole(points: f64) -> u32 {
+    if points.is_finite() && points >= 1.0 {
+        points.ceil() as u32
+    } else {
+        1
+    }
+}
+
+/// A picture file's bytes, how many bytes it is, and what it is.
+fn read(absolute: &str) -> Result<(Vec<u8>, u64, Content), Refusal> {
     if !image::is_named_so(absolute) {
         return Err(Refusal::NotAPicture);
     }
@@ -216,8 +284,17 @@ fn read(absolute: &str) -> Result<(Vec<u8>, u64, Size), Refusal> {
     if size > BYTES_LIMIT {
         return Err(Refusal::TooLarge { size });
     }
+    // The terminal tells a PDF by the bytes and not by the name, and so does this.
+    if pdf::is_pdf(&bytes) {
+        return match Document::open(Arc::from(bytes.as_slice())) {
+            Ok(document) => Ok((bytes, size, Content::Pdf(document))),
+            // Too long to lay out in one message: as large as a file that is too large to read.
+            Err(Unopened::TooManyPages) => Err(Refusal::TooLarge { size }),
+            Err(Unopened::Unreadable) => Err(Refusal::NotAPicture),
+        };
+    }
     let dimensions = image::size_of(&bytes).ok_or(Refusal::NotAPicture)?;
-    Ok((bytes, size, dimensions))
+    Ok((bytes, size, Content::Image(dimensions)))
 }
 
 /// What holds the files, as a test sees it: it makes the name the terminal would and keeps the
@@ -266,6 +343,9 @@ mod tests {
     use super::recorder::{Recorder, digest_name};
     use super::*;
 
+    /// Three pages, 612 by 792, 595 by 842 and 300 by 200 points; the first two have words.
+    const PAPER: &[u8] = include_bytes!("../../../tests/fixtures/pages.pdf");
+
     fn png_of(width: u32, height: u32) -> Vec<u8> {
         let mut bytes = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR".to_vec();
         bytes.extend(width.to_be_bytes());
@@ -308,6 +388,7 @@ mod tests {
                 size: bytes.len() as u64,
                 width: 640,
                 height: 480,
+                pdf: None,
             })
         );
         assert_eq!(recorder.attached(), [digest_name(&bytes)]);
@@ -428,5 +509,69 @@ mod tests {
                 "{src}"
             );
         }
+    }
+
+    #[test]
+    fn a_pdf_is_held_read_for_the_owner_that_shows_it_and_let_go_with_it() {
+        let (_dir, tree) = project(&[
+            ("paper.pdf", PAPER.to_vec()),
+            ("logo.png", png_of(3, 3)),
+            ("docs/guide.md", b"".to_vec()),
+            ("docs/paper.pdf", PAPER.to_vec()),
+            ("words.pdf", b"%PDF-1.4 and then words".to_vec()),
+        ]);
+        let (pictures, recorder) = pictures();
+        let shown = pictures
+            .show(&tree, "paper.pdf", None, "tab")
+            .unwrap()
+            .unwrap();
+        assert_eq!(shown.name, digest_name(PAPER));
+        assert_eq!(shown.size, PAPER.len() as u64);
+        // The first page's size, then the pages by runs of one size.
+        assert_eq!((shown.width, shown.height), (612, 792));
+        assert_eq!(
+            shown.pdf,
+            Some(Pages {
+                pages: 3,
+                sizes: vec![(1, 612.0, 792.0), (1, 595.0, 842.0), (1, 300.0, 200.0)],
+                text: true,
+            })
+        );
+        assert!(pictures.document("tab").is_some());
+        assert!(pictures.document("other").is_none());
+        // Shown again it is the same file under the same name and read again; let go, it is gone
+        // from the terminal and from the program.
+        pictures
+            .show(&tree, "paper.pdf", None, "tab")
+            .unwrap()
+            .unwrap();
+        pictures.release("tab");
+        assert!(pictures.document("tab").is_none());
+        assert_eq!(recorder.detached(), [digest_name(PAPER)]);
+        // What a tab shows in place of its PDF is not a PDF.
+        pictures
+            .show(&tree, "paper.pdf", None, "tab")
+            .unwrap()
+            .unwrap();
+        let logo = pictures
+            .show(&tree, "logo.png", None, "tab")
+            .unwrap()
+            .unwrap();
+        assert_eq!(logo.pdf, None);
+        assert!(pictures.document("tab").is_none());
+        // A Markdown file shows images, and a PDF is none; a PDF that cannot be read is none.
+        let attached = recorder.attached().len();
+        let from = |src: &str| {
+            pictures
+                .show(&tree, src, Some("docs/guide.md"), "docs/guide.md")
+                .unwrap()
+        };
+        assert_eq!(from("paper.pdf"), Err(Refusal::NotAPicture));
+        assert_eq!(
+            pictures.show(&tree, "words.pdf", None, "words").unwrap(),
+            Err(Refusal::NotAPicture)
+        );
+        assert_eq!(recorder.attached().len(), attached);
+        assert!(pictures.document("docs/guide.md").is_none());
     }
 }

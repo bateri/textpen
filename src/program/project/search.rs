@@ -22,7 +22,7 @@ use super::tree::{self, Tree};
 const FILE_LIMIT: u64 = 2 * 1024 * 1024;
 
 /// A search stops after this many matches.
-const MATCH_LIMIT: usize = 2000;
+pub(super) const MATCH_LIMIT: usize = 2000;
 
 /// A line longer than this many characters is cut around each match.
 const LINE_WIDTH: usize = 160;
@@ -82,14 +82,14 @@ pub struct Found {
 }
 
 /// A pattern, compiled.
-struct Pattern {
+pub(super) struct Pattern {
     re: Regex,
     /// Only a match with no letter, digit or `_` beside it counts.
     whole_word: bool,
 }
 
 impl Pattern {
-    fn new(options: &Options) -> Result<Self, String> {
+    pub(super) fn new(options: &Options) -> Result<Self, String> {
         let source = if options.regex {
             options.query.clone()
         } else {
@@ -109,7 +109,7 @@ impl Pattern {
 
     /// The first match from the byte `from` (a place between characters), as the places it starts
     /// and ends.
-    fn find(&self, text: &str, from: usize) -> Result<Option<(usize, usize)>, String> {
+    pub(super) fn find(&self, text: &str, from: usize) -> Result<Option<(usize, usize)>, String> {
         if !self.whole_word {
             return Ok(self
                 .re

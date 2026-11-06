@@ -12,7 +12,7 @@ use std::os::unix::fs::{PermissionsExt, symlink};
 use std::process::Command;
 use std::time::{Duration, Instant, SystemTime};
 
-use common::{Answer, Pane, Script, program, pushes, run};
+use common::{Answer, Pane, Script, pdf_of_lines, pdf_of_pages, program, pushes, run};
 use serde_json::{Value, json};
 
 /// What the program puts in one message at most, bytes (docs/calls.md): a quarter of the 1 MiB a
@@ -1184,4 +1184,321 @@ fn a_picture_is_measured_and_given_to_the_terminal_to_hold_and_what_is_none_is_r
     assert_eq!(heard[8].result(), &json!({ "refused": "not-a-picture" }));
     assert_eq!(heard[9].result(), &json!({}));
     assert_eq!(heard[10].result(), &json!({}));
+}
+
+/// The PDF the tests read: three pages, 612 by 792, 595 by 842 and 300 by 200 points. The first has
+/// "Hello world" and "a needle in a haystack", the second "Second page" and, in bold, "Needle"; the
+/// third draws a shape and no letter.
+const PAPER: &[u8] = include_bytes!("fixtures/pages.pdf");
+
+#[test]
+fn a_pdf_is_given_to_the_terminal_with_its_pages_and_the_words_of_a_page_are_asked_for() {
+    let pane = Pane::new();
+    pane.write("paper.pdf", PAPER);
+    let heard = ask(
+        &pane,
+        &[
+            (
+                "picture",
+                json!({ "path": "paper.pdf", "owner": "paper.pdf" }),
+            ),
+            ("pdf-text", json!({ "owner": "paper.pdf", "page": 1 })),
+            ("pdf-text", json!({ "owner": "paper.pdf", "page": 2 })),
+            ("pdf-text", json!({ "owner": "paper.pdf", "page": 3 })),
+            ("pdf-text", json!({ "owner": "paper.pdf", "page": 4 })),
+            ("pdf-text", json!({ "owner": "paper.pdf", "page": 0 })),
+            ("pdf-text", json!({ "owner": "nobody", "page": 1 })),
+            ("pdf-text", json!({ "owner": "paper.pdf" })),
+            ("pdf-text", json!({ "owner": "paper.pdf", "page": -1 })),
+            ("release", json!({ "owner": "paper.pdf" })),
+            ("pdf-text", json!({ "owner": "paper.pdf", "page": 1 })),
+        ],
+    );
+    let paper = heard[0].result();
+    assert!(
+        paper["name"].as_str().unwrap().starts_with("sha256:"),
+        "{paper}"
+    );
+    assert_eq!(paper["size"], json!(PAPER.len()));
+    // The first page's size, then the pages' by runs of one size, then whether there are words.
+    assert_eq!(
+        (paper["width"].clone(), paper["height"].clone()),
+        (json!(612), json!(792))
+    );
+    assert_eq!(
+        paper["pdf"],
+        json!({
+            "pages": 3,
+            "sizes": [[1, 612.0, 792.0], [1, 595.0, 842.0], [1, 300.0, 200.0]],
+            "text": true,
+        })
+    );
+    let first = heard[1].result();
+    assert_eq!(first["page"], json!(1));
+    assert_eq!(first["truncated"], json!(false));
+    let lines = first["lines"].as_array().unwrap();
+    assert_eq!(lines.len(), 2);
+    let hello = &lines[0];
+    assert_eq!(hello["text"], json!("Hello world"));
+    // Set 700 points up a page 792 tall, 72 in: the box has the baseline, 92 points from the top.
+    assert!((hello["x"].as_f64().unwrap() - 72.0).abs() < 0.5, "{hello}");
+    let (top, height) = (hello["y"].as_f64().unwrap(), hello["h"].as_f64().unwrap());
+    assert!(top < 92.0 && top + height > 92.0, "{hello}");
+    // A place for the left edge of every letter and one for the right edge of the last.
+    let xs = hello["xs"].as_array().unwrap();
+    assert_eq!(xs.len(), "Hello world".chars().count() + 1);
+    assert_eq!(xs[0], json!(0.0));
+    assert_eq!(xs.last(), Some(&hello["w"]));
+    assert_eq!(lines[1]["text"], json!("a needle in a haystack"));
+    let texts: Vec<&str> = heard[2].result()["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|line| line["text"].as_str().unwrap())
+        .collect();
+    assert_eq!(texts, ["Second page", "Needle"]);
+    // A page with no letters has no lines.
+    assert_eq!(
+        heard[3].result(),
+        &json!({ "page": 3, "lines": [], "truncated": false })
+    );
+    // A page the PDF has not, one the page counts wrong, a tab that shows none, and a PDF let go.
+    for failed in [4, 5, 6, 10] {
+        assert!(
+            heard[failed].failed("failed"),
+            "{failed}: {:?}",
+            heard[failed]
+        );
+    }
+    assert!(heard[4].message().contains("no page 4"));
+    assert!(heard[6].message().contains("not open"));
+    assert!(heard[7].failed("bad-params"));
+    assert!(heard[8].failed("bad-params"));
+    assert_eq!(heard[9].result(), &json!({}));
+}
+
+#[test]
+fn a_pdf_is_searched_through_all_its_pages_for_words_whole_words_and_patterns() {
+    let pane = Pane::new();
+    pane.write("paper.pdf", PAPER);
+    let find = |params: Value| {
+        let mut params = params;
+        params["owner"] = json!("paper.pdf");
+        params
+    };
+    let heard = ask(
+        &pane,
+        &[
+            (
+                "picture",
+                json!({ "path": "paper.pdf", "owner": "paper.pdf" }),
+            ),
+            ("pdf-find", find(json!({ "query": "needle" }))),
+            (
+                "pdf-find",
+                find(json!({ "query": "needle", "caseSensitive": true })),
+            ),
+            (
+                "pdf-find",
+                find(json!({ "query": "need", "wholeWord": true })),
+            ),
+            (
+                "pdf-find",
+                find(json!({ "query": "h.ystack|sec\\w+", "regex": true })),
+            ),
+            ("pdf-find", find(json!({ "query": "absent" }))),
+            ("pdf-find", find(json!({ "query": "" }))),
+            ("pdf-find", find(json!({ "query": "(", "regex": true }))),
+            ("pdf-find", json!({ "owner": "nobody", "query": "needle" })),
+            ("pdf-find", json!({ "owner": "paper.pdf" })),
+        ],
+    );
+    let found = heard[1].result();
+    assert_eq!(found["searched"], json!(3));
+    assert_eq!(found["truncated"], json!(false));
+    assert!(found["ms"].is_u64());
+    let matches = found["matches"].as_array().unwrap();
+    // The pages the words are on, and a box for each inside its page.
+    let on: Vec<&Value> = matches.iter().map(|found| &found["page"]).collect();
+    assert_eq!(on, [&json!(1), &json!(2)]);
+    for found in matches {
+        let (width, height) = if found["page"] == json!(1) {
+            (612.0, 792.0)
+        } else {
+            (595.0, 842.0)
+        };
+        let n = |key: &str| found[key].as_f64().unwrap();
+        assert!(n("x") >= 0.0 && n("x") + n("w") <= width, "{found}");
+        assert!(n("y") >= 0.0 && n("y") + n("h") <= height, "{found}");
+        assert!(n("w") > 10.0 && n("h") > 5.0, "{found}");
+    }
+    // "Needle" of the second page is set at 100 points in and 380 up a page 842 tall.
+    let second = &matches[1];
+    assert!(
+        (second["x"].as_f64().unwrap() - 100.0).abs() < 1.0,
+        "{second}"
+    );
+    let (top, height) = (second["y"].as_f64().unwrap(), second["h"].as_f64().unwrap());
+    assert!(
+        top < 842.0 - 380.0 && top + height > 842.0 - 380.0,
+        "{second}"
+    );
+    assert_eq!(heard[2].result()["matches"].as_array().unwrap().len(), 1);
+    assert_eq!(heard[3].result()["matches"], json!([]));
+    assert_eq!(heard[4].result()["matches"].as_array().unwrap().len(), 2);
+    assert_eq!(heard[5].result()["matches"], json!([]));
+    assert_eq!(heard[5].result()["searched"], json!(3));
+    // A query of nothing is no query.
+    assert!(heard[6].failed("bad-params"));
+    assert!(heard[7].failed("failed"));
+    assert!(heard[7].message().contains("Not a regular expression"));
+    assert!(heard[8].failed("failed"));
+    assert!(heard[9].failed("bad-params"));
+}
+
+#[test]
+fn what_is_named_a_pdf_and_is_none_or_is_too_large_is_refused_and_a_markdown_files_picture_is_no_pdf()
+ {
+    let pane = Pane::new();
+    pane.write("words.pdf", "just words");
+    pane.write("cut.pdf", &PAPER[..PAPER.len() / 5]);
+    let mut big = PAPER.to_vec();
+    big.resize(8 * 1024 * 1024 + 1, b' ');
+    pane.write("big.pdf", &big);
+    pane.write("docs/guide.md", "");
+    pane.write("docs/paper.pdf", PAPER);
+    // The terminal tells a PDF by its bytes: under another name it is one still, and a name that
+    // says PDF to a file that is another picture does not make it one.
+    pane.write("paper.png", PAPER);
+    pane.write("logo.pdf", png_header(640, 480));
+    pane.write("many.pdf", pdf_of_pages(&vec![(100.0, 100.0); 10_001]));
+    let heard = ask(
+        &pane,
+        &[
+            (
+                "picture",
+                json!({ "path": "words.pdf", "owner": "words.pdf" }),
+            ),
+            ("picture", json!({ "path": "cut.pdf", "owner": "cut.pdf" })),
+            ("picture", json!({ "path": "big.pdf", "owner": "big.pdf" })),
+            (
+                "picture",
+                json!({ "path": "paper.pdf", "owner": "g", "from": "docs/guide.md" }),
+            ),
+            (
+                "picture",
+                json!({ "path": "paper.png", "owner": "paper.png" }),
+            ),
+            (
+                "picture",
+                json!({ "path": "logo.pdf", "owner": "logo.pdf" }),
+            ),
+            (
+                "picture",
+                json!({ "path": "many.pdf", "owner": "many.pdf" }),
+            ),
+            ("pdf-text", json!({ "owner": "words.pdf", "page": 1 })),
+            ("pdf-text", json!({ "owner": "many.pdf", "page": 1 })),
+        ],
+    );
+    assert_eq!(heard[0].result(), &json!({ "refused": "not-a-picture" }));
+    assert_eq!(heard[1].result(), &json!({ "refused": "not-a-picture" }));
+    assert_eq!(
+        heard[2].result(),
+        &json!({ "refused": "too-large", "size": big.len() })
+    );
+    assert_eq!(heard[3].result(), &json!({ "refused": "not-a-picture" }));
+    assert_eq!(heard[4].result()["pdf"]["pages"], json!(3));
+    // A PNG under the name of a PDF is a PNG.
+    assert_eq!(heard[5].result()["width"], json!(640));
+    assert!(heard[5].result().get("pdf").is_none());
+    // Too many pages to be told in one message.
+    assert_eq!(heard[6].result()["refused"], json!("too-large"));
+    assert!(heard[7].failed("failed"));
+    assert!(heard[8].failed("failed"));
+}
+
+#[test]
+fn the_pages_of_the_longest_pdf_are_told_in_one_message_even_when_no_two_are_alike() {
+    let pane = Pane::new();
+    // The widest sizes to say, one after the other different, so that no run holds two.
+    let sizes: Vec<(f32, f32)> = (0..10_000)
+        .map(|at| (16_383.99 - (at % 2) as f32 * 0.01, 16_383.99))
+        .collect();
+    pane.write("long.pdf", pdf_of_pages(&sizes));
+    let heard = ask(
+        &pane,
+        &[
+            (
+                "picture",
+                json!({ "path": "long.pdf", "owner": "long.pdf" }),
+            ),
+            ("pdf-text", json!({ "owner": "long.pdf", "page": 10_000 })),
+            ("pdf-find", json!({ "owner": "long.pdf", "query": "x" })),
+        ],
+    );
+    let long = heard[0].result();
+    assert_eq!(long["pdf"]["pages"], json!(10_000));
+    let runs = long["pdf"]["sizes"].as_array().unwrap();
+    assert_eq!(runs.len(), 10_000);
+    assert_eq!(runs[0], json!([1, 16_383.99, 16_383.99]));
+    assert_eq!(runs[1], json!([1, 16_383.98, 16_383.99]));
+    let told = serde_json::to_string(long).unwrap().len();
+    assert!(told < PIECE, "{told} bytes");
+    assert_eq!(
+        heard[1].result(),
+        &json!({ "page": 10_000, "lines": [], "truncated": false })
+    );
+    assert_eq!(heard[2].result()["matches"], json!([]));
+    assert_eq!(heard[2].result()["searched"], json!(10_000));
+}
+
+#[test]
+fn a_page_with_more_lines_than_a_message_carries_is_told_as_many_as_fit_and_says_so() {
+    let pane = Pane::new();
+    let lines: Vec<String> = (0..3000)
+        .map(|at| format!("Line {at} of a page that has more words than a message may carry"))
+        .collect();
+    pane.write("dense.pdf", pdf_of_lines(&lines));
+    let heard = ask(
+        &pane,
+        &[
+            (
+                "picture",
+                json!({ "path": "dense.pdf", "owner": "dense.pdf" }),
+            ),
+            ("pdf-text", json!({ "owner": "dense.pdf", "page": 1 })),
+            (
+                "pdf-find",
+                json!({ "owner": "dense.pdf", "query": "Line", "wholeWord": true }),
+            ),
+        ],
+    );
+    assert_eq!(heard[0].result()["pdf"]["text"], json!(true));
+    let page = heard[1].result();
+    let told = page["lines"].as_array().unwrap();
+    assert_eq!(page["truncated"], json!(true));
+    assert!(
+        told.len() > 100 && told.len() < lines.len(),
+        "{}",
+        told.len()
+    );
+    // The lines told are the first ones, from the top of the page.
+    assert_eq!(
+        told[0]["text"],
+        json!("Line 0 of a page that has more words than a message may carry")
+    );
+    assert_eq!(
+        told[told.len() - 1]["text"],
+        json!(format!(
+            "Line {} of a page that has more words than a message may carry",
+            told.len() - 1
+        ))
+    );
+    assert!(serde_json::to_string(page).unwrap().len() < PIECE + 4096);
+    // A search is cut at 2000 matches, and says so.
+    let found = heard[2].result();
+    assert_eq!(found["truncated"], json!(true));
+    assert_eq!(found["matches"].as_array().unwrap().len(), 2000);
+    assert!(serde_json::to_string(found).unwrap().len() < PIECE + 4096);
 }

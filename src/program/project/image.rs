@@ -1,7 +1,8 @@
 //! What a picture file says of itself in its first bytes: which of the three formats the terminal
 //! draws it is (PNG, JPEG, SVG) and how many pixels wide and tall. Nothing is decoded and no
 //! library is needed for it: the size is in the header, and a file whose header says none is not a
-//! picture here.
+//! picture here. A PDF is the fourth the terminal draws; its pages are `pdf.rs`'s, and `size_of`
+//! says nothing of it.
 //!
 //! The terminal decides the format by the bytes and not by the name, and so does this; the name
 //! only tells which files are worth the reading.
@@ -22,13 +23,13 @@ pub struct Size {
     pub height: u32,
 }
 
-/// Whether the name of a file is one of a picture the terminal draws: `.png`, `.jpg`, `.jpeg` or
-/// `.svg`, in any case.
+/// Whether the name of a file is one of a picture the terminal draws: `.png`, `.jpg`, `.jpeg`,
+/// `.svg` or `.pdf`, in any case.
 pub fn is_named_so(name: &str) -> bool {
     let Some((_, extension)) = name.rsplit_once('.') else {
         return false;
     };
-    ["png", "jpg", "jpeg", "svg"]
+    ["png", "jpg", "jpeg", "svg", "pdf"]
         .iter()
         .any(|known| extension.eq_ignore_ascii_case(known))
 }
@@ -356,7 +357,15 @@ mod tests {
 
     #[test]
     fn the_name_tells_which_files_are_worth_reading() {
-        for name in ["a.png", "A.PNG", "x.y.jpg", "p.JPEG", "logo.svg"] {
+        for name in [
+            "a.png",
+            "A.PNG",
+            "x.y.jpg",
+            "p.JPEG",
+            "logo.svg",
+            "paper.pdf",
+            "P.PDF",
+        ] {
             assert!(is_named_so(name), "{name}");
         }
         for name in ["a.gif", "png", "a.png.txt", "a.webp", "", ".png.bak"] {
