@@ -9,6 +9,12 @@ change what the previous one did.
 
 ### Added
 
+- **A PDF opens in its tab.** Its pages are drawn one under the other and scrolled by the terminal;
+  `⌘+`, `⌘-` and `⌘0` zoom and fit the width, `⌃G` (or the page in the status line) goes to a page, and
+  the words can be selected (a double click a word, a triple click a line, `⌘A` all) and copied with
+  `⌘C`. `⌘F` finds in every page, as words, whole words or patterns, with the matches marked on the
+  pages. A PDF with no words in it says it has none. It needs a terminal that draws a page of a PDF;
+  an older one says it does not show PDFs.
 - **The program reads PDFs.** For a PDF the program tells the page how many pages it has and how large
   each is, which of them have words and where every letter stands, and searches through all the pages
   (regular expressions, case, whole words), so that the page can draw a PDF, select and copy from it

@@ -110,7 +110,7 @@ impl Params for PdfText {
     fn read(fields: &Fields<'_>) -> Checked<Self> {
         Ok(Self {
             owner: fields.text("owner")?,
-            page: fields.count("page")?,
+            page: fields.positive("page")?,
         })
     }
 }

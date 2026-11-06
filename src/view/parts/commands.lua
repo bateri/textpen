@@ -11,6 +11,7 @@
 local kit = require("../lib/kit")
 local text = require("../lib/text")
 local docs = require("./docs")
+local pdf = require("./pdf")
 local changes = require("./changes")
 local compare = require("./compare")
 local editor_menu = require("./editor_menu")
@@ -390,6 +391,33 @@ add({ id = "cursor-above", title = "Add Cursor Above", category = "Selection", k
 add({ id = "cursor-below", title = "Add Cursor Below", category = "Selection", keys = "ctrl+shift+down", when = has_file,
 	run = on_editor({ command = "add_caret_below" }) })
 
+-- --- A PDF ------------------------------------------------------------------------------------------------------
+
+local function in_pdf()
+	return pdf.shown() ~= nil
+end
+
+local function finding_in_pdf()
+	return S.find.open and S.find.pdf ~= nil and S.find.pdf == pdf.shown() and S.find.count > 0
+end
+
+add({ id = "pdf-zoom-in", title = "Zoom In", category = "PDF", keys = { "cmd++", "cmd+=" }, when = in_pdf,
+	run = function() pdf.zoom(pdf.shown(), 1) end })
+add({ id = "pdf-zoom-out", title = "Zoom Out", category = "PDF", keys = "cmd+-", when = in_pdf,
+	run = function() pdf.zoom(pdf.shown(), -1) end })
+add({ id = "pdf-fit-width", title = "Fit Width", category = "PDF", keys = "cmd+0", when = in_pdf,
+	run = function() pdf.zoom(pdf.shown(), 0) end })
+add({ id = "pdf-go-to-page", title = "Go to Page", category = "Go", keys = "ctrl+g", when = in_pdf,
+	run = function() act.open_palette("page") end })
+add({ id = "pdf-next-match", title = "Next Match in PDF", category = "Search", keys = "cmd+g", when = finding_in_pdf,
+	run = function() act.pdf_step(1) end })
+add({ id = "pdf-previous-match", title = "Previous Match in PDF", category = "Search", keys = "cmd+shift+g", when = finding_in_pdf,
+	run = function() act.pdf_step(-1) end })
+add({ id = "pdf-copy", title = "Copy", category = "Edit", keys = "cmd+c", when = pdf.can_copy,
+	run = function() pdf.copy(pdf.shown()) end })
+add({ id = "pdf-select-all", title = "Select All", category = "Selection", keys = "cmd+a", when = pdf.can_select,
+	run = function() pdf.select_all(pdf.shown()) end })
+
 commands.list = list
 
 local by_id = {}
@@ -427,11 +455,41 @@ function commands.run(id)
 	return false
 end
 
+-- The keys of a command as a list of words.
+local function keys_list(keys)
+	if keys == nil then
+		return {}
+	elseif type(keys) == "table" then
+		return keys
+	end
+	return { keys }
+end
+
 -- The page's outermost box with every command on it: the host lists them and runs them by their
--- keys, whatever has the keyboard.
+-- keys, whatever has the keyboard. The host gives a key to the first command that has it, whether
+-- that one can be done now or not, so a command that cannot be done leaves the keys that another
+-- command that can has: ⌃G is the next occurrence in a file and the page to go to in a PDF.
 function commands.on(root)
+	local claimed = {}
 	for _, command in list do
-		root:command(command.id, command.category .. ": " .. command.title, command.keys, commands.enabled(command))
+		if commands.enabled(command) then
+			for _, keys in keys_list(command.keys) do
+				claimed[string.lower(keys)] = true
+			end
+		end
+	end
+	for _, command in list do
+		local keys = command.keys
+		if not commands.enabled(command) and keys ~= nil then
+			local kept = {}
+			for _, one in keys_list(keys) do
+				if not claimed[string.lower(one)] then
+					kept[#kept + 1] = one
+				end
+			end
+			keys = #kept > 0 and kept or nil
+		end
+		root:command(command.id, command.category .. ": " .. command.title, keys, commands.enabled(command))
 	end
 	return root
 end

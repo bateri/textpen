@@ -25,6 +25,7 @@ local sheets = require("./parts/sheets")
 local changes = require("./parts/changes")
 local compare = require("./parts/compare")
 local editor_menu = require("./parts/editor_menu")
+local pdf = require("./parts/pdf")
 local uploads = require("./parts/uploads")
 
 local b, ui, S, SIZE, act = kit.b, kit.ui, kit.S, kit.SIZE, kit.act
@@ -131,7 +132,8 @@ local function settle()
 	tabs.reveal()
 	local wider = sidebar.settle()
 	local aligned = compare.settle()
-	return preview.settle() or wider or aligned
+	local pages = pdf.settle()
+	return preview.settle() or wider or aligned or pages
 end
 
 -- --- What the person does -------------------------------------------------------------------------------
@@ -165,6 +167,9 @@ local function pressed(event)
 	if event.button == "right" and not S.overlay and editor_menu.pressed(event) then
 		return true
 	end
+	if pdf.pressed(event) then
+		return true
+	end
 	if hit and (event.button == "right" or event.button == "middle") then
 		-- The right button opens a row's menu, the middle one closes a tab: at once, no click.
 		if event.button == "middle" or not sidebar.context(hit, event) then
@@ -180,6 +185,7 @@ end
 
 local function released(event)
 	local at = { x = event.x, y = event.y }
+	pdf.released(event)
 	if sidebar.released(event) then
 		ui:release(layout, at)
 		return true
@@ -229,7 +235,7 @@ end
 -- arrow, so a press or a release would otherwise turn the hand over a row into the arrow.
 local function cursor_at(event)
 	local over = ui.hover
-	if event.place or over_field(event) then
+	if event.place or over_field(event) or pdf.over_text(event) then
 		return "text"
 	elseif over == "resizer" then
 		return "resize_horizontal"
@@ -242,6 +248,9 @@ local function cursor_at(event)
 end
 
 local function moved(event)
+	if pdf.dragged(event) then
+		return { redraw = true, cursor = "text" }
+	end
 	if sidebar.dragged(event) then
 		-- Drawn again only where the edge moved (`sidebar.dragged` asks for it).
 		return { cursor = "resize_horizontal" }
@@ -265,7 +274,7 @@ local function key(event)
 	if overlay then
 		return act.overlay_key(name, mods)
 	end
-	if find.key(name, mods) or sidebar.key(name, mods) then
+	if find.key(name, mods) or sidebar.key(name, mods) or pdf.key(name, mods) then
 		return true
 	end
 	if name == "escape" and ui:cancel_drag() then
@@ -285,6 +294,7 @@ local function handle(event)
 		reply = (kind ~= "viewport" or compare.moved(event)) or nil
 	elseif kind == "scrolled" then
 		compare.scrolled(event)
+		reply = pdf.scrolled(event) or nil
 	elseif kind == "move" then
 		reply = moved(event)
 	elseif kind == "leave" then

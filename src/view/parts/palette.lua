@@ -8,6 +8,7 @@ local fuzzy = require("@pencere/fuzzy")
 local files = require("../lib/files")
 local language = require("../lib/language")
 local docs = require("./docs")
+local pdf = require("./pdf")
 local commands = require("./commands")
 
 local b, S, act = kit.b, kit.S, kit.act
@@ -29,6 +30,7 @@ local MODES = {
 	files = { label = "Files", icon = "file-search", hint = "Go to file  (> commands, : line)" },
 	commands = { label = "Commands", icon = "command", hint = "Run a command" },
 	line = { label = "Line", icon = "hash", hint = "Line number, or line:column" },
+	page = { label = "Page", icon = "hash", hint = "Page number" },
 	tabs = { label = "Open", icon = "stack-2", hint = "Switch to an open file" },
 	language = { label = "Language", icon = "command", hint = "Choose a language for this file" },
 	indent = { label = "Indent", icon = "command", hint = "Choose spaces or tabs, and the tab size" },
@@ -328,6 +330,27 @@ local function line_items(query)
 	}
 end
 
+local function page_items(query)
+	local tab = pdf.shown()
+	local number = tonumber(string.match(query, "^%s*(%d+)%s*$"))
+	if not (tab and number) then
+		return {}
+	end
+	local count = tab.picture.pdf.pages
+	number = math.clamp(number, 1, count)
+	return {
+		{
+			id = "page",
+			title = plain("Go to page " .. number),
+			detail = plain("of " .. count),
+			run = function()
+				pdf.go_to(tab, number)
+				act.focus_editor()
+			end,
+		},
+	}
+end
+
 local function language_items(query)
 	local doc = docs.active()
 	if not doc then
@@ -385,6 +408,7 @@ local LISTS = {
 	commands = command_items,
 	tabs = tab_items,
 	line = line_items,
+	page = page_items,
 	language = language_items,
 	indent = indent_items,
 }
@@ -408,6 +432,9 @@ function act.open_palette(mode, query)
 	local doc = docs.active()
 	if mode == "line" and doc then
 		origin = { doc = doc, y = layout.scroll_offset(doc.id) }
+	elseif mode == "page" and pdf.shown() then
+		local tab = pdf.shown()
+		origin = { pdf = tab, y = layout.scroll_offset(pdf.box(tab)) }
 	end
 	act.set_overlay({
 		kind = "palette",
@@ -443,6 +470,8 @@ local function dismiss()
 	local origin = S.overlay.origin
 	if origin and origin.doc and not origin.doc.closed then
 		layout.scroll_to(origin.doc.id, { y = origin.y })
+	elseif origin and origin.pdf and origin.y then
+		pdf.scroll_to(origin.pdf, origin.y)
 	end
 	close()
 end
@@ -567,6 +596,8 @@ function palette.view(size)
 			waiting = true
 		elseif overlay.mode == "line" then
 			words = "Type a line number"
+		elseif overlay.mode == "page" then
+			words = "Type a page number"
 		end
 		local empty = b.div():h(44):no_shrink():px(7):row():items_center():gap(8):color("quiet")
 		if waiting then
@@ -653,6 +684,12 @@ function palette.text(field, words)
 		local line = parse_line(words)
 		if doc and line then
 			docs.center(doc, math.clamp(line, 1, layout.editor_lines(doc.id) or 1) - 1)
+		end
+	elseif overlay.mode == "page" then
+		local tab = pdf.shown()
+		local number = tonumber(string.match(words, "^%s*(%d+)%s*$"))
+		if tab and number then
+			pdf.go_to(tab, number)
 		end
 	end
 	palette.reveal()

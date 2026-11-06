@@ -239,6 +239,14 @@ impl<'a> Fields<'a> {
         self.at_least_zero(key, whole)
     }
 
+    /// A number of a list that is counted from 1 (a page): a whole number, 1 or more.
+    pub fn positive(&self, key: &str) -> Checked<usize> {
+        match self.count(key)? {
+            0 => wrong(&member(&self.at, key), "expected at least 1"),
+            count => Ok(count),
+        }
+    }
+
     /// The same, for a member that may be left out.
     pub fn optional_count(&self, key: &str) -> Checked<Option<usize>> {
         match self.optional::<i64>(key)? {
@@ -446,6 +454,28 @@ mod tests {
         assert_eq!(
             parse::<From>(&json!({ "from": -1 })).map(|from| from.0),
             Err("from: expected at least 0".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_number_counted_from_one_is_not_zero() {
+        struct Page(usize);
+        impl Params for Page {
+            fn read(fields: &Fields<'_>) -> Checked<Self> {
+                Ok(Self(fields.positive("page")?))
+            }
+        }
+        assert_eq!(
+            parse::<Page>(&json!({ "page": 1 })).map(|page| page.0),
+            Ok(1)
+        );
+        assert_eq!(
+            parse::<Page>(&json!({ "page": 0 })).map(|page| page.0),
+            Err("page: expected at least 1".to_owned())
+        );
+        assert_eq!(
+            parse::<Page>(&json!({ "page": -2 })).map(|page| page.0),
+            Err("page: expected at least 0".to_owned())
         );
     }
 

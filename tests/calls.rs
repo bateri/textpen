@@ -1262,14 +1262,17 @@ fn a_pdf_is_given_to_the_terminal_with_its_pages_and_the_words_of_a_page_are_ask
         heard[3].result(),
         &json!({ "page": 3, "lines": [], "truncated": false })
     );
-    // A page the PDF has not, one the page counts wrong, a tab that shows none, and a PDF let go.
-    for failed in [4, 5, 6, 10] {
+    // A page the PDF has not, a tab that shows none, and a PDF let go.
+    for failed in [4, 6, 10] {
         assert!(
             heard[failed].failed("failed"),
             "{failed}: {:?}",
             heard[failed]
         );
     }
+    // Pages are counted from 1: page 0 is no number of one.
+    assert!(heard[5].failed("bad-params"));
+    assert!(heard[5].message().contains("page: expected at least 1"));
     assert!(heard[4].message().contains("no page 4"));
     assert!(heard[6].message().contains("not open"));
     assert!(heard[7].failed("bad-params"));

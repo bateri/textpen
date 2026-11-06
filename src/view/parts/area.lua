@@ -8,6 +8,7 @@ local docs = require("./docs")
 local changes = require("./changes")
 local compare = require("./compare")
 local pictures = require("./pictures")
+local pdf = require("./pdf")
 local uploads = require("./uploads")
 local terminal = require("@pencere/terminal")
 
@@ -127,10 +128,17 @@ end
 -- A page for a tab that shows no text: its file is being read, is a picture, or is not text.
 local function placeholder(tab, size)
 	if tab.status == "picture" then
+		if pdf.of(tab) then
+			return pdf.view(tab, size)
+		end
 		return pictures.view(tab, size)
 	end
 	local box = b.div():col():grow(1):items_center():justify_center():gap(8):p(20)
 	if tab.status == "loading" then
+		if text.extension(tab.path) == "pdf" then
+			-- The file is on its way to the terminal and its pages are being counted.
+			return box:row():gap(8):child(kit.spinner(14, "quiet")):child(b.text("Reading the PDF"):color("dim"))
+		end
 		return box:child(kit.spinner(22, "quiet"))
 	end
 	local reason = tab.unopenable
@@ -156,6 +164,13 @@ function area.view(size)
 	end
 	if tab and tab.doc and tab.doc.loaded then
 		local bar = act.find_bar(tab.doc)
+		if bar then
+			column:child(bar)
+		end
+	end
+	local pages = pdf.of(tab)
+	if pages then
+		local bar = act.find_bar_pdf(pages)
 		if bar then
 			column:child(bar)
 		end

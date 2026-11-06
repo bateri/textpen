@@ -5,6 +5,7 @@
 local kit = require("../lib/kit")
 local text = require("../lib/text")
 local docs = require("./docs")
+local pdf = require("./pdf")
 local search = require("./search")
 local repos = require("../lib/repos")
 
@@ -18,7 +19,10 @@ local SAVED_SHOWN = 1.4
 
 -- The keys that work where the keyboard is, each a button that does what its key does:
 -- { keys, words, id }.
-local function hints(has_file)
+local function hints(has_file, pages)
+	if pages and S.focus ~= "sidebar" then
+		return pdf.hints(pages)
+	end
 	if S.focus == "sidebar" and S.sidebar == "files" then
 		return {
 			{ "enter", "open", "hint:tree-open" },
@@ -101,6 +105,7 @@ function status.view()
 	local tab = docs.tab_of(S.active)
 	local doc = docs.active()
 	local info = tab and tab.info
+	local pages = pdf.of(tab)
 	local wide = S.layout == "wide"
 	local row = b.div():row():items_center():gap(4):h(SIZE.status):px(8):no_shrink():bg("raised1"):color("dim"):text_size(11.5)
 	-- The branch of the repository the file shown is in.
@@ -129,7 +134,7 @@ function status.view()
 	row:child(b.spacer())
 	if wide then
 		local keys = b.div():row():items_center():gap(6):no_shrink()
-		for _, hint in hints(doc ~= nil) do
+		for _, hint in hints(doc ~= nil, pages) do
 			keys:child(hint_view(hint))
 		end
 		row:child(keys)
@@ -154,6 +159,19 @@ function status.view()
 		end
 		row:child(item("status-language", doc.lang.name, "Change language"))
 	end
+	if pages then
+		local words = pdf.selection_words(pages)
+		if words > 0 then
+			row:child(item(nil, string.format(words == 1 and "%d word selected" or "%d words selected", words)))
+		end
+		local current, count = pdf.page_of(pages)
+		row:child(item("status-page", string.format("Page %d of %d", current, count), "Go to page " .. kit.keys_of("ctrl+g")))
+		row:child(item("status-zoom", pdf.zoom_words(pages), "Fit to the width " .. kit.keys_of("cmd+0")))
+		if S.layout ~= "narrow" then
+			row:child(item(nil, text.bytes_fine(pages.picture.size)))
+		end
+		row:child(item(nil, "PDF"))
+	end
 	if S.boot and S.boot.handoff and S.layout ~= "narrow" then
 		row:child(kit.icon_button("status-shell", "terminal-2", "Shell here", { keys = "cmd+j", size = 20, icon = 13 }))
 	end
@@ -174,6 +192,13 @@ end
 function status.press(id)
 	if id == "status-line" then
 		act.open_palette("line")
+	elseif id == "status-page" then
+		act.open_palette("page")
+	elseif id == "status-zoom" then
+		local tab = pdf.shown()
+		if tab then
+			pdf.zoom(tab, 0)
+		end
 	elseif id == "status-indent" then
 		act.open_palette("indent")
 	elseif id == "status-language" then

@@ -1,6 +1,6 @@
 -- The pictures the page draws: a tab of a PNG, a JPEG or an SVG file shows the picture, fitted into
--- the tab with its size under it, and a Markdown file's preview draws the pictures it names that are
--- in the project. The program reads the file, measures it and gives it to the terminal to hold
+-- the tab with its size under it, a tab of a PDF shows its pages (`pdf.lua`), and a Markdown file's
+-- preview draws the pictures it names that are in the project. The program reads the file, measures it and gives it to the terminal to hold
 -- (`picture`); the page draws it by the name it is told (`sha256:` and the file's digest) and never
 -- sees its bytes. When the tab closes the program lets the file go (`release`).
 --
@@ -18,7 +18,7 @@ local pictures = {}
 -- How many answers have come, for the preview to know it is to be drawn again.
 local generation = 0
 
-local NAMED = { png = true, jpg = true, jpeg = true, svg = true }
+local NAMED = { png = true, jpg = true, jpeg = true, svg = true, pdf = true }
 
 -- Whether the file is named as a picture the terminal draws. The program says whether it is one.
 function pictures.named(path)
@@ -45,6 +45,12 @@ end
 -- terminal holds nothing for it: it opens as any file does. With `options.keep` the tab goes on
 -- showing what it showed (a picture on its way into the project) until the answer comes.
 function pictures.open(tab, plain, options)
+	if text.extension(tab.path) == "pdf" and b.div().page == nil then
+		-- A terminal older than the kit that draws a page of a PDF: the file is not sent to it.
+		tab.status = "unopenable"
+		tab.unopenable = { path = tab.path, reason = "no-pdf", message = "This terminal does not show PDFs" }
+		return
+	end
 	if not (options and options.keep) then
 		tab.status = "loading"
 	end
@@ -69,14 +75,30 @@ function pictures.open(tab, plain, options)
 			tab.unopenable = { path = tab.path, reason = "too-large", size = answer.size, message = "Too large to preview" }
 		else
 			tab.status = "picture"
+			-- A file that comes in place of the one shown is another: its pages are not the old ones.
+			pictures.drop_sheet(tab)
 			tab.picture = answer
 		end
 		return nil
 	end)
 end
 
+-- What the page kept of the pages of a PDF (`pdf.lua`) goes: the search out is given up, and the words
+-- not yet asked for are not.
+function pictures.drop_sheet(tab)
+	local v = tab.sheet
+	if v then
+		if v.finding then
+			b.cancel(v.finding)
+		end
+		v.queue = {}
+		tab.sheet = nil
+	end
+end
+
 -- The tab is closed: what the program holds for it goes.
 function pictures.closed(tab)
+	pictures.drop_sheet(tab)
 	if tab.owner then
 		pictures.release(tab.owner)
 		tab.owner = nil
@@ -220,7 +242,8 @@ end
 -- (`Picture`), or nil where there is none (yet).
 function pictures.named_in(tab, src)
 	local path = string.match(src, "^[^?#]*") or src
-	if not (is_file_name(src) and pictures.named(path)) then
+	-- A Markdown file shows images: the program refuses a PDF it names.
+	if not (is_file_name(src) and pictures.named(path)) or text.extension(path) == "pdf" then
 		return nil
 	end
 	tab.pictures = tab.pictures or {}

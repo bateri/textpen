@@ -16,6 +16,7 @@ use pencere_drive::shot::{Fonts, Palette};
 
 use crate::options;
 use crate::page_compare::{drawn, left_of};
+use crate::page_pdf::{Run, pages_drawn, pdf_of_pages, pdf_of_runs};
 use crate::page_tests::{
     PANE, Page, Project, go_to, lantern, open_holding, open_with, pictures_drawn, png, recording,
     shown, shows, wait,
@@ -683,5 +684,216 @@ fn the_pictures_of_the_uploads() -> Result<(), Error> {
     wait_through(&mut page, |page| shows(page, "Cancel"))?;
     through(page.tick())?;
     save(&page, &fonts, Palette::Light, "upload-stalled-80x24.png");
+    Ok(())
+}
+
+// --- A PDF's tab ----------------------------------------------------------------------------------
+
+/// The paragraphs of the PDF the pictures show: a specification's pages, with a heading to each.
+const SPEC: [(&str, [&str; 3]); 4] = [
+    (
+        "8.6 Bundles",
+        [
+            "A bundle is the set of files a view is made of: its entry, which the host reads first, and the files the entry names. The host keeps them by content, so that a file it holds already crosses the stream once, whichever view or open it is for.",
+            "The manifest lists every file of the bundle with its path, its digest (sha256) and its length in bytes. A host asks for the files it does not hold, and the program sends only those.",
+            "A bundle is served to the view as the files of a page are served: the entry as the document and the other files at their paths, each with the type of its kind.",
+        ],
+    ),
+    (
+        "8.7 The entry",
+        [
+            "The entry of a bundle is the view's own file, and its media type is that of the kind: an HTML document for a page, a script for lua. The host does not decide the kind from the entry, and it does not guess.",
+            "A view that names a file the manifest does not list is given nothing for it. The page is told, as a person who wrote it should be, and the view is not closed.",
+            "The entry is read once for each open of the view. A host that holds the bundle reads the same entry from its own store, and asks the program for nothing.",
+        ],
+    ),
+    (
+        "8.8 Attached files",
+        [
+            "A program may add files to the view that runs, beside its bundle, for the view to draw: the pictures of a project, of a document, of a preview. They are kept by content as the files of a bundle are, so a file that the host still holds crosses the stream once.",
+            "The program sends an attach: the files, each by its digest (sha256) and its length in bytes (size). The host answers every attach with a need, whose re is the attach's id, and the program sends the files that are named in it.",
+            "A file attached is the view's for as long as the view runs, and is let go when the program says so. The view names it as it names a file of its bundle, by the name the program gives it.",
+        ],
+    ),
+    (
+        "8.9 Detached files",
+        [
+            "The program sends a detach for a file it no longer holds for the view: the host forgets the file, and so does every image of the view that names it. A view that still draws it draws nothing there.",
+            "Files that were attached for a view stay with the host while another view holds them, and go when the last of them lets go. Nothing of the kind is told to the program.",
+            "A program that ends takes its attached files with it. The view that ran it is closed, or goes on without them.",
+        ],
+    ),
+];
+
+/// Breaks `words` into lines of at most `width` characters.
+fn broken(words: &str, width: usize) -> Vec<String> {
+    let mut lines = vec![String::new()];
+    for word in words.split(' ') {
+        let line = lines.last_mut().expect("a line");
+        if !line.is_empty() && line.len() + 1 + word.len() > width {
+            lines.push(word.to_owned());
+        } else {
+            if !line.is_empty() {
+                line.push(' ');
+            }
+            line.push_str(word);
+        }
+    }
+    lines
+}
+
+/// A specification of four pages, 612 × 792 points, in Times: a running head, a heading and three
+/// paragraphs to each, and its page number under.
+fn spec_pdf() -> Vec<u8> {
+    let pages: Vec<(f32, f32, Vec<Run>)> = SPEC
+        .iter()
+        .enumerate()
+        .map(|(number, (heading, paragraphs))| {
+            let run = |font, size, x, y, text: &str| Run {
+                font,
+                size,
+                x,
+                y,
+                text: text.to_owned(),
+            };
+            let mut runs = vec![
+                run(4, 8.5, 72.0, 740.0, "pencere protocol, draft"),
+                run(4, 8.5, 470.0, 740.0, "8 Bundles"),
+                run(2, 17.0, 72.0, 690.0, heading),
+            ];
+            let mut y = 660.0;
+            for paragraph in paragraphs {
+                for line in broken(paragraph, 88) {
+                    runs.push(run(1, 11.0, 72.0, y, &line));
+                    y -= 14.5;
+                }
+                y -= 10.0;
+            }
+            runs.push(run(4, 8.5, 300.0, 54.0, &(number + 14).to_string()));
+            (612.0, 792.0, runs)
+        })
+        .collect();
+    pdf_of_runs(&pages)
+}
+
+/// The page opened on `bytes` as `docs/pencere-spec.pdf` in front, drawn; the project is the caller's to
+/// keep for as long as the page is looked at.
+fn open_pdf_pictured(
+    bytes: &[u8],
+    size: (f32, f32),
+    fonts: &Fonts,
+) -> Result<(Project, Page), Error> {
+    let project = lantern();
+    project.write_bytes("docs/pencere-spec.pdf", bytes);
+    with_git(&project);
+    let session = project.session(&["docs/pencere-spec.pdf", "README.md", "src/server.ts"]);
+    recording(&session);
+    let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
+    let mut page = open_holding(program, size, Some(fonts), 0.0, &[bytes])?;
+    wait(&mut page, |page| !pages_drawn(page).is_empty())?;
+    page.advance(1.5)?;
+    Ok((project, page))
+}
+
+/// A PDF in its tab for the docs: the pages one under the other, a search open with its marks on them.
+#[test]
+#[ignore = "shots: draws the page in the fonts of this machine into docs/; make shots"]
+fn the_picture_of_a_pdf_in_the_docs() -> Result<(), Error> {
+    let fonts = fonts();
+    let (_project, mut page) = open_pdf_pictured(&spec_pdf(), (1280.0, 800.0), &fonts)?;
+    page.press("ctrl+g")?;
+    page.type_text("3")?;
+    page.press("enter")?;
+    page.advance(0.5)?;
+    page.press("cmd+f")?;
+    page.type_text("attach")?;
+    wait(&mut page, |page| shows(page, " of "))?;
+    page.press("enter")?;
+    page.press("enter")?;
+    page.advance(1.0)?;
+    // The bar's field is the host's to draw, not the shot's.
+    save(&page, &fonts, Palette::Dark, "pdf.png");
+    Ok(())
+}
+
+/// A PDF in its tab, in a dark and a light terminal, wide and in an 80×24 pane, with a search, a
+/// selection, no words and too large, for the eye (`target/shots/`).
+#[test]
+#[ignore = "shots: draws the page in the fonts of this machine into target/shots/"]
+fn the_pictures_of_a_pdf() -> Result<(), Error> {
+    let fonts = fonts();
+    let out = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/shots");
+    std::fs::create_dir_all(&out).expect("the folder");
+    let write = |page: &Page, palette: Palette, name: &str| {
+        let png = page.shot_in(&fonts, palette).expect("a picture");
+        std::fs::write(out.join(format!("{name}.png")), png).expect("the picture written");
+    };
+    for (name, size, palette) in [
+        ("pdf-dark-wide", (1280.0, 800.0), Palette::Dark),
+        ("pdf-light-wide", (1280.0, 800.0), Palette::Light),
+        ("pdf-dark-80x24", PANE, Palette::Dark),
+        ("pdf-light-80x24", PANE, Palette::Light),
+    ] {
+        let (_project, mut page) = open_pdf_pictured(&spec_pdf(), size, &fonts)?;
+        write(&page, palette, name);
+        if size == PANE {
+            continue;
+        }
+        // The second page in view, a search open and a selection made in it.
+        page.press("ctrl+g")?;
+        page.type_text("3")?;
+        page.press("enter")?;
+        page.advance(0.5)?;
+        page.press("cmd+f")?;
+        page.type_text("attach")?;
+        wait(&mut page, |page| shows(page, " of "))?;
+        page.advance(1.0)?;
+        write(&page, palette, &format!("{name}-find"));
+        page.press("escape")?;
+        let heading = page.bounds("pdf-page:3").expect("page 3");
+        let at = pencere_view::Point::new(heading.x + 110.0, heading.y + 180.0);
+        page.pointer(pencere_view::Input::Press {
+            at,
+            button: pencere_view::Button::Left,
+            mods: pencere_view::Mods::default(),
+            count: 1,
+        })?;
+        page.pointer(pencere_view::Input::Press {
+            at,
+            button: pencere_view::Button::Left,
+            mods: pencere_view::Mods::default(),
+            count: 3,
+        })?;
+        page.pointer(pencere_view::Input::Release {
+            at,
+            button: pencere_view::Button::Left,
+        })?;
+        page.advance(0.5)?;
+        write(&page, palette, &format!("{name}-select"));
+    }
+    // No words: the bar says so.
+    let (_project, mut page) = open_pdf_pictured(
+        &pdf_of_pages(&[(612.0, 792.0), (612.0, 792.0)]),
+        (1280.0, 800.0),
+        &fonts,
+    )?;
+    page.press("cmd+f")?;
+    page.type_text("total")?;
+    page.advance(0.5)?;
+    write(&page, Palette::Dark, "pdf-no-text");
+    // Too large to preview.
+    let mut big = pdf_of_pages(&[(612.0, 792.0)]);
+    big.resize(41 * 1024 * 1024, b' ');
+    let project = lantern();
+    project.write_bytes("docs/scans-2024.pdf", &big);
+    let mut page = open(&project, &["README.md"], (1280.0, 800.0), &fonts)?;
+    page.click("row:docs")?;
+    wait(&mut page, |page| {
+        page.bounds("row:docs/scans-2024.pdf").is_some()
+    })?;
+    page.click("row:docs/scans-2024.pdf")?;
+    wait(&mut page, |page| shows(page, "Too large to preview"))?;
+    page.advance(0.5)?;
+    write(&page, Palette::Dark, "pdf-too-large");
     Ok(())
 }

@@ -66,6 +66,7 @@ files cross the stream once; after that the terminal keeps them.
   <tr>
     <td width="33%" valign="top"><img src="docs/compare.png" width="100%" alt="A file beside the last commit: the same lines at the same height, the lines and words that differ in colour"><br>A file beside the last commit</td>
     <td width="33%" valign="top"><img src="docs/changes-panel.png" width="100%" alt="The panel of the changed files, with the file chosen shown beside the last commit"><br>The changed files, each shown beside the last commit</td>
+    <td width="33%" valign="top"><img src="docs/pdf.png" width="100%" alt="A PDF in its tab: its pages, a line of its words selected, the words counted in the status line"><br>A PDF, with a line of its words selected</td>
   </tr>
 </table>
 
@@ -137,6 +138,15 @@ file; go through them from anywhere with `F4` and `⇧F4`.
 **Pictures**: a PNG, a JPEG or an SVG opens in its tab, fitted into it and not made larger, with its
 size and its pixels under it. A file past 8 MiB or 4096 pixels is not drawn, and says so. It needs
 a terminal that shows the page at `lua` 0.1, as bateri does.
+
+**PDFs** open in their tab as pages one under the other, scrolled by the terminal, sharp at any
+zoom: `⌘+`, `⌘-` and `⌘0` step the zoom and fit the width, `Page Down`, `Home` and `End` go through
+the pages, and `⌃G` goes to a page. The words of a PDF are selected with the pointer (a double click
+a word, a triple click a line, `⌘A` all of them) and copied with `⌘C`; `⌘F` finds in all the pages,
+as words, whole words or patterns, and `Enter` and `⇧Enter` (or `⌘G`) go from match to match. A PDF
+with no words in it (a scan) is shown and says it has none to select or find. The program reads the
+pages and runs nothing the PDF holds; a file past 8 MiB or 10,000 pages is not opened, and says so.
+A terminal older than the kit that draws a page of a PDF says it does not show PDFs.
 
 **Drop a file on the tree** to put it in the project: dragged over a folder (or a file, which is
 its folder, or the room under the rows, which is the project) the place is marked and named, and

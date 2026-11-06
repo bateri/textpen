@@ -1,11 +1,13 @@
 -- Find and replace in the file shown: the editor's own search (it marks what it finds, looks again
 -- as the text changes and says how many and which one the caret is on), with a bar of the page's
--- that is worked with keys: ⏎ and ⇧⏎ go through the matches, ⌥⌘C ⌥⌘W ⌥⌘R switch case, whole words and
+-- that is worked with keys; in a PDF the bar is the same without the replacing, and the program looks
+-- in the words of the pages (`pdf.lua` marks what it finds on them): ⏎ and ⇧⏎ go through the matches, ⌥⌘C ⌥⌘W ⌥⌘R switch case, whole words and
 -- regular expressions, ⌥⌘F shows the replacement, ⌘⏎ selects every match (in the replacement:
 -- replaces them all), Esc goes back to the text.
 
 local kit = require("../lib/kit")
 local docs = require("./docs")
+local pdf = require("./pdf")
 
 local b, S, act = kit.b, kit.S, kit.act
 local layout = b.layout
@@ -50,6 +52,44 @@ local function search(doc)
 	kit.ask(doc.id, { command = "find", pattern = F.query, regex = F.regex, case = F.case, word = F.word })
 end
 
+-- Looks in the PDF `tab` for what is typed; the program reads its pages.
+local function search_pdf(tab)
+	F.pdf = tab
+	F.doc = nil
+	F.invalid = false
+	if F.query == "" then
+		pdf.stop_finding(tab)
+		F.count, F.current, F.more = 0, nil, false
+		return
+	end
+	pdf.find(tab, F.query, { regex = F.regex, case = F.case, word = F.word }, function(count, current, more, invalid)
+		if F.pdf == tab then
+			F.count, F.current, F.more, F.invalid = count, current, more, invalid
+		end
+	end)
+end
+
+-- Looks again in whatever the bar is over.
+local function research()
+	if F.pdf then
+		search_pdf(F.pdf)
+	else
+		search(docs.active())
+	end
+end
+
+-- The bar leaves the editor or the PDF it was in.
+local function leave()
+	local before = F.doc and docs.by_id(F.doc)
+	if before then
+		kit.ask(before.id, { command = "stop_finding" })
+	end
+	if F.pdf then
+		pdf.stop_finding(F.pdf)
+	end
+	F.doc, F.pdf = nil, nil
+end
+
 local function to_field(field)
 	S.field = field
 	kit.gather({ redraw = true, keyboard = { field = field } })
@@ -58,6 +98,26 @@ end
 -- ⌘F (and ⌥⌘F, `replacing`): the bar over the file shown, the words chosen in it what is looked
 -- for; with no file, the search in the project's files.
 function act.find(replacing)
+	local tab = pdf.shown()
+	if tab and not replacing then
+		S.focus = "editor"
+		S.drawer = false
+		if F.pdf ~= tab then
+			leave()
+		end
+		F.open = true
+		F.replacing = false
+		local words = pdf.selected_words(tab)
+		if words then
+			F.query = words
+		end
+		search_pdf(tab)
+		kit.gather({
+			fill = { [QUERY] = { text = F.query, select = F.query ~= "" or nil } },
+		})
+		to_field(QUERY)
+		return
+	end
 	local doc = docs.active()
 	if not doc then
 		act.focus_sidebar("search")
@@ -93,11 +153,8 @@ function act.find(replacing)
 end
 
 local function close()
-	local doc = F.doc and docs.by_id(F.doc)
 	F.open = false
-	if doc then
-		kit.ask(doc.id, { command = "stop_finding" })
-	end
+	leave()
 	F.count, F.current, F.more = 0, nil, false
 	act.focus_editor()
 end
@@ -107,10 +164,7 @@ local function follow(doc)
 	if F.doc == doc.id then
 		return
 	end
-	local before = F.doc and docs.by_id(F.doc)
-	if before then
-		kit.ask(before.id, { command = "stop_finding" })
-	end
+	leave()
 	F.doc = doc.id
 	kit.after(0, function()
 		if F.open and F.doc == doc.id then
@@ -165,9 +219,12 @@ local function field(id, hint, width, toggles)
 	return box
 end
 
--- What the count says: "3 of 12", "No results", "Not a pattern".
-local function status_words()
-	if F.query == "" then
+-- What the count says: "3 of 12", "No results", "Not a pattern"; in a PDF of pictures, that it has no
+-- words.
+local function status_words(tab)
+	if tab and tab.picture.pdf.text == false then
+		return "No text in this PDF"
+	elseif F.query == "" then
 		return ""
 	elseif F.invalid then
 		return "Not a pattern"
@@ -177,32 +234,33 @@ local function status_words()
 	return string.format("%s of %d%s", F.current and tostring(F.current) or "?", F.count, F.more and "+" or "")
 end
 
--- The bar over the file shown, or nil where it is not open.
-function act.find_bar(doc)
-	if not F.open then
-		return nil
-	end
-	follow(doc)
+-- The bar over the file shown, or the PDF `tab`; nil where it is not open.
+local function bar_view(doc, tab)
 	local narrow = S.layout == "narrow"
 	local width = narrow and 260 or 380
-	local none = F.count == 0
+	local no_text = tab ~= nil and tab.picture.pdf.text == false
+	local none = F.count == 0 or no_text
 	local top = b.div():row():items_center():gap(4):h(36):px(6)
-	top:child(kit.icon_button("find-expand", F.replacing and "chevron-down" or "chevron-right",
-		F.replacing and "Hide replace" or "Show replace", { keys = "cmd+alt+f", size = 24, icon = 14 }))
+	if tab then
+		top:pl(12)
+	else
+		top:child(kit.icon_button("find-expand", F.replacing and "chevron-down" or "chevron-right",
+			F.replacing and "Hide replace" or "Show replace", { keys = "cmd+alt+f", size = 24, icon = 14 }))
+	end
 	top:child(field(QUERY, "Find", width, true))
-	top:child(b.text(status_words()):color((F.invalid or (none and F.query ~= "")) and "error" or "dim")
+	top:child(b.text(status_words(tab)):color((F.invalid or (none and F.query ~= "" and not no_text)) and "error" or "dim")
 		:text_size(11.5):min_w(narrow and 54 or 84):no_shrink())
 	top:child(kit.icon_button("find-previous", "arrow-up", "Previous match", { keys = "shift+enter", size = 24, icon = 15, disabled = none }))
 	top:child(kit.icon_button("find-next", "arrow-down", "Next match", { keys = "enter", size = 24, icon = 15, disabled = none }))
-	if not narrow then
+	if not narrow and not tab then
 		top:child(kit.icon_button("find-all", "select-all", "Select all matches", { keys = "cmd+enter", size = 24, icon = 15, disabled = none }))
 	end
 	top:child(b.spacer())
 	top:child(kit.icon_button("find-close", "x", "Close", { keys = "escape", size = 24, icon = 15 }))
 	local bar = b.div():id("find-bar"):col():no_shrink():bg("raised1"):child(top)
-	if F.replacing then
-		local tab = docs.tab_of(S.active)
-		local readonly = tab and tab.info and tab.info.readonly
+	if F.replacing and not tab then
+		local doc_tab = docs.tab_of(S.active)
+		local readonly = doc_tab and doc_tab.info and doc_tab.info.readonly
 		local row = b.div():row():items_center():gap(4):h(36):px(6):pl(36)
 		row:child(field(REPLACE, "Replace", width, false))
 		row:child(kit.button("find-replace-one", "Replace", { icon = "replace", h = 26, keys = "enter", disabled = none or readonly }))
@@ -213,11 +271,38 @@ function act.find_bar(doc)
 	return bar
 end
 
+-- The bar over the file shown, or nil where it is not open.
+function act.find_bar(doc)
+	if not F.open then
+		return nil
+	end
+	follow(doc)
+	return bar_view(doc, nil)
+end
+
+-- The bar over the PDF `tab`, or nil where it is not open.
+function act.find_bar_pdf(tab)
+	if not F.open then
+		return nil
+	end
+	if F.pdf ~= tab then
+		leave()
+		F.pdf = tab
+		kit.after(0, function()
+			if F.open and F.pdf == tab then
+				search_pdf(tab)
+			end
+			return nil
+		end)
+	end
+	return bar_view(nil, tab)
+end
+
 -- --- What the person does ------------------------------------------------------------------------------
 
 local function flip(key)
 	F[key] = not F[key]
-	search(docs.active())
+	research()
 	kit.gather(true)
 end
 
@@ -231,6 +316,29 @@ local function editor_command(name, extra)
 		request[key] = value
 	end
 	kit.ask(doc.id, request)
+end
+
+-- To the next match (1) or the one before (-1).
+local function go(direction)
+	if F.pdf then
+		F.current = pdf.step(F.pdf, direction) or F.current
+	else
+		editor_command(direction > 0 and "find_next" or "find_previous")
+	end
+end
+
+function act.pdf_step(direction)
+	if F.open and F.pdf then
+		go(direction)
+		kit.gather(true)
+	end
+end
+
+function act.pdf_find_close()
+	if F.open and F.pdf then
+		close()
+		kit.gather(true)
+	end
 end
 
 function find.press(id)
@@ -247,9 +355,9 @@ function find.press(id)
 	elseif id == "find-regex" then
 		flip("regex")
 	elseif id == "find-previous" then
-		editor_command("find_previous")
+		go(-1)
 	elseif id == "find-next" then
-		editor_command("find_next")
+		go(1)
 	elseif id == "find-all" then
 		editor_command("select_found")
 		act.focus_editor()
@@ -269,7 +377,7 @@ end
 function find.text(field_id, words)
 	if field_id == QUERY then
 		F.query = words
-		search(docs.active())
+		research()
 		return true
 	elseif field_id == REPLACE then
 		F.replacement = words
@@ -301,10 +409,12 @@ function find.key(key, mods)
 		if in_replace then
 			editor_command(mods.command and "replace_all" or "replace", { text = F.replacement })
 		elseif mods.command then
-			editor_command("select_found")
-			act.focus_editor()
+			if not F.pdf then
+				editor_command("select_found")
+				act.focus_editor()
+			end
 		else
-			editor_command(mods.shift and "find_previous" or "find_next")
+			go(mods.shift and -1 or 1)
 		end
 	elseif key == "tab" then
 		if in_replace and mods.shift then
@@ -313,9 +423,9 @@ function find.key(key, mods)
 			to_field(REPLACE)
 		end
 	elseif key == "down" and not in_replace then
-		editor_command("find_next")
+		go(1)
 	elseif key == "up" and not in_replace then
-		editor_command("find_previous")
+		go(-1)
 	else
 		return false
 	end

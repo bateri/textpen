@@ -500,6 +500,8 @@ function act.hint(name)
 	elseif name == "search-open" or name == "search-show" or name == "search-field" then
 		local keys = { ["search-open"] = "enter", ["search-show"] = " ", ["search-field"] = "escape" }
 		act.search_key(keys[name], {})
+	elseif string.sub(name, 1, 4) == "pdf-" then
+		act.pdf_hint(string.sub(name, 5))
 	elseif string.sub(name, 1, 8) == "changes-" then
 		local keys = { ["changes-open"] = "enter", ["changes-next"] = "down", ["changes-previous"] = "up", ["changes-tree"] = "t" }
 		act.sidebar_key(keys[name], {})
