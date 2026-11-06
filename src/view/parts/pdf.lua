@@ -25,10 +25,11 @@ local GAP = 16
 local SIDE = 40
 
 -- The scales the zoom keys go by (1 is a point of the page to a point of the tab), and the longest side
--- a page is drawn with, points: the terminal draws no picture past 4096 pixels, which on a display
--- with two to the point is 2048.
+-- a page is shown with, points: the terminal draws a page where it is seen, in parts of at most 4096
+-- pixels, so what bounds a page is the 65536 pixels its whole may come to (16384 points at four to the
+-- point); a page of the sizes people make is sharp at every step to 400%.
 local STEPS = { 0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4 }
-local LONGEST = 2048
+local LONGEST = 16384
 
 -- How many pages' words are kept, and how many pages one selection may hold (what is copied is read
 -- from the words kept, and all of a selection's pages are kept).
@@ -135,7 +136,7 @@ function pdf.room(size)
 end
 
 -- The scale of page `index`: the tab's width less the sides, or the zoom, and never so large that the
--- terminal could not draw it.
+-- terminal could not draw it (`LONGEST`).
 local function scale_of(v, avail, index)
 	local scale = v.zoom or (math.max(avail - 2 * SIDE, 40) / v.widths[index])
 	local longest = math.max(v.widths[index], v.heights[index])
@@ -997,7 +998,8 @@ function pdf.zoom(tab, direction)
 		v.zoom = nil
 	else
 		local now = current_scale(v)
-		-- Not past the scale at which the page most in view is as large as the terminal draws one.
+		-- Not past the scale at which the page most in view is as large as the terminal draws one
+		-- (`LONGEST`: far past what the steps reach for a page of the sizes people make).
 		local most = LONGEST / math.max(v.widths[v.current], v.heights[v.current])
 		local to = nil
 		if direction > 0 then

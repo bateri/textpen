@@ -216,12 +216,12 @@ fn zooming_scales_the_pages_and_fit_width_goes_back() -> Result<(), Error> {
     Ok(())
 }
 
-/// The zoom stops at the last step the terminal can draw the page at (it draws no picture past 4096
-/// pixels): a Letter page stops at 200%, not at a "300%" it would be drawn at 259% of; the status line
-/// says the scale the page is at, and one more step is none.
+/// The zoom goes to 400% and stops there, the status line saying the scale the page is at (the
+/// terminal draws a page where it is seen, so a Letter page at 400% is as sharp as at 100%), and one
+/// more step is none.
 #[test]
 #[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
-fn the_zoom_stops_where_the_terminal_draws_no_larger_a_page() -> Result<(), Error> {
+fn the_zoom_goes_to_four_hundred_percent_and_stops() -> Result<(), Error> {
     let (_project, mut page) = open_pdf(PAGES, WIDE)?;
     page.press("cmd+0")?;
     let first = |page: &Page| {
@@ -237,22 +237,21 @@ fn the_zoom_stops_where_the_terminal_draws_no_larger_a_page() -> Result<(), Erro
     }
     let drawn = first(&page);
     assert!(
-        drawn.h <= 2049.0 && (drawn.w - 2.0 * 612.0).abs() < 1.5,
-        "as large as the terminal draws: {drawn:?}"
+        (drawn.w - 4.0 * 612.0).abs() < 1.5 && (drawn.h - 4.0 * 792.0).abs() < 1.5,
+        "four times the page: {drawn:?}"
     );
-    let words = format!("{}%", (drawn.w / 612.0 * 100.0).round() as i32);
     assert!(
-        shows(&page, &words),
-        "the status line says the scale the page is at ({words})"
+        shows(&page, "400%"),
+        "the status line says the scale the page is at"
     );
     // One more step is none: the page and the words stay.
     page.press("cmd+=")?;
     page.advance(0.3)?;
     assert_eq!(first(&page), drawn);
-    assert!(shows(&page, &words));
+    assert!(shows(&page, "400%"));
     // Out again: the step below.
     page.press("cmd+-")?;
-    wait(&mut page, |page| shows(page, "150%"))?;
+    wait(&mut page, |page| shows(page, "300%"))?;
     Ok(())
 }
 
