@@ -22,6 +22,10 @@ change what the previous one did.
   (regular expressions, case, whole words), so that the page can draw a PDF, select and copy from it
   and find in it. A PDF with more than 10,000 pages, or past 8 MiB, is left as too large. The program
   does not run what a PDF holds; it reads its pages.
+- **Releases carry a signed `app.json`.** A terminal that follows textpen (bateri, from its list of
+  apps) reads it to find the newest file it can open and to know the file is the one the maintainer
+  released. `make sums` writes it and its signature beside `SHA256SUMS`, and the release checks
+  refuse a release without them.
 - **Leave what git ignores out of the tree.** The setting `Hide ignored files`, or Toggle Ignored Files in
   the Tree in the palette. It is off to begin with, and what git ignores is shown grey as before.
 

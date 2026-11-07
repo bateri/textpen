@@ -71,9 +71,10 @@ shots:
 # check is the gate: the pin of pencere, formatting, lints, the program's tests, the page's tests.
 check: pin lint test test-page test-tools
 
-# test-tools runs the tests of the installer (install.sh), against a stand-in for GitHub.
+# test-tools runs the tests of the installer (install.sh), against a stand-in for GitHub, and those
+# of the release checks (tools/release-files.mjs), against a directory of their own.
 test-tools:
-	node --test test/install.test.mjs
+	node --test test/install.test.mjs test/release.test.mjs
 
 # build makes target/release/textpen, the program for this machine, with the page in it.
 build:
@@ -121,7 +122,7 @@ dev: pencere
 # textpen-<version>-<target>: Apple silicon Macs and both Linux architectures, the Linux ones linked
 # statically with musl (bateri, the terminal that shows the editor, runs on Apple silicon only).
 # Each is built on a machine of its own target, with that target added to the toolchain; `make sums`
-# then names the three where they are together.
+# then names the three where they are together, and signs the app.json that says what they are.
 TARGETS = aarch64-apple-darwin aarch64-unknown-linux-musl x86_64-unknown-linux-musl
 PACKAGE_VERSION = $(shell sed -n 's/^version = "\(.*\)"$$/\1/p' Cargo.toml | head -n 1)
 
@@ -131,10 +132,21 @@ dist:
 	mkdir -p dist/release
 	cp target/$(TARGET)/release/textpen dist/release/textpen-$(PACKAGE_VERSION)-$(TARGET)
 
-# sums writes the SHA256SUMS of the three files of dist/release.
+# sums writes the SHA256SUMS of the three files of dist/release, then the app.json that names them
+# and its signature (`pencere dist`, which signs with the key `pencere key` made: ~/.config/pencere/
+# signing.key, or the one PENCERE_SIGNING_KEY names). A terminal that follows textpen reads those
+# two. What the program needs of its terminal in app.json comes from the program itself, the file
+# of this machine's target, started once. DIST_FLAGS goes to `pencere dist`: --base, --previous.
+#
+# On release day PENCERE must be a pencere that has `dist` and is the one Cargo.lock takes
+# (PENCERE_REF): `make pencere` builds it. A release made with another one has an app.json that
+# the pencere textpen is built with did not write.
+DIST_FLAGS ?=
 sums:
 	cd dist/release && { sha256sum textpen-* 2>/dev/null || shasum -a 256 textpen-*; } > SHA256SUMS
 	@cat dist/release/SHA256SUMS
+	@test -x "$(PENCERE)" || { echo "sums: no pencere at $(PENCERE): make pencere, or PENCERE=<a pencere command that has dist>"; exit 1; }
+	"$(PENCERE)" dist --files dist/release $(DIST_FLAGS) $(PACKAGE_VERSION)
 
 # release-prepare sets the version and dates the changelog's Unreleased section.
 release-prepare:

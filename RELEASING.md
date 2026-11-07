@@ -1,8 +1,9 @@
 # Releasing
 
-textpen is released as three files on a GitHub release tagged `v<x.y.z>` here: the program for
+textpen is released as five files on a GitHub release tagged `v<x.y.z>` here: the program for
 macOS on Apple silicon (`arm64`) and for Linux on `arm64` and `x86_64`, named
-`textpen-<version>-<target>`, with a `SHA256SUMS` that names the three. There is no Intel Mac file:
+`textpen-<version>-<target>`, a `SHA256SUMS` that names the three, and an `app.json` with its
+signature `app.json.sig`, which a terminal that follows textpen reads (pencere's `apps.md`). There is no Intel Mac file:
 bateri, the terminal that shows the editor, runs on Apple silicon only. It is not published on npm.
 Every step a machine can check is in `tools/release.mjs`, behind the `make` targets below. This
 file is the order of the steps and the reasons for them.
@@ -31,6 +32,14 @@ Each of the three files is the Rust program with its page (`src/view/`) and pict
 - Node, for `tools/release.mjs`: it is the one step of a release that is not cargo's. (The other
   Node file, `tools/icon.mjs`, draws the icons and is not part of a release.)
 - `gh`, logged in, to make the GitHub release.
+- The signing key, on the maintainer's machine: `app.json` is signed with the key `pencere key`
+  makes, kept in `~/.config/pencere/signing.key` (`PENCERE_SIGNING_KEY` names another file). It is
+  the "bateri" key, the one bateri carries the public half of to follow textpen without asking:
+  whoever has the file can release as textpen, so it is never committed and never on a machine
+  that builds in a workflow, and it has a copy somewhere safe. A release signed with another key
+  is a release bateri asks its people about.
+- A `pencere` command that has `dist`, the one `Cargo.lock` takes: `make pencere` builds it
+  (`PENCERE` names another).
 
 The files are built on the maintainers' machines and not by a workflow: an executable that a
 workflow built is one that a pushed tag changes without a maintainer's decision. CI runs the gate
@@ -46,15 +55,19 @@ From a clean `main`:
    as `Release textpen 0.2.0`.
 2. From that commit, on a clean tree, on a machine of each target: `make dist
    TARGET=<target>`, which builds `dist/release/textpen-0.2.0-<target>`. Gather the three in
-   `dist/release` on the machine that releases, then `make sums` writes `SHA256SUMS`. The file names
-   carry the version, so a `dist/release` built before the version moved is refused; nothing can
+   `dist/release` on the machine that releases, then `make sums` writes `SHA256SUMS`, and with
+   `pencere dist` the `app.json` and `app.json.sig`: what the program needs of a terminal is not
+   typed, `pencere dist` starts the file of this machine's target and reads what it says, and the
+   earlier releases that `app.json` lists come from the `app.json` of the release before (the
+   latest on GitHub; `DIST_FLAGS="--previous <file>"` names another, `--previous none` is for a
+   first release). The file names carry the version, so a `dist/release` built before the version moved is refused; nothing can
    tell which source a file of the right version was built from, so build them after the commit
    and not before.
 3. `make release` runs the gate (`make check`, with `FAKE_HOST` naming pencere's stand-in terminal
    if it is not where the Makefile looks: `make fake-host` builds it), then the release checks, then
    makes the annotated tag `v0.2.0` with the changelog section as its message. Nothing is pushed.
 4. `make publish` pushes `main` and the tag in one atomic push, then makes the GitHub release
-   with the changelog section as its notes, the three files and `SHA256SUMS`.
+   with the changelog section as its notes and the five files.
 5. Check it: `gh release view v0.2.0`.
 
 If a check fails, nothing has left the machine: fix it, amend or add a commit, and run the step
@@ -71,8 +84,12 @@ tag is on `origin` and the release is not: make it by hand with `gh release crea
 - a branch other than `main`, a working tree that is not clean, a `main` that has diverged from
   `origin/main`;
 - a tag that already exists, here or on `origin`, or a release that already exists on GitHub;
-- a `dist/release` that is not exactly the three files of this version and `SHA256SUMS`, with the
-  sum of each as listed, or whose executable for this machine does not say this version.
+- a `dist/release` that is not exactly the three files of this version, `SHA256SUMS`, `app.json` and
+  `app.json.sig`, with the sum of each as listed, or whose executable for this machine does not say
+  this version;
+- an `app.json` that its signature does not belong to (by the key it names), that is of another
+  app or version, that does not name exactly the three targets at addresses ending in the files'
+  names, or whose sums are not those of `SHA256SUMS`.
 
 ## The npm package
 

@@ -4,7 +4,7 @@
 //   prepare <version>   set the version, move Unreleased into a dated section of CHANGELOG.md
 //   check               everything a release needs, without changing anything
 //   tag                 check, then create the annotated tag v<version>
-//   publish             push main and the tag, then make the GitHub release with the three files
+//   publish             push main and the tag, then make the GitHub release with its files
 //   notes [<version>]   the CHANGELOG section of a version
 //   version             the version textpen says it is (Cargo.toml)
 //
@@ -12,27 +12,19 @@
 // for this and for tools/icon.mjs, which draws the icons, alone.
 
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const NAME = "textpen";
+import { NAME, Refusal, refuse, releaseFiles } from "./release-files.mjs";
 
-/** The systems textpen is built for (the Makefile's TARGETS), each on a machine of its own. */
-const TARGETS = ["aarch64-apple-darwin", "aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"];
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Where `make dist` puts the files of a release. */
 const RELEASE_DIR = join(root, "dist", "release");
 
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z.-]+))?$/;
 const RELEASED = /^## \[(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)\] - (\d{4}-\d{2}-\d{2})$/;
-
-class Refusal extends Error {}
-const refuse = (what) => {
-  throw new Refusal(what);
-};
 
 /** Runs a command and returns its output; one run with `stdio: "inherit"` returns "". */
 function run(command, args, options = {}) {
@@ -186,65 +178,11 @@ function check() {
     refuse(`the tag ${tag} exists on origin`);
   }
 
-  const files = releaseFiles(version);
+  const files = releaseFiles(RELEASE_DIR, version);
   console.log(
     `${NAME} ${version} is ready to tag as ${tag}: ${files.length} files in dist/release`,
   );
   return { version, tag, section, files };
-}
-
-/** The executable of a release for a target. */
-const fileOf = (version, target) => `${NAME}-${version}-${target}`;
-
-/** The target of the machine this runs on, for the one executable it can run. */
-function ownTarget() {
-  const arch = { arm64: "aarch64", x64: "x86_64" }[process.arch];
-  if (arch === undefined) return undefined;
-  if (process.platform === "darwin") return `${arch}-apple-darwin`;
-  if (process.platform === "linux") return `${arch}-unknown-linux-musl`;
-  return undefined;
-}
-
-/**
- * The files `make dist` made for this version: the three executables and the SHA256SUMS that names
- * exactly them, each with the sum it lists. The names carry the version, so a dist/release made
- * before the version moved is refused; the one executable this machine can run says its version.
- */
-function releaseFiles(version) {
-  if (!existsSync(RELEASE_DIR)) refuse(`no dist/release: make dist, after the release commit`);
-  const expected = TARGETS.map((target) => fileOf(version, target));
-  const found = readdirSync(RELEASE_DIR).sort();
-  const wanted = [...expected, "SHA256SUMS"].sort();
-  if (found.join("\n") !== wanted.join("\n")) {
-    refuse(
-      `dist/release holds ${found.join(", ") || "nothing"} and a release of ${version} is ${wanted.join(", ")}: make dist again, after the release commit`,
-    );
-  }
-  const listed = new Map(
-    readFileSync(join(RELEASE_DIR, "SHA256SUMS"), "utf8")
-      .split("\n")
-      .filter((line) => line.trim() !== "")
-      .map((line) => {
-        const [sum, name] = line.split(/\s+/);
-        return [name.replace(/^\*/, ""), sum];
-      }),
-  );
-  if ([...listed.keys()].sort().join("\n") !== [...expected].sort().join("\n")) {
-    refuse("dist/release/SHA256SUMS does not name exactly the three executables");
-  }
-  for (const name of expected) {
-    const sum = createHash("sha256")
-      .update(readFileSync(join(RELEASE_DIR, name)))
-      .digest("hex");
-    if (listed.get(name) !== sum)
-      refuse(`${name} is not the file SHA256SUMS lists: make dist again`);
-  }
-  const own = ownTarget();
-  if (own !== undefined) {
-    const said = run(join(RELEASE_DIR, fileOf(version, own)), ["--version"]);
-    if (said !== version) refuse(`${fileOf(version, own)} says it is ${said}: make dist again`);
-  }
-  return [...expected, "SHA256SUMS"];
 }
 
 function tag() {
@@ -269,7 +207,7 @@ function currentTag() {
 
 function publish() {
   const { version, tagName } = currentTag();
-  const files = releaseFiles(version).map((name) => join(RELEASE_DIR, name));
+  const files = releaseFiles(RELEASE_DIR, version).map((name) => join(RELEASE_DIR, name));
   const notes = releasedSection(version).body;
   if (succeeds("gh", ["release", "view", tagName])) {
     refuse(`the release ${tagName} exists on GitHub`);
