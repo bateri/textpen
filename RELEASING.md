@@ -87,8 +87,9 @@ tag is on `origin` and the release is not: make it by hand with `gh release crea
 - a `dist/release` that is not exactly the three files of this version, `SHA256SUMS`, `app.json` and
   `app.json.sig`, with the sum of each as listed, or whose executable for this machine does not say
   this version;
-- an `app.json` that its signature does not belong to (by the key it names), that is of another
-  app or version, that does not name exactly the three targets at addresses ending in the files'
+- an `app.json` that its signature does not belong to (by the key it names), that is signed with
+  another key than the "bateri" key (a published release cannot be taken back, and every bateri
+  would turn it away), that is of another app or version, that does not name exactly the three targets at addresses ending in the files'
   names, or whose sums are not those of `SHA256SUMS`.
 
 ## The npm package

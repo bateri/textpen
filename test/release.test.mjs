@@ -9,7 +9,7 @@ import { join } from "node:path";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 
-import { TARGETS, Refusal, fileOf, releaseFiles } from "../tools/release-files.mjs";
+import { BATERI_KEY, TARGETS, Refusal, fileOf, releaseFiles } from "../tools/release-files.mjs";
 
 const VERSION = "0.6.0";
 
@@ -27,6 +27,12 @@ function newKey() {
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
+/** The key each test release is signed with, by its directory: what `check` trusts for it. */
+const trusted = new Map();
+
+/** `releaseFiles`, trusting the key the test made for the directory (bateri's own if none). */
+const check = (dir, version) => releaseFiles(dir, version, trusted.get(dir));
+
 /** The files of a complete release in a new directory, and the means to make them wrong. */
 function release(version = VERSION) {
   const dir = mkdtempSync(join(tmpdir(), "textpen-release-test-"));
@@ -34,6 +40,7 @@ function release(version = VERSION) {
   const out = join(dir, "release");
   mkdirSync(out);
   const key = newKey();
+  trusted.set(out, key.text);
   const sums = new Map();
   for (const target of TARGETS) {
     const name = fileOf(version, target);
@@ -83,7 +90,7 @@ const refusal = (what) => (error) => {
 describe("the files of a release", () => {
   it("are the three executables, SHA256SUMS, app.json and its signature", () => {
     const { out } = release();
-    assert.deepEqual(releaseFiles(out, VERSION), [
+    assert.deepEqual(check(out, VERSION), [
       ...TARGETS.map((target) => fileOf(VERSION, target)),
       "SHA256SUMS",
       "app.json",
@@ -95,14 +102,14 @@ describe("the files of a release", () => {
     for (const name of ["app.json", "app.json.sig"]) {
       const { out } = release();
       rmSync(join(out, name));
-      assert.throws(() => releaseFiles(out, VERSION), refusal(`dist/release holds`));
+      assert.throws(() => check(out, VERSION), refusal(`dist/release holds`));
     }
   });
 
   it("are refused when something else is in the directory", () => {
     const { out } = release();
     writeFileSync(join(out, "notes.txt"), "not a file of the release");
-    assert.throws(() => releaseFiles(out, VERSION), refusal("notes.txt"));
+    assert.throws(() => check(out, VERSION), refusal("notes.txt"));
   });
 
   it("are refused when app.json says another sum than SHA256SUMS, however well it is signed", () => {
@@ -112,14 +119,14 @@ describe("the files of a release", () => {
       ...manifest,
       files: { ...manifest.files, [target]: { ...manifest.files[target], sha256: "0".repeat(64) } },
     });
-    assert.throws(() => releaseFiles(out, VERSION), refusal(`another sum for ${fileOf(VERSION, target)}`));
+    assert.throws(() => check(out, VERSION), refusal(`another sum for ${fileOf(VERSION, target)}`));
   });
 
   it("are refused when SHA256SUMS lists a sum the file does not have", () => {
     const { out, sums, write } = release();
     const name = fileOf(VERSION, TARGETS[0]);
     write.sums(new Map([...sums, [name, "0".repeat(64)]]));
-    assert.throws(() => releaseFiles(out, VERSION), refusal(`${name} is not the file SHA256SUMS lists`));
+    assert.throws(() => check(out, VERSION), refusal(`${name} is not the file SHA256SUMS lists`));
   });
 
   it("are refused when app.json is not what was signed", () => {
@@ -127,46 +134,46 @@ describe("the files of a release", () => {
     const bytes = readFileSync(join(out, "app.json"), "utf8");
     // One character of the version changed: still JSON, still of the shape.
     writeFileSync(join(out, "app.json"), bytes.replace('"protocol": [\n    1', '"protocol": [\n    2'));
-    assert.throws(() => releaseFiles(out, VERSION), refusal("not the signature of app.json"));
+    assert.throws(() => check(out, VERSION), refusal("not the signature of app.json"));
   });
 
   it("are refused when app.json is signed by another key than the one it names", () => {
     const { out, manifest, write } = release();
     write.manifest(manifest, newKey().privateKey);
-    assert.throws(() => releaseFiles(out, VERSION), refusal("not the signature of app.json"));
+    assert.throws(() => check(out, VERSION), refusal("not the signature of app.json"));
   });
 
   it("are refused when the signature is not written as it should be", () => {
     for (const text of ["", "nonsense\n", "ed25519:AAAA\n", `rsa:${"A".repeat(88)}\n`]) {
       const { out } = release();
       writeFileSync(join(out, "app.json.sig"), text);
-      assert.throws(() => releaseFiles(out, VERSION), refusal("app.json.sig is not one line"));
+      assert.throws(() => check(out, VERSION), refusal("app.json.sig is not one line"));
     }
   });
 
   it("are refused when app.json is not JSON or has no key", () => {
     const first = release();
     writeFileSync(join(first.out, "app.json"), "not json");
-    assert.throws(() => releaseFiles(first.out, VERSION), refusal("is not JSON"));
+    assert.throws(() => check(first.out, VERSION), refusal("is not JSON"));
     const second = release();
     const { key: _, ...withoutKey } = second.manifest;
     second.write.manifest(withoutKey);
-    assert.throws(() => releaseFiles(second.out, VERSION), refusal("does not name an ed25519 key"));
+    assert.throws(() => check(second.out, VERSION), refusal("does not name an ed25519 key"));
   });
 
   it("are refused when app.json is of another app, another version or other targets", () => {
     let made = release();
     made.write.manifest({ ...made.manifest, name: "another" });
-    assert.throws(() => releaseFiles(made.out, VERSION), refusal(`is of "another"`));
+    assert.throws(() => check(made.out, VERSION), refusal(`is of "another"`));
 
     made = release();
     made.write.manifest({ ...made.manifest, version: "0.5.1" });
-    assert.throws(() => releaseFiles(made.out, VERSION), refusal("is of version 0.5.1"));
+    assert.throws(() => check(made.out, VERSION), refusal("is of version 0.5.1"));
 
     made = release();
     const { [TARGETS[2]]: _, ...two } = made.manifest.files;
     made.write.manifest({ ...made.manifest, files: two });
-    assert.throws(() => releaseFiles(made.out, VERSION), refusal("exactly the three targets"));
+    assert.throws(() => check(made.out, VERSION), refusal("exactly the three targets"));
 
     made = release();
     made.write.manifest({
@@ -176,15 +183,28 @@ describe("the files of a release", () => {
         [TARGETS[0]]: { ...made.manifest.files[TARGETS[0]], url: "https://example.com/elsewhere" },
       },
     });
-    assert.throws(() => releaseFiles(made.out, VERSION), refusal(`does not end in ${fileOf(VERSION, TARGETS[0])}`));
+    assert.throws(() => check(made.out, VERSION), refusal(`does not end in ${fileOf(VERSION, TARGETS[0])}`));
   });
 
   it("are refused when they are of another version than the one released", () => {
     const { out } = release("0.5.1");
-    assert.throws(() => releaseFiles(out, VERSION), refusal("dist/release holds"));
+    assert.throws(() => check(out, VERSION), refusal("dist/release holds"));
+  });
+
+  it("are refused when they are signed with another key than bateri's, however well", () => {
+    const { out } = release();
+    // Signed, and the signature holds for the key it names — a key made for a test, not bateri's.
+    assert.throws(() => releaseFiles(out, VERSION), refusal(`not with the key bateri takes textpen by (${BATERI_KEY})`));
+  });
+
+  it("are refused when app.json names the key bateri takes but is signed by another", () => {
+    const { out, manifest, write } = release();
+    // The key's text alone is not enough: the signature has to be by that key.
+    write.manifest({ ...manifest, key: BATERI_KEY });
+    assert.throws(() => releaseFiles(out, VERSION), refusal("not the signature of app.json"));
   });
 
   it("are refused when there is no dist/release", () => {
-    assert.throws(() => releaseFiles(join(tmpdir(), "textpen-release-nothing-here"), VERSION), refusal("no dist/release"));
+    assert.throws(() => check(join(tmpdir(), "textpen-release-nothing-here"), VERSION), refusal("no dist/release"));
   });
 });

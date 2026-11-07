@@ -18,6 +18,14 @@ export const refuse = (what) => {
   throw new Refusal(what);
 };
 
+/**
+ * The key bateri takes textpen's releases by without asking: the public half of the "bateri"
+ * signing key (`ed25519:` and the 32 bytes in base64). A release signed with any other key is one
+ * every bateri turns away with "Signed with another key", and a published release cannot be
+ * taken back, so it is refused here, before it is tagged or published.
+ */
+export const BATERI_KEY = "ed25519:59e8IXkv6FP4tD4uJ/fvw9/pSV+1YgEpXtXQzWLwOpU=";
+
 /** The executable of a release for a target. */
 export const fileOf = (version, target) => `${NAME}-${version}-${target}`;
 
@@ -43,10 +51,11 @@ function ed25519Bytes(text, length) {
 
 /**
  * The app.json of a release, read and checked: signed by the key it names (`apps.md` Section 5),
- * of this app and this version, naming exactly the three executables at addresses that end in
- * their names, each with the sum SHA256SUMS lists. `listed` is what SHA256SUMS lists, by name.
+ * and that key is `trust`, of this app and this version, naming exactly the three executables at
+ * addresses that end in their names, each with the sum SHA256SUMS lists. `listed` is what
+ * SHA256SUMS lists, by name.
  */
-function checkManifest(dir, version, listed) {
+function checkManifest(dir, version, listed, trust) {
   const bytes = readFileSync(join(dir, "app.json"));
   const signature = readFileSync(join(dir, "app.json.sig"), "utf8").replace(/\n$/, "");
   let manifest;
@@ -62,6 +71,11 @@ function checkManifest(dir, version, listed) {
   const publicKey = createPublicKey({ key: Buffer.concat([SPKI_PREFIX, key]), format: "der", type: "spki" });
   if (!verify(null, bytes, publicKey, sig)) {
     refuse("dist/release/app.json.sig is not the signature of app.json by the key it names: make sums again");
+  }
+  if (manifest.key !== trust) {
+    refuse(
+      `dist/release/app.json is signed with ${manifest.key}, not with the key bateri takes ${NAME} by (${trust}): sign with the "bateri" key (RELEASING.md)`,
+    );
   }
   if (manifest.name !== NAME) refuse(`dist/release/app.json is of ${JSON.stringify(manifest.name)}, not ${NAME}`);
   if (manifest.version !== version) {
@@ -86,9 +100,11 @@ function checkManifest(dir, version, listed) {
  * The files `make dist` and `make sums` made in `dir` for this version: the three executables, the
  * SHA256SUMS that names exactly them, each with the sum it lists, and the app.json and its
  * signature that say the same sums. The names carry the version, so a dist/release made before
- * the version moved is refused; the one executable this machine can run says its version.
+ * the version moved is refused; the one executable this machine can run says its version. `trust`
+ * is the key the app.json is signed with: bateri's own, which the tests replace with the one of
+ * their own.
  */
-export function releaseFiles(dir, version) {
+export function releaseFiles(dir, version, trust = BATERI_KEY) {
   if (!existsSync(dir)) refuse(`no dist/release: make dist, after the release commit`);
   const expected = TARGETS.map((target) => fileOf(version, target));
   const found = readdirSync(dir).sort();
@@ -116,7 +132,7 @@ export function releaseFiles(dir, version) {
       .digest("hex");
     if (listed.get(name) !== sum) refuse(`${name} is not the file SHA256SUMS lists: make dist again`);
   }
-  checkManifest(dir, version, listed);
+  checkManifest(dir, version, listed, trust);
   const own = ownTarget();
   if (own !== undefined) {
     const said = execFileSync(join(dir, fileOf(version, own)), ["--version"], { encoding: "utf8" }).trim();
