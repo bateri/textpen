@@ -1542,7 +1542,7 @@ dependencies = [
 
 [[package]]
 name = "textpen"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "base64",
  "hayro-interpret",

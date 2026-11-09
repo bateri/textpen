@@ -7,6 +7,8 @@ change what the previous one did.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-09
+
 ### Added
 
 - **A PDF opens in its tab.** Its pages are drawn one under the other and scrolled by the terminal, in
