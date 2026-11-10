@@ -7,6 +7,8 @@ change what the previous one did.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-10
+
 ### Changed
 
 - **A new icon.** A text cursor between the two marks of code, `<` and `>`, which bend round it as
