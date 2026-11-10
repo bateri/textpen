@@ -7,6 +7,12 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Changed
+
+- **A new icon.** A text cursor between the two marks of code, `<` and `>`, which bend round it as
+  the lids of an eye. The one before, three lines of text and a cursor, came out as faint bars at
+  the size a terminal draws it in a tab.
+
 ## [0.6.0] - 2026-11-09
 
 ### Added
