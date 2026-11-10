@@ -20,30 +20,19 @@ local ACTIONS = {
 	{ "help", "keyboard" },
 }
 
--- textpen's mark, which its icon is drawn from too: lines of text, the last one being written, with
--- the caret at its end.
+-- textpen's mark, which its icon is drawn from too (tools/icon.mjs, at half these measures): a text
+-- cursor between the two marks of code, which bend round it as the lids of an eye.
 local function mark()
-	local paths = {}
-	-- A bar with round ends: its middle and a circle at each end.
-	local function bar(x, y, w, h, alpha)
-		local color = b.alpha("accent", alpha)
-		if w >= h then
-			local r = h / 2
-			paths[#paths + 1] = b.path():rect(x + r, y, w - h, h):fill(color)
-			paths[#paths + 1] = b.path():circle(x + r, y + r, r):fill(color)
-			paths[#paths + 1] = b.path():circle(x + w - r, y + r, r):fill(color)
-		else
-			local r = w / 2
-			paths[#paths + 1] = b.path():rect(x, y + r, w, h - w):fill(color)
-			paths[#paths + 1] = b.path():circle(x + r, y + r, r):fill(color)
-			paths[#paths + 1] = b.path():circle(x + r, y + h - r, r):fill(color)
-		end
-	end
-	bar(3, 3.8, 18, 3, 0.4)
-	bar(6.5, 9.8, 11.5, 3, 0.7)
-	bar(3, 15.8, 6, 3, 1)
-	bar(10.6, 14.3, 2.2, 6, 1)
-	return b.canvas(paths):size(24, 24)
+	local line = 2.7
+	local lid = b.alpha("accent", 0.65)
+	local left = b.path():move_to(7.4, 7):cubic_to(5.4, 7.8, 3.6, 9.4, 2.2, 12):cubic_to(3.6, 14.6, 5.4, 16.2, 7.4, 17)
+	local right = b.path():move_to(16.6, 7):cubic_to(18.6, 7.8, 20.4, 9.4, 21.8, 12):cubic_to(20.4, 14.6, 18.6, 16.2, 16.6, 17)
+	-- The cursor: its two ends and its stem, which passes between the lids.
+	local cursor = b.path()
+		:move_to(9.8, 3.8):line_to(14.2, 3.8)
+		:move_to(12, 3.8):line_to(12, 20.2)
+		:move_to(9.8, 20.2):line_to(14.2, 20.2)
+	return b.canvas({ left:stroke(line, lid), right:stroke(line, lid), cursor:stroke(line, "accent") }):size(24, 24)
 end
 
 function act.welcome_view(size)
