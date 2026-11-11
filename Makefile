@@ -140,13 +140,15 @@ dist:
 #
 # On release day PENCERE must be a pencere that has `dist` and is the one Cargo.lock takes
 # (PENCERE_REF): `make pencere` builds it. A release made with another one has an app.json that
-# the pencere textpen is built with did not write.
+# the pencere textpen is built with did not write. `--opens file,folder` is what makes app.json say
+# that textpen takes a file and a folder, so that a terminal can offer it for them: a pencere that
+# does not have the flag stops here, and the pin in Cargo.toml moves to one that has it first.
 DIST_FLAGS ?=
 sums:
 	cd dist/release && { sha256sum textpen-* 2>/dev/null || shasum -a 256 textpen-*; } > SHA256SUMS
 	@cat dist/release/SHA256SUMS
 	@test -x "$(PENCERE)" || { echo "sums: no pencere at $(PENCERE): make pencere, or PENCERE=<a pencere command that has dist>"; exit 1; }
-	"$(PENCERE)" dist --files dist/release $(DIST_FLAGS) $(PACKAGE_VERSION)
+	"$(PENCERE)" dist --files dist/release --opens file,folder $(DIST_FLAGS) $(PACKAGE_VERSION)
 
 # release-prepare sets the version and dates the changelog's Unreleased section.
 release-prepare:

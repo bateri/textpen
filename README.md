@@ -42,7 +42,8 @@ say).
 
 **As your `$EDITOR`.** `export EDITOR=textpen` and `git commit` opens the message in the
 pane: save it and close the tab, and git goes on. Opened on files named on the
-command line, textpen ends when the last of them is closed. In a terminal without pencere it
+command line, textpen ends when the last of them is closed, and the files beside the editor
+are not shown: `⌘B` shows them for that run, and what you kept of them is the same after. In a terminal without pencere it
 passes the file to `$VISUAL` or `$EDITOR` — skipping itself — or to `vi`.
 
 **Over ssh.** Copy the file for the server's system to it and run it there, in a pane of a
@@ -194,8 +195,9 @@ asking.
 brings the editor back, where you left it, unsaved changes and all.
 
 **It fits the pane.** In a wide pane the files are beside the editor, the edge between them
-dragged where you want it; in a narrow one (80×24) they slide over it with `⌘B`, and the
-status line keeps what still fits.
+dragged where you want it (a run that was given a file to open starts without them, as
+`$EDITOR` does, and `⌘B` brings them); in a narrow one (80×24) they slide over it with `⌘B`,
+and the status line keeps what still fits.
 
 **What it does not do.**
 

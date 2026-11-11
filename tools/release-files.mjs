@@ -81,6 +81,16 @@ function checkManifest(dir, version, listed, trust) {
   if (manifest.version !== version) {
     refuse(`dist/release/app.json is of version ${manifest.version}, not ${version}: make sums again`);
   }
+  // The release says that textpen takes a file and a folder (`apps.md` Section 4.7): a terminal
+  // offers it for them by this alone.
+  if (
+    !Array.isArray(manifest.opens) ||
+    manifest.opens.length !== 2 ||
+    !manifest.opens.includes("file") ||
+    !manifest.opens.includes("folder")
+  ) {
+    refuse('dist/release/app.json does not say "opens": ["file", "folder"]: make sums again');
+  }
   const files = manifest.files ?? {};
   if (Object.keys(files).sort().join("\n") !== [...TARGETS].sort().join("\n")) {
     refuse("dist/release/app.json does not name exactly the three targets");

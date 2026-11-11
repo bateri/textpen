@@ -45,7 +45,8 @@ pub struct Session {
     focus: Mutex<Option<Focus>>,
     /// Paths on the command line that could not be opened.
     pub problems: Vec<String>,
-    /// The command line named the files, as `$EDITOR` is run: closing the last tab ends textpen.
+    /// The command line named the files, as `$EDITOR` is run: closing the last tab ends textpen, and
+    /// the page starts without the sidebar, which `⌘B` brings back for the run alone.
     pub close_quits: bool,
     /// Whether the program is reached over ssh: the files the person drags to the pane are not on
     /// the machine the program runs on.

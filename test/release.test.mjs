@@ -66,6 +66,7 @@ function release(version = VERSION) {
       }),
     ),
     previous: [],
+    opens: ["file", "folder"],
   };
   const write = {
     sums: (map = sums) =>
@@ -195,6 +196,19 @@ describe("the files of a release", () => {
     const { out } = release();
     // Signed, and the signature holds for the key it names — a key made for a test, not bateri's.
     assert.throws(() => releaseFiles(out, VERSION), refusal(`not with the key bateri takes textpen by (${BATERI_KEY})`));
+  });
+
+  it("are refused unless app.json says that textpen opens a file and a folder", () => {
+    const { out, manifest, write } = release();
+    const { opens, ...without } = manifest;
+    assert.deepEqual(opens, ["file", "folder"]);
+    for (const bad of [undefined, [], ["file"], ["folder"], ["file", "file"], ["file", "folder", "link"], "file,folder"]) {
+      write.manifest(bad === undefined ? without : { ...without, opens: bad });
+      assert.throws(() => check(out, VERSION), refusal('does not say "opens"'), JSON.stringify(bad));
+    }
+    // Either order of the two is the same release.
+    write.manifest({ ...without, opens: ["folder", "file"] });
+    check(out, VERSION);
   });
 
   it("are refused when app.json names the key bateri takes but is signed by another", () => {

@@ -473,6 +473,17 @@ end
 
 local settings_timer = nil
 
+-- Shows or hides the sidebar beside the editor: in a run that was opened on files only for the run,
+-- otherwise as a setting that is kept.
+function act.set_sidebar_shown(shown)
+	if S.run_sidebar ~= nil then
+		S.run_sidebar = shown
+		kit.gather(true)
+	else
+		act.change_settings({ sidebar = shown })
+	end
+end
+
 -- Changes the settings at once, and tells the program once the person stops changing them.
 function act.change_settings(change)
 	local settings = table.clone(S.settings)
@@ -624,6 +635,12 @@ function act.start(boot)
 	local ui = boot.ui
 	S.boot = boot
 	S.settings = boot.settings
+	-- Opened on files, as $EDITOR is: the sidebar is not shown, and what is done to it is the run's.
+	if boot.closeQuits == true then
+		S.run_sidebar = false
+	else
+		S.run_sidebar = nil
+	end
 	S.roots = boot.roots
 	for _, repo in boot.repos do
 		S.repos[repo.root] = repo.git

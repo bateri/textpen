@@ -118,7 +118,7 @@ Boot        = {
   settings: Settings, ui: UiState, buffers: BufferInfo[],
   handoff: boolean,      -- the pane can be handed to a shell
   closeQuits: boolean,   -- the command line named the files (as $EDITOR is run): closing the last
-                         -- tab ends textpen
+                         -- tab ends textpen, and the sidebar starts hidden, for this run only
   returned?: Returned,
   focus?: { path: string, line?: number, column?: number },   -- 1-based; column in code points of the line
   problems: string[],    -- paths on the command line that could not be opened

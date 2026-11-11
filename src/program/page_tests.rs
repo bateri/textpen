@@ -98,6 +98,22 @@ impl Project {
         session
     }
 
+    /// The program's state of a run of textpen that was given `files` to open, as `$EDITOR` is run:
+    /// the paths are the project's, the first in front.
+    pub(crate) fn session_on(&self, files: &[&str]) -> Arc<Session> {
+        let path = |name: &str| self.dir.path().join(name).to_string_lossy().into_owned();
+        let named: Vec<String> = files
+            .iter()
+            .map(|file| self.root().join(file).to_string_lossy().into_owned())
+            .collect();
+        Arc::new(Session::new(
+            &self.root().to_string_lossy(),
+            &named,
+            None,
+            Store::at(path("config"), path("state")),
+        ))
+    }
+
     /// The page opened on the program's handlers for `session`, at `size`.
     pub(crate) fn open(&self, session: &Arc<Session>, size: (f32, f32)) -> Result<Page, Error> {
         self.open_later(session, size, 0.0)
@@ -2101,6 +2117,82 @@ fn a_field_opens_with_its_text_selected_and_the_keyboard_in_it() -> Result<(), E
     // The sheet of keys.
     page.press("cmd+shift+/")?;
     assert!(keyboard_is_in(&page, "help-filter"), "{:?}", page.focus());
+    Ok(())
+}
+
+/// Opened on a file, as `$EDITOR` is run, the page has no sidebar: ⌘B brings it and takes it away
+/// again for that run only, and what was kept of the sidebar is the same after, however many
+/// settings were kept in between. Opened on a folder or on nothing, the kept setting rules.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_page_opened_on_a_file_starts_without_the_sidebar_and_leaves_the_kept_setting_alone()
+-> Result<(), Error> {
+    let project = lantern();
+    let session = project.session_on(&["README.md"]);
+    assert_eq!(settings_of(&session)["sidebar"], true, "kept: shown");
+    let mut page = project.open(&session, WIDE)?;
+    assert!(page.bounds("sidebar").is_none(), "{:?}", page_words(&page));
+    assert!(page.bounds("resizer").is_none());
+    assert!(shows(&page, "README.md"), "the file is open");
+
+    page.press("cmd+b")?;
+    assert!(page.bounds("sidebar").is_some(), "⌘B brings it");
+    assert!(page.bounds("resizer").is_some());
+    page.press("cmd+b")?;
+    assert!(page.bounds("sidebar").is_none(), "⌘B takes it away");
+    // The keys that go to the sidebar bring it too.
+    page.press("cmd+shift+e")?;
+    assert!(page.bounds("sidebar").is_some());
+    page.click("sidebar-hide")?;
+    assert!(page.bounds("sidebar").is_none(), "its own button hides it");
+
+    // Another setting is kept, with the sidebar as the run has it, and the sidebar is not changed.
+    page.press("cmd+,")?;
+    for _ in 0..4 {
+        page.press("down")?;
+    }
+    page.press("space")?;
+    page.press("escape")?;
+    page.advance(1.0)?;
+    assert_eq!(settings_of(&session)["whitespace"], "boundary");
+    assert_eq!(settings_of(&session)["sidebar"], true, "kept: still shown");
+    assert!(page.bounds("sidebar").is_none(), "this run: still hidden");
+    Ok(())
+}
+
+/// A page opened on a folder or on nothing shows the sidebar as it was kept, shown or hidden, and
+/// ⌘B changes what is kept; opened on a file in a pane too narrow for it beside the editor, it is a
+/// drawer as ever.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_page_opened_on_no_file_follows_the_kept_sidebar_and_a_narrow_one_keeps_its_drawer()
+-> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    assert!(page.bounds("sidebar").is_some(), "kept: shown");
+    page.press("cmd+b")?;
+    assert!(page.bounds("sidebar").is_none());
+    page.advance(1.0)?;
+    assert_eq!(settings_of(&session)["sidebar"], false, "⌘B is kept here");
+    drop(page);
+
+    let session = project.session(&["README.md"]);
+    assert_eq!(settings_of(&session)["sidebar"], false);
+    let page = project.open(&session, WIDE)?;
+    assert!(page.bounds("sidebar").is_none(), "kept: hidden");
+    drop(page);
+
+    let project = lantern();
+    let session = project.session_on(&["README.md"]);
+    let mut page = project.open(&session, PANE)?;
+    assert!(page.bounds("sidebar").is_none());
+    page.press("cmd+b")?;
+    assert!(page.bounds("sidebar").is_some(), "the drawer comes over");
+    page.press("cmd+b")?;
+    assert!(page.bounds("sidebar").is_none(), "and goes");
+    page.advance(1.0)?;
+    assert_eq!(settings_of(&session)["sidebar"], true, "kept: untouched");
     Ok(())
 }
 

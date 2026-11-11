@@ -176,7 +176,7 @@ function sidebar.press(id, event)
 		if S.drawer then
 			S.drawer = false
 		else
-			act.change_settings({ sidebar = false })
+			act.set_sidebar_shown(false)
 		end
 		act.focus_editor()
 	elseif id == "drawer-scrim" then
@@ -202,8 +202,8 @@ function act.focus_sidebar(panel)
 	S.focus = "sidebar"
 	if S.layout == "narrow" then
 		S.drawer = true
-	elseif not S.settings.sidebar then
-		act.change_settings({ sidebar = true })
+	elseif not act.sidebar_shown() then
+		act.set_sidebar_shown(true)
 	end
 	if S.sidebar == "files" then
 		if not S.tree_selection then
@@ -237,8 +237,8 @@ function act.toggle_sidebar()
 		end
 		return
 	end
-	local shown = not S.settings.sidebar
-	act.change_settings({ sidebar = shown })
+	local shown = not act.sidebar_shown()
+	act.set_sidebar_shown(shown)
 	if not shown and S.focus == "sidebar" then
 		act.focus_editor()
 	end

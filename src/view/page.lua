@@ -44,9 +44,18 @@ local function layout_of(width)
 	return "wide"
 end
 
+-- Whether the sidebar is shown: as this run has it when it was opened on files (`S.run_sidebar`),
+-- otherwise as it was kept.
+function act.sidebar_shown()
+	if S.run_sidebar ~= nil then
+		return S.run_sidebar
+	end
+	return S.settings ~= nil and S.settings.sidebar == true
+end
+
 -- Whether the sidebar is beside the editor (a wide enough page, and shown).
 function act.sidebar_docked()
-	return S.layout ~= "narrow" and S.settings ~= nil and S.settings.sidebar == true
+	return S.layout ~= "narrow" and act.sidebar_shown()
 end
 
 local function booting()

@@ -7,6 +7,19 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Added
+
+- **The release says that textpen opens a file and a folder.** The `app.json` of a release has
+  `opens`, so that a terminal can offer textpen for the files and folders a person opens in it.
+  `make sums` asks `pencere dist` for it, and `make release` refuses a release without it.
+
+### Changed
+
+- **Opened on a file, textpen starts without the sidebar.** `textpen notes.md`, and `$EDITOR`, open
+  the file on the whole page; `⌘B` brings the files back and takes them away again for that run,
+  and what you kept of the sidebar is not changed. Opened on a folder, or on nothing, the kept
+  setting rules as before.
+
 ## [0.6.1] - 2026-11-10
 
 ### Changed

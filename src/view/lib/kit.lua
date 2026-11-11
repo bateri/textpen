@@ -36,6 +36,10 @@ local S = {
 	-- The sidebar's panel ("files", "search" or "changes"); in a narrow page it is a drawer over the
 	-- editor.
 	sidebar = "files",
+	-- Whether the sidebar is beside the editor in a run that was given files to open, which starts
+	-- without it and keeps what ⌘B does to itself: nil in any other run, which follows the kept
+	-- `settings.sidebar` and changes it.
+	run_sidebar = nil,
 	-- The file the changes panel has chosen, and the one it opened last with nothing of the person's in it.
 	changes_selection = nil,
 	changes_preview = nil,
