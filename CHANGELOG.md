@@ -7,6 +7,8 @@ change what the previous one did.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-11
+
 ### Added
 
 - **A terminal can open files and folders in textpen.** A release now says in its `app.json` that
