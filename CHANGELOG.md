@@ -9,9 +9,9 @@ change what the previous one did.
 
 ### Added
 
-- **The release says that textpen opens a file and a folder.** The `app.json` of a release has
-  `opens`, so that a terminal can offer textpen for the files and folders a person opens in it.
-  `make sums` asks `pencere dist` for it, and `make release` refuses a release without it.
+- **A terminal can open files and folders in textpen.** A release now says in its `app.json` that
+  textpen opens a file and a folder (`opens`), which lets a terminal offer it for the paths you
+  click.
 
 ### Changed
 
