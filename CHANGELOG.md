@@ -9,30 +9,19 @@ change what the previous one did.
 
 ### Added
 
-- **A picture is made larger by a pinch.** A pinch on a trackpad makes the picture in its tab
-  larger about your fingers, the wheel with `⌘` held does the same, a double tap with two fingers
-  goes between the fit and the picture's own size, and `⌘+`, `⌘-` and `⌘0` step it and fit it
-  again, up to eight times its own size (less for a picture so large that the terminal could not
-  draw it larger). The status line says how much of its own size it is shown at, `Fit` or a percent,
-  and a click on it fits the picture. In a terminal that cannot zoom a page yet, a picture and a PDF
-  stay fitted, as before, and the zoom keys do nothing.
+- **Zoom pictures and PDFs.** Pinch, or press `⌘+`, `⌘-` and `⌘0`. A double tap with two fingers
+  switches between fit and actual size. The status line shows the zoom; click it to fit again.
+- **Make the text larger.** `⌘+`, `⌘-`, `⌘0` or a pinch change the size of all of textpen's text,
+  and the terminal's own text stays as it is. The size is remembered, and **Text size** in the
+  settings sets it too.
+- **Drag a file out of textpen.** Drag a file from the tree, or a tab, onto a terminal pane and its
+  path is typed there. Drop it on another app to give it the path.
 
-- **A PDF is made larger by a pinch.** The same pinch, wheel with `⌘` and double tap as a
-  picture's, about your fingers and stopping at the steps of the zoom; smaller than the fit, the
-  pages are narrower than the tab and in its middle.
-- **The text of the code is made larger by `⌘+`, `⌘-` and `⌘0`, or a pinch that no picture or PDF takes.** textpen asks
-  the terminal to draw its page a few points larger (the terminal's own text stays), keeps the
-  size, and has a **Text size** in the settings (-4 to 24 points).
-
-- **A file is dragged out of textpen.** A row of the tree, a file's or a folder's, or a tab, dragged
-  out of the page, brings its path into a terminal's pane (quoted for the shell, not run) or into
-  another application as text; a tab dragged along the strip still puts the tabs in order, and a
-  name with a line break in it is not carried.
+These need a terminal that supports them, such as the next bateri. Elsewhere textpen works as before.
 
 ### Changed
 
-- **The size of a picture is in the status line.** It was a line under the picture; the picture has
-  that room now.
+- **The size of a picture is in the status line.** It was a line under the picture.
 
 ## [0.7.0] - 2026-11-11
 
