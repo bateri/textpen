@@ -91,13 +91,16 @@ Settings    = {
   sidebar: boolean, sidebarWidth: number,
   diffDecorations: boolean,   -- mark the lines that differ from git's index (VS Code's scm.diffDecorations)
   hideIgnored: boolean,       -- leave out of the tree what git ignores, otherwise shown quiet
+  textSize: number,           -- points larger than the terminal's own text the page is drawn (the
+                              -- page asks the terminal for it, `text_size` of a reply), -4 to 24
 }
               -- defaults: wrap false, lineNumbers "on", tabSize 2, insertSpaces true,
               -- whitespace "selection", indentGuides true, autoSave false, sidebar true,
-              -- sidebarWidth 240, diffDecorations true, hideIgnored false.
-              -- Gone from the web editor's: vim (no vim mode), fontSize (the terminal's text size
-              -- is the page's; textpen has no zoom of its own). A settings file from an older
-              -- textpen is read: unknown keys are dropped, `whitespace: true/false` is "all"/"none".
+              -- sidebarWidth 240, diffDecorations true, hideIgnored false, textSize 0.
+              -- Gone from the web editor's: vim (no vim mode), fontSize (the page's text is the
+              -- terminal's size and `textSize` more or less; the terminal's own text is not
+              -- changed). A settings file from an older textpen is read: unknown keys are dropped,
+              -- `whitespace: true/false` is "all"/"none".
 Place       = { anchor: number, head: number, top: number }   -- bytes from 0; top a 0-based line
 UiState     = {
   tabs: string[], active: string | null, expanded: string[],

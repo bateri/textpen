@@ -82,11 +82,12 @@ local function state(tab)
 		count = #widths,
 		widths = widths,
 		heights = heights,
-		-- nil: as wide as the tab; else the scale.
-		zoom = nil,
-		-- The layout of the pages for the tab's width and the zoom (`geometry`).
+		-- The layout of the pages for the tab's width (`geometry`).
 		geometry = nil,
-		-- Where it was scrolled last, and where it is to be scrolled at the next frame ({ y =, x = }).
+		-- Where it was scrolled last, and where it is to be scrolled at the next frame ({ y =, x = }),
+		-- in points of the box as the terminal zoomed it (the page's points times `zoom_of`).
+		-- What the status line said of the zoom last.
+		said = nil,
 		scroll_y = 0,
 		scroll_x = 0,
 		pending = nil,
@@ -133,12 +134,18 @@ function pdf.room(size)
 	return math.max(size.w - side, 80), math.max(size.h - SIZE.tabs - SIZE.status - bar, 40)
 end
 
--- The scale of page `index`: the tab's width less the sides, or the zoom, and never so large that the
--- terminal could not draw it (`LONGEST`).
+-- The scale of page `index` where the box is not zoomed, the fit: the tab's width less the sides, and
+-- never so large that the terminal could not draw it (`LONGEST`). The box's zoom is what the person
+-- makes of it (the terminal's: `zoom_of`).
 local function scale_of(v, avail, index)
-	local scale = v.zoom or (math.max(avail - 2 * SIDE, 40) / v.widths[index])
+	local scale = math.max(avail - 2 * SIDE, 40) / v.widths[index]
 	local longest = math.max(v.widths[index], v.heights[index])
 	return math.min(scale, LONGEST / longest)
+end
+
+-- The scale the box is zoomed to: the terminal's last word, else what was asked.
+local function zoom_of(tab)
+	return layout.zoom_of(pdf.box(tab)) or 1
 end
 
 -- Where a page `w` points wide stands across the content in a tab `avail` wide: one that fits with its
@@ -151,17 +158,15 @@ local function across_of(avail, w)
 	return SIDE
 end
 
--- Whether page `index` fits in the tab with its sides, as the layout `g` draws it.
-local function fits(g, index)
-	return g.pw[index] + 2 * SIDE <= g.avail
-end
-
 -- Where each page stands in the box (`tops`, from the top of the box, with a gap above the first, and
 -- `xs`, from its left), how large it is drawn (`pw`, `ph`, whole points), the box's height and how wide
--- its content is.
+-- its content is: all of it at the fit, the box's zoom not in it. And the zoom the box may be given: the
+-- steps' ends for the first page (the pages of a document are mostly of one size), and not so large that
+-- a page is drawn past what the terminal draws.
 local function compute(v, avail)
 	local tops, xs, pw, ph = {}, {}, {}, {}
 	local y, widest = GAP, 0
+	local most, fit_first = math.huge, nil
 	for index = 1, v.count do
 		local scale = scale_of(v, avail, index)
 		local w = math.max(math.floor(v.widths[index] * scale + 0.5), 1)
@@ -169,10 +174,14 @@ local function compute(v, avail)
 		tops[index], xs[index], pw[index], ph[index] = y, across_of(avail, w), w, h
 		y += h + GAP
 		widest = math.max(widest, w)
+		local longest = math.max(v.widths[index], v.heights[index])
+		most = math.min(most, LONGEST / longest / scale)
+		fit_first = fit_first or scale
 	end
 	return {
 		avail = avail,
-		zoom = v.zoom,
+		max_zoom = math.max(math.min(most, STEPS[#STEPS] / fit_first), 1),
+		min_zoom = math.min(STEPS[1] / fit_first, 1),
 		count = v.count,
 		tops = tops,
 		xs = xs,
@@ -240,34 +249,28 @@ local function view_of(tab, v)
 	return extent and extent.view or v.view_h
 end
 
--- The layout for the tab's width, made again where the width or the zoom changed; the page that was at the
--- top of the view stays there, and across, the page most in view keeps the point that was in the middle of
--- the tab there (one that fits in the tab is in its middle: the content is not scrolled across for it).
+-- The layout for the tab's width, made again where the width changed; the page that was at the top of the
+-- view stays there, and across, the content keeps the same share of its width.
 local function geometry(tab, v, avail)
 	local g = v.geometry
-	if g and g.avail == avail and g.zoom == v.zoom then
+	if g and g.avail == avail then
 		return g
 	end
 	local old = g
 	g = compute(v, avail)
 	v.geometry = g
 	if old then
+		local z = zoom_of(tab)
 		local y, x = offset_of(tab, v)
 		local ny = y
-		if y > old.tops[1] then
-			local page = locate(old, y)
-			local along = math.max(math.min((y - old.tops[page]) / old.ph[page], 1), 0)
-			ny = g.tops[page] + along * g.ph[page]
-		end
-		local page = math.max(math.min(v.current, g.count), 1)
-		local nx = 0
-		if not fits(g, page) then
-			local along = (x + old.avail / 2 - old.xs[page]) / old.pw[page]
-			nx = g.xs[page] + along * g.pw[page] - avail / 2
+		if y / z > old.tops[1] then
+			local page = locate(old, y / z)
+			local along = math.max(math.min((y / z - old.tops[page]) / old.ph[page], 1), 0)
+			ny = (g.tops[page] + along * g.ph[page]) * z
 		end
 		v.pending = {
-			y = math.max(math.min(ny, g.total - v.view_h), 0),
-			x = math.max(math.min(nx, g.content_w - avail), 0),
+			y = math.max(math.min(ny, g.total * z - v.view_h), 0),
+			x = math.max(math.min(x * avail / old.avail, g.content_w * z - avail), 0),
 		}
 	end
 	return g
@@ -280,9 +283,10 @@ local function scroll_to(tab, v, y, x)
 		return
 	end
 	local _, now_x = offset_of(tab, v)
+	local z = zoom_of(tab)
 	v.pending = {
-		y = math.max(math.min(y, g.total - view_of(tab, v)), 0),
-		x = math.max(math.min(x or now_x, g.content_w - v.avail), 0),
+		y = math.max(math.min(y, g.total * z - view_of(tab, v)), 0),
+		x = math.max(math.min(x or now_x, g.content_w * z - v.avail), 0),
 	}
 	kit.gather(true)
 end
@@ -305,7 +309,8 @@ function pdf.settle()
 	return true
 end
 
--- The host scrolled the box: whether the pages made, or the page most in view, are not those that were.
+-- The host scrolled or zoomed the box: whether the pages made, the page most in view, or what the status
+-- line says of the zoom, are not what they were.
 function pdf.scrolled(event)
 	local tab = pdf.shown()
 	local v = tab and tab.sheet
@@ -315,11 +320,13 @@ function pdf.scrolled(event)
 	local id = pdf.box(tab)
 	for _, box in event.boxes do
 		if box.id == id then
+			local z = box.zoom or 1
 			v.scroll_y, v.scroll_x = box.y, box.x
-			local first, last, current = visible(v.geometry, box.y, view_of(tab, v))
+			local first, last, current = visible(v.geometry, box.y / z, view_of(tab, v) / z)
 			local from, to = built_of(v.geometry, first, last)
 			local built = v.built
-			if current ~= v.current or not built or built[1] ~= from or built[2] ~= to then
+			if current ~= v.current or not built or built[1] ~= from or built[2] ~= to
+				or v.said ~= pdf.zoom_words(tab, z, current) then
 				return true
 			end
 		end
@@ -663,18 +670,15 @@ function pdf.view(tab, size)
 		-- Back in front: where it was left.
 		v.pending = { y = v.scroll_y, x = v.scroll_x }
 	end
+	local z = zoom_of(tab)
 	local y = offset_of(tab, v)
 	local view = view_of(tab, v)
-	local first, last, current = visible(g, y, view)
+	local first, last, current = visible(g, y / z, view / z)
 	local from, to = built_of(g, first, last)
 	v.built, v.current = { from, to }, current
+	v.said = pdf.zoom_words(tab, z, current)
 	want(tab, v, from, to)
-	local sheet = b.div():col():items_start():no_shrink()
-	if g.content_w > avail then
-		sheet:w(g.content_w)
-	else
-		sheet:w_full()
-	end
+	local sheet = b.div():col():items_start():no_shrink():w(g.content_w)
 	sheet:child(b.div():h(g.tops[from]):no_shrink())
 	for index = from, to do
 		if index > from then
@@ -683,7 +687,19 @@ function pdf.view(tab, size)
 		sheet:child(page_view(tab, v, g, index):ml(g.xs[index]))
 	end
 	sheet:child(b.div():h(math.max(g.total - (g.tops[to] + g.ph[to]), 0)):no_shrink())
-	return b.div():id(id):col():grow(1):min_w(0):min_h(0):scroll():bg(GROUND):child(sheet)
+	-- The box holds the pages as large as the fit makes them (laid out at the box's zoom), in one cell that
+	-- is as wide as they are or as the box where they are narrower (zoomed out), the pages in the middle.
+	return b.div()
+		:id(id)
+		:grid({ "auto" })
+		:grid_rows({ "auto" })
+		:grow(1)
+		:min_w(0)
+		:min_h(0)
+		:scroll()
+		:zoom({ min = g.min_zoom, max = g.max_zoom, smart = math.min(2, g.max_zoom) })
+		:bg(GROUND)
+		:child(b.div():col():items_center():child(sheet))
 end
 
 -- --- Where the pointer is -------------------------------------------------------------------------------------
@@ -960,20 +976,23 @@ function pdf.page_of(tab)
 	return v and v.current or 1, tab.picture.pdf.pages
 end
 
--- The scale the page most in view is shown at.
-local function current_scale(v)
+-- The scale the page most in view is drawn at with the box not zoomed: the fit.
+local function fit_scale(v, page)
 	local g = v.geometry
-	return g and g.pw[v.current] / v.widths[v.current] or 1
+	page = page or v.current
+	return g and g.pw[page] / v.widths[page] or 1
 end
 
--- What the status line says of the zoom.
-function pdf.zoom_words(tab)
+-- What the status line says of the zoom (`z` the box's, `page` the one most in view: where the host told
+-- them already).
+function pdf.zoom_words(tab, z, page)
 	local v = tab.sheet
-	if not (v and v.zoom) then
+	z = z or zoom_of(tab)
+	if not v or math.abs(z - 1) < 0.001 then
 		return "Fit Width"
 	end
-	-- The scale the page is drawn at, which is the zoom unless the terminal could not draw so large a page.
-	return string.format("%d%%", math.floor(current_scale(v) * 100 + 0.5))
+	-- The scale the page is drawn at, which is the zoom of the box times the fit.
+	return string.format("%d%%", math.floor(fit_scale(v, page) * z * 100 + 0.5))
 end
 
 -- Scrolls to the top of page `n`.
@@ -983,42 +1002,39 @@ function pdf.go_to(tab, n)
 		return
 	end
 	n = math.max(math.min(n, v.count), 1)
-	scroll_to(tab, v, v.geometry.tops[n] - GAP)
+	scroll_to(tab, v, (v.geometry.tops[n] - GAP) * zoom_of(tab))
 end
 
 -- Zooms: a step `direction` (1, -1) from the scale now, or back to the tab's width (0).
 function pdf.zoom(tab, direction)
 	local v = tab.sheet
-	if not v then
+	local g = v and v.geometry
+	if not g then
 		return
 	end
+	local z = zoom_of(tab)
+	local fit = fit_scale(v)
+	local now = fit * z
+	local to = nil
 	if direction == 0 then
-		v.zoom = nil
+		to = 1
+	elseif direction > 0 then
+		for _, step in STEPS do
+			if step > now * 1.001 then
+				to = math.min(step / fit, g.max_zoom)
+				break
+			end
+		end
 	else
-		local now = current_scale(v)
-		-- Not past the scale at which the page most in view is as large as the terminal draws one
-		-- (`LONGEST`: far past what the steps reach for a page of the sizes people make).
-		local most = LONGEST / math.max(v.widths[v.current], v.heights[v.current])
-		local to = nil
-		if direction > 0 then
-			for _, step in STEPS do
-				if step > now * 1.001 and step <= most * 1.001 then
-					to = step
-					break
-				end
-			end
-		else
-			for at = #STEPS, 1, -1 do
-				if STEPS[at] < now * 0.999 then
-					to = STEPS[at]
-					break
-				end
+		for at = #STEPS, 1, -1 do
+			if STEPS[at] < now * 0.999 then
+				to = math.max(STEPS[at] / fit, g.min_zoom)
+				break
 			end
 		end
-		if not to then
-			return
-		end
-		v.zoom = to
+	end
+	if to and math.abs(to - z) > 0.0005 then
+		layout.zoom_to(pdf.box(tab), to, { animate = false })
 	end
 	kit.gather(true)
 end
@@ -1081,28 +1097,26 @@ function pdf.found(tab)
 	return tab.sheet and tab.sheet.found
 end
 
--- Scrolls so that match `at` is in view, where it is not.
+-- Scrolls so that match `at` is in view, where it is not (the box's points are the page's times its zoom).
 local function reveal(tab, v, at)
 	local g = v.geometry
 	local match = v.found and v.found.matches[at]
 	if not (g and match) then
 		return
 	end
-	local scale_y = g.ph[match.page] / v.heights[match.page]
-	local scale_x = g.pw[match.page] / v.widths[match.page]
-	local top = g.tops[match.page] + match.y * scale_y
+	local z = zoom_of(tab)
+	local scale_y = g.ph[match.page] / v.heights[match.page] * z
+	local scale_x = g.pw[match.page] / v.widths[match.page] * z
+	local top = g.tops[match.page] * z + match.y * scale_y
 	local bottom = top + match.h * scale_y
 	local y, x = offset_of(tab, v)
 	local view = view_of(tab, v)
 	local to_y, to_x = y, x
-	if top - GAP < y or bottom + GAP > y + view then
+	if top - GAP * z < y or bottom + GAP * z > y + view then
 		to_y = math.max(top - view / 3, 0)
 	end
-	local left = g.xs[match.page] + match.x * scale_x
-	if fits(g, match.page) then
-		-- A page that fits in the tab is in its middle, the content not scrolled across.
-		to_x = 0
-	elseif left < x or left + match.w * scale_x > x + v.avail then
+	local left = g.xs[match.page] * z + match.x * scale_x
+	if left < x or left + match.w * scale_x > x + v.avail then
 		to_x = math.max(left - v.avail / 3, 0)
 	end
 	if to_y ~= y or to_x ~= x then

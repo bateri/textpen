@@ -13,7 +13,8 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
 use super::defaults::{
-    LineNumbers, Place, SIDEBAR_WIDTHS, Settings, TAB_SIZES, UiState, Whitespace, clamp,
+    LineNumbers, Place, SIDEBAR_WIDTHS, Settings, TAB_SIZES, TEXT_SIZES, UiState, Whitespace,
+    clamp, clamp_signed,
 };
 use super::later::Later;
 use crate::project::paths;
@@ -127,6 +128,12 @@ pub fn settings_of(read: &Map<String, Value>) -> Settings {
         ),
         diff_decorations: flag(read.get("diffDecorations"), defaults.diff_decorations),
         hide_ignored: flag(read.get("hideIgnored"), defaults.hide_ignored),
+        text_size: read
+            .get("textSize")
+            .and_then(Value::as_f64)
+            .map_or(defaults.text_size, |number| {
+                clamp_signed(number, TEXT_SIZES)
+            }),
     }
 }
 
@@ -296,7 +303,7 @@ mod tests {
     fn the_settings_of_an_older_textpen_are_read_as_this_one_has_them() {
         let Value::Object(old) = json!({
             "vim": true, "fontSize": 20, "whitespace": true, "tabSize": 99, "wrap": "yes",
-            "lineNumbers": "relative", "sidebarWidth": 10,
+            "lineNumbers": "relative", "sidebarWidth": 10, "textSize": 90,
         }) else {
             unreachable!()
         };
@@ -304,6 +311,8 @@ mod tests {
         assert_eq!(read.whitespace, Whitespace::All);
         assert_eq!(read.tab_size, 8);
         assert_eq!(read.sidebar_width, 228);
+        assert_eq!(read.text_size, 24);
+        assert_eq!(settings_of(&Map::new()).text_size, 0);
         assert!(!read.wrap);
         assert!(read.indent_guides);
         assert_eq!(read.line_numbers, LineNumbers::Relative);

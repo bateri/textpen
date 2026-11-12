@@ -331,6 +331,66 @@ fn the_pictures_of_a_picture_zoomed() -> Result<(), Error> {
     Ok(())
 }
 
+/// A PDF zoomed by a pinch and zoomed out, and the code with larger text (the page drawn as the terminal
+/// draws it for `text_size`: bateri's zoom is the size the terminal's text and the page's together make,
+/// over the terminal's). For looking at; written to target/shots/.
+#[test]
+#[ignore = "shots: draws the page in the fonts of this machine into target/shots/"]
+fn the_pictures_of_a_pdf_zoomed_and_the_text_larger() -> Result<(), Error> {
+    use pencere_view::GesturePhase;
+    let fonts = fonts();
+    let out = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/shots");
+    std::fs::create_dir_all(&out).expect("the folder");
+    let write = |page: &Page, palette: Palette, name: &str| {
+        let png = page.shot_in(&fonts, palette).expect("a picture");
+        std::fs::write(out.join(format!("{name}.png")), png).expect("the picture written");
+    };
+    for (name, size, palette) in [
+        ("pdf-zoom-dark-wide", (1280.0, 800.0), Palette::Dark),
+        ("pdf-zoom-light-80x24", PANE, Palette::Light),
+    ] {
+        let (_project, mut page) = open_pdf_pictured(&spec_pdf(), size, &fonts)?;
+        let room = page.bounds("pdf:docs/pencere-spec.pdf").expect("the box");
+        let at = pencere_view::Point::new(room.x + room.w / 2.0, room.y + room.h / 3.0);
+        page.magnify_at(at, 0.0, GesturePhase::Begin)?;
+        for _ in 0..6 {
+            page.magnify_at(at, 0.1, GesturePhase::Move)?;
+        }
+        page.magnify_at(at, 0.0, GesturePhase::End)?;
+        page.advance(1.0)?;
+        write(&page, palette, &format!("{name}-pinched"));
+        page.press("cmd+0")?;
+        for _ in 0..3 {
+            page.press("cmd+-")?;
+        }
+        page.advance(1.0)?;
+        write(&page, palette, &format!("{name}-out"));
+    }
+    for (name, size, palette, pane_zoom) in [
+        (
+            "text-larger-dark-wide",
+            (1280.0, 800.0),
+            Palette::Dark,
+            1.48,
+        ),
+        ("text-larger-light-80x24", PANE, Palette::Light, 1.32),
+    ] {
+        let project = lantern();
+        with_git(&project);
+        let mut page = open(&project, &["src/server.ts", "README.md"], size, &fonts)?;
+        write(&page, palette, &format!("{name}-before"));
+        // Six points larger: the terminal draws the page at (12.5 + 6) / 12.5 of its own points.
+        for _ in 0..6 {
+            page.press("cmd+=")?;
+        }
+        assert_eq!(page.text_size(), 6);
+        page.zoom(pane_zoom)?;
+        page.advance(0.5)?;
+        write(&page, palette, name);
+    }
+    Ok(())
+}
+
 /// The project made a repository, and the file the comparison is shown on changed as a person
 /// working in it would have left it: a line changed, a line made into three, two added at the top and
 /// two taken away.

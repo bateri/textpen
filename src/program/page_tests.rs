@@ -1824,11 +1824,13 @@ fn a_pinch_makes_a_picture_larger_about_the_fingers_and_the_status_line_says_by_
     let said: i32 = said.trim_end_matches('%').parse().expect("a percent");
     assert!((said - shown).abs() <= 1, "{said}% for {shown}%");
 
-    // A pinch over the tab's strip, away from the picture, is nobody's.
+    // A pinch over the tab's strip, away from the picture, is not the picture's: it is the page's text.
     let strip = page.bounds("tab:photo.png").expect("the tab");
+    assert_eq!(page.text_size(), 0);
     page.pinch_at(middle_of(strip), 0.5)?;
     page.advance(0.5)?;
     assert!((page.zoom_of("picture:photo.png")? - zoom).abs() < 0.01);
+    assert!(page.text_size() > 0, "the page's text became larger");
 
     // The status line's own: back to fit.
     page.click("status-zoom")?;
@@ -1867,6 +1869,11 @@ fn the_zoom_keys_step_a_picture_by_the_steps_and_fit_it_again() -> Result<(), Er
     page.press("cmd+=")?;
     page.advance(0.5)?;
     says(&page, steps[above]);
+    assert_eq!(
+        page.text_size(),
+        0,
+        "the keys are the picture's where one is in front"
+    );
     page.press("cmd++")?;
     page.advance(0.5)?;
     says(&page, steps[above + 1]);
@@ -2172,6 +2179,110 @@ fn the_settings_are_changed_and_kept_and_the_keys_are_listed() -> Result<(), Err
         "{:?}",
         page_words(&page)
     );
+    Ok(())
+}
+
+/// ⌘+, ⌘− and ⌘0 make the page's text larger, smaller and as the terminal's: the terminal is asked to
+/// draw the page that many points larger (`text_size`), within what the program keeps, and the size is
+/// kept in the settings and asked again when the page opens.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_text_size_keys_ask_the_terminal_for_a_larger_page_and_it_is_kept() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    assert_eq!(
+        page.text_size(),
+        0,
+        "as the terminal's until the person says"
+    );
+    page.press("cmd+=")?;
+    assert_eq!(page.text_size(), 1);
+    page.press("cmd++")?;
+    assert_eq!(page.text_size(), 2);
+    page.press("cmd+-")?;
+    assert_eq!(page.text_size(), 1);
+    page.press("cmd+0")?;
+    assert_eq!(page.text_size(), 0);
+    page.press("cmd+-")?;
+    page.press("cmd+-")?;
+    assert_eq!(page.text_size(), -2);
+    for _ in 0..40 {
+        page.press("cmd+=")?;
+    }
+    assert_eq!(page.text_size(), 24, "no larger than the program keeps");
+    for _ in 0..40 {
+        page.press("cmd+-")?;
+    }
+    assert_eq!(page.text_size(), -4, "no smaller");
+    // The palette has them, with the keys.
+    page.press("cmd+k")?;
+    page.type_text(">text")?;
+    wait(&mut page, |page| {
+        shows(page, "Bigger Text") && shows(page, "Smaller Text") && shows(page, "Actual Text Size")
+    })?;
+    page.press("escape")?;
+
+    // Kept, and said when the page is opened again.
+    page.press("cmd+0")?;
+    for _ in 0..3 {
+        page.press("cmd+=")?;
+    }
+    wait(&mut page, |_| session.settings().text_size == 3)?;
+    let again = project.open(&session, WIDE)?;
+    assert_eq!(
+        again.text_size(),
+        3,
+        "said at the start, the terminal not asked by a person"
+    );
+    Ok(())
+}
+
+/// A pinch that no box that zooms took makes the text larger a step at every stretch of it, and the
+/// way it goes: a pinch too short for a step makes none, and one that comes to the limit stops there.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_pinch_over_the_code_makes_the_text_larger_by_steps() -> Result<(), Error> {
+    use pencere_view::GesturePhase;
+    let project = lantern();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    let at = Point::new(WIDE.0 / 2.0, WIDE.1 / 2.0);
+    page.pinch_at(at, 0.05)?;
+    assert_eq!(page.text_size(), 0, "too short for a step");
+    page.magnify_at(at, 0.0, GesturePhase::Begin)?;
+    for _ in 0..10 {
+        page.magnify_at(at, 0.1, GesturePhase::Move)?;
+    }
+    page.magnify_at(at, 0.0, GesturePhase::End)?;
+    // Ten times 1.1 is 2.59 times: eleven stretches of 8%.
+    assert!(
+        (10..=12).contains(&page.text_size()),
+        "{}",
+        page.text_size()
+    );
+    let larger = page.text_size();
+    page.magnify_at(at, 0.0, GesturePhase::Begin)?;
+    for _ in 0..4 {
+        page.magnify_at(at, -0.1, GesturePhase::Move)?;
+    }
+    page.magnify_at(at, 0.0, GesturePhase::End)?;
+    assert!(
+        page.text_size() < larger && page.text_size() >= larger - 5,
+        "{} from {larger}",
+        page.text_size()
+    );
+    page.magnify_at(at, 0.0, GesturePhase::Begin)?;
+    for _ in 0..80 {
+        page.magnify_at(at, 0.1, GesturePhase::Move)?;
+    }
+    page.magnify_at(at, 0.0, GesturePhase::End)?;
+    assert_eq!(page.text_size(), 24);
+    // A pinch back from the limit is a step as soon as it is the way back.
+    page.magnify_at(at, 0.0, GesturePhase::Begin)?;
+    page.magnify_at(at, -0.1, GesturePhase::Move)?;
+    page.magnify_at(at, 0.0, GesturePhase::End)?;
+    assert_eq!(page.text_size(), 23);
     Ok(())
 }
 

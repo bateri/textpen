@@ -338,7 +338,7 @@ function pictures.zoom(tab, direction)
 		end
 	end
 	if math.abs(to - now) > 0.0005 then
-		layout.zoom_to(id, to, { animate = true })
+		layout.zoom_to(id, to, { animate = false })
 	end
 	kit.gather(true)
 end

@@ -14,7 +14,8 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Number, Value};
 
 use crate::state::defaults::{
-    LineNumbers, Place, SIDEBAR_WIDTHS, Settings, TAB_SIZES, UiState, Whitespace, clamp,
+    LineNumbers, Place, SIDEBAR_WIDTHS, Settings, TAB_SIZES, TEXT_SIZES, UiState, Whitespace,
+    clamp, clamp_signed,
 };
 
 /// A value as the program takes it, or the words for what is wrong, led by where.
@@ -367,6 +368,10 @@ impl Param for Settings {
             sidebar_width: size("sidebarWidth", SIDEBAR_WIDTHS)?,
             diff_decorations: fields.required("diffDecorations")?,
             hide_ignored: fields.required("hideIgnored")?,
+            text_size: {
+                let number: Number = fields.required("textSize")?;
+                clamp_signed(number.as_f64().unwrap_or(0.0), TEXT_SIZES)
+            },
         })
     }
 }

@@ -13,6 +13,7 @@ local text = require("../lib/text")
 local docs = require("./docs")
 local pdf = require("./pdf")
 local pictures = require("./pictures")
+local textsize = require("./textsize")
 local changes = require("./changes")
 local compare = require("./compare")
 local editor_menu = require("./editor_menu")
@@ -408,6 +409,20 @@ add({ id = "pdf-zoom-out", title = "Zoom Out", category = "PDF", keys = "cmd+-",
 	run = function() pdf.zoom(pdf.shown(), -1) end })
 add({ id = "pdf-fit-width", title = "Fit Width", category = "PDF", keys = "cmd+0", when = in_pdf,
 	run = function() pdf.zoom(pdf.shown(), 0) end })
+-- --- The size of the text --------------------------------------------------------------------------------------
+
+-- Where a picture or a PDF is in front the keys zoom it; anywhere else they are the page's text size.
+local function in_text()
+	return not (pdf.shown() or pictures.shown())
+end
+
+add({ id = "text-bigger", title = "Bigger Text", category = "View", keys = { "cmd++", "cmd+=" }, when = in_text,
+	run = function() textsize.step(1) end })
+add({ id = "text-smaller", title = "Smaller Text", category = "View", keys = "cmd+-", when = in_text,
+	run = function() textsize.step(-1) end })
+add({ id = "text-actual", title = "Actual Text Size", category = "View", keys = "cmd+0", when = in_text,
+	run = function() textsize.set(0) end })
+
 -- --- A picture --------------------------------------------------------------------------------------------
 
 local function in_picture()

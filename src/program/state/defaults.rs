@@ -75,6 +75,9 @@ pub struct Settings {
     pub diff_decorations: bool,
     /// Leave out of the tree what git ignores, which is otherwise shown quiet.
     pub hide_ignored: bool,
+    /// How many points larger than the terminal's own text the page is drawn (the page says it to the
+    /// terminal; 0 is as large, below 0 smaller).
+    pub text_size: i32,
 }
 
 impl Default for Settings {
@@ -91,6 +94,7 @@ impl Default for Settings {
             sidebar_width: 240,
             diff_decorations: true,
             hide_ignored: false,
+            text_size: 0,
         }
     }
 }
@@ -98,6 +102,22 @@ impl Default for Settings {
 /// The sizes a setting may have.
 pub const TAB_SIZES: (u32, u32) = (1, 8);
 pub const SIDEBAR_WIDTHS: (u32, u32) = (228, 520);
+pub const TEXT_SIZES: (i32, i32) = (-4, 24);
+
+/// As [`clamp`], for a size that may be below 0.
+pub fn clamp_signed(value: f64, (minimum, maximum): (i32, i32)) -> i32 {
+    let whole = (value + 0.5).floor();
+    if whole <= f64::from(minimum) {
+        minimum
+    } else if whole >= f64::from(maximum) {
+        maximum
+    } else {
+        // Between two i32, so it is one.
+        #[allow(clippy::cast_possible_truncation)]
+        let whole = whole as i32;
+        whole
+    }
+}
 
 /// A number as a setting has it: whole, and within its sizes.
 pub fn clamp(value: f64, (minimum, maximum): (u32, u32)) -> u32 {

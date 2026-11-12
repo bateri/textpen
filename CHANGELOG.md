@@ -16,6 +16,13 @@ change what the previous one did.
   draw it larger). The status line says how much of its own size it is shown at, `Fit` or a percent,
   and a click on it fits the picture.
 
+- **A PDF is made larger by a pinch.** The same pinch, wheel with `⌘` and double tap as a
+  picture's, about your fingers and stopping at the steps of the zoom; smaller than the fit, the
+  pages are narrower than the tab and in its middle.
+- **The text of the code is made larger by `⌘+`, `⌘-` and `⌘0`, or a pinch over it.** textpen asks
+  the terminal to draw its page a few points larger (the terminal's own text stays), keeps the
+  size, and has a **Text size** in the settings (-4 to 24 points).
+
 ### Changed
 
 - **The size of a picture is in the status line.** It was a line under the picture; the picture has

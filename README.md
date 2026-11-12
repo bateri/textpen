@@ -145,8 +145,10 @@ with the size of the file and its pixels. A file past 8 MiB or 4096 pixels is no
 so. It needs a terminal that shows the page at `lua` 0.1, as bateri does.
 
 **PDFs** open in their tab as pages one under the other, scrolled by the terminal, sharp at any
-zoom: `⌘+`, `⌘-` and `⌘0` step the zoom and fit the width, `Page Down`, `Home` and `End` go through
-the pages, and `⌃G` goes to a page. The words of a PDF are selected with the pointer (a double click
+zoom: a pinch makes the pages larger about your fingers, the wheel with `⌘` held and a double tap
+with two fingers do the same, and `⌘+`, `⌘-` and `⌘0` step the zoom and fit the width (smaller than
+the fit, the pages are narrower than the tab and in its middle). `Page Down`, `Home` and `End` go
+through the pages, and `⌃G` goes to a page. The words of a PDF are selected with the pointer (a double click
 a word, a triple click a line, `⌘A` all of them) and copied with `⌘C`; `⌘F` finds in all the pages,
 as words, whole words or patterns, and `Enter` and `⇧Enter` (or `⌘G`) go from match to match. A PDF
 with no words in it (a scan) is shown and says it has none to select or find. The program reads the
@@ -249,7 +251,7 @@ type `@`, `#`, `[` or `{`.
 | `⌘⌥]`, `⌃⌥]`, `⌃⌥[`        | in the comparison, open the stretch at the caret, show every line, fold   |
 | `⇧F10`                     | the editor's right-click menu, at the caret                               |
 | `⇧⌘V`                      | the preview of a Markdown file                                            |
-| `⌘+`, `⌘-`, `⌘0`           | in a picture or a PDF: larger, smaller, fit                               |
+| `⌘+`, `⌘-`, `⌘0`           | in a picture or a PDF: larger, smaller, fit; in text: its size, a point a step |
 | `⌘,`, `⇧⌘/`                | the settings, every key                                                   |
 | `⌘J`                       | a shell in the project, in this pane                                      |
 | `⌃Q`                       | quit, asking about what is not saved                                      |
@@ -263,8 +265,10 @@ and under its folders `h` `l` fold and unfold. The keys the status line shows ar
 click does what the key does.
 
 `⌃C` always reaches textpen and ends it, whatever has the keyboard; what is not saved is
-kept as a draft. The text is the size the terminal draws its own: its own keys make it larger
-or smaller, and textpen has no zoom of its own.
+kept as a draft. **The size of the text** is the terminal's, and `⌘+`, `⌘-` and `⌘0` (or a pinch
+over the code) make the page's text larger or smaller than that, a step a point, and back to the
+terminal's: textpen asks the terminal to draw its page larger, and the text of your terminal stays
+as it was. The size is kept, and **Text size** in the settings sets it (-4 to 24 points).
 
 ## How it works
 

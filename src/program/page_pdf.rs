@@ -310,12 +310,13 @@ fn the_keys_scroll_the_pages() -> Result<(), Error> {
     Ok(())
 }
 
-/// At a zoom where a page is wider than the tab, the pages that are not are in the middle of the tab,
-/// as at Fit Width, and the wide one is 40 points in from its left and scrolls across. A match found
-/// on a page that fits brings the pages back across, the page in the middle.
+/// Pages of other widths are each as wide as the tab at Fit Width, and zoomed out the pages are in the
+/// middle of it; zoomed in, the pages scroll across, and a match found on a page that is out of view
+/// across brings it in.
 #[test]
 #[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
-fn pages_narrower_than_the_tab_are_in_its_middle_beside_one_wider_than_it() -> Result<(), Error> {
+fn pages_of_other_widths_are_as_wide_as_the_tab_and_in_its_middle_when_zoomed_out()
+-> Result<(), Error> {
     let needle = |x: f32| Run {
         font: 4,
         size: 12.0,
@@ -340,42 +341,103 @@ fn pages_narrower_than_the_tab_are_in_its_middle_beside_one_wider_than_it() -> R
             "page {n} in the middle of the tab: {at:?} in {room:?}"
         );
     };
-    in_the_middle(&page, 1);
-    for _ in 0..4 {
-        if shows(&page, "100%") {
-            break;
-        }
+    // Fit Width: every page as wide as the tab less its sides.
+    for n in 1..=3 {
+        in_the_middle(&page, n);
+        let at = page.bounds(&format!("pdf-page:{n}")).expect("the page");
+        assert!((at.w - (room.w - 80.0)).abs() < 1.5, "{at:?} in {room:?}");
+    }
+    // Out to a quarter of the first page's size: narrower than the tab, in its middle.
+    for _ in 0..8 {
         page.press("cmd+-")?;
         page.advance(0.3)?;
     }
-    wait(&mut page, |page| shows(page, "100%"))?;
-    page.advance(0.3)?;
+    wait(&mut page, |page| shows(page, "25%"))?;
+    let small = page.bounds("pdf-page:1").expect("page 1");
+    assert!((small.w - 125.0).abs() < 1.5, "{small:?}");
     in_the_middle(&page, 1);
-    let first = page.bounds("pdf-page:1").expect("page 1");
-    assert!((first.w - 500.0).abs() < 1.5, "{first:?}");
-    let wide = page.bounds("pdf-page:2").expect("page 2");
-    assert!(
-        wide.w > room.w && (wide.x - (room.x + 40.0)).abs() <= 1.0,
-        "the page wider than the tab, 40 points in: {wide:?} in {room:?}"
-    );
+    in_the_middle(&page, 2);
 
-    // Scrolled across, and a match on the first page: back in the middle.
+    // Back to the width, and in: the pages are wider than the tab and scroll across.
+    page.press("cmd+0")?;
+    page.press("home")?;
+    page.advance(0.3)?;
+    for _ in 0..3 {
+        page.press("cmd+=")?;
+        page.advance(0.3)?;
+    }
+    wait(&mut page, |page| shows(page, "400%"))?;
+    let wide = page.bounds("pdf-page:1").expect("page 1");
+    assert!(wide.w > room.w, "{wide:?} in {room:?}");
     for _ in 0..4 {
         page.press("right")?;
     }
     page.advance(0.3)?;
     let moved = page.bounds("pdf-page:1").expect("page 1");
-    assert!(moved.x < first.x - 100.0, "{moved:?} against {first:?}");
+    assert!(moved.x < wide.x - 100.0, "{moved:?} against {wide:?}");
+    // A match on the first page, at its left: scrolled back across to it.
     page.press("cmd+f")?;
     page.type_text("needle")?;
     wait(&mut page, |page| shows(page, "1 of 2"))?;
-    page.advance(0.3)?;
-    in_the_middle(&page, 1);
-    // The next is on the third, which fits too.
-    page.press("enter")?;
-    wait(&mut page, |page| shows(page, "2 of 2"))?;
-    page.advance(0.3)?;
-    in_the_middle(&page, 3);
+    page.advance(0.5)?;
+    let found = page.bounds("pdf-match:1").expect("a mark on page 1");
+    assert!(
+        found.x >= room.x && found.x + found.w <= room.x + room.w,
+        "the match is in view across: {found:?} in {room:?}"
+    );
+    Ok(())
+}
+
+/// A pinch over the pages makes them larger about the fingers and stops where the fingers do, not at a
+/// step (the status line says the scale the page is at); a double tap goes to twice the width and back;
+/// the pages are not asked for again for a zoom the terminal does.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_pinch_zooms_the_pages_about_the_fingers_and_stops_between_the_steps() -> Result<(), Error> {
+    let (_project, mut page) = open_pdf(PAGES, WIDE)?;
+    let room = page.bounds("pdf:spec.pdf").expect("the box");
+    let first = page.bounds("pdf-page:1").expect("page 1");
+    let at = Point::new(first.x + first.w / 2.0, room.y + 200.0);
+    // Where on the page the fingers are, as a share of it.
+    let share = |page: &Page| {
+        let r = page.bounds("pdf-page:1").expect("page 1");
+        ((at.x - r.x) / r.w, (at.y - r.y) / r.h)
+    };
+    let before = share(&page);
+    page.pinch_at(at, 0.3)?;
+    page.advance(0.5)?;
+    let zoom = page.zoom_of("pdf:spec.pdf")?;
+    assert!((zoom - 1.3).abs() < 0.01, "{zoom}");
+    let after = share(&page);
+    assert!(
+        (before.0 - after.0).abs() < 0.01 && (before.1 - after.1).abs() < 0.01,
+        "{before:?} to {after:?}"
+    );
+    let larger = page.bounds("pdf-page:1").expect("page 1");
+    assert!(
+        (larger.w - first.w * 1.3).abs() < 2.0,
+        "{larger:?} from {first:?}"
+    );
+    // 780 / 612 of the page at the fit, 1.3 times that: 166%, which is no step.
+    let fit = first.w / 612.0;
+    let said = (fit * 1.3 * 100.0).round() as i32;
+    assert!(
+        shows(&page, &format!("{said}%")),
+        "the status line says {said}%: {:?}",
+        page_words(&page)
+    );
+    // A double tap: to twice the width, and back to the fit.
+    page.click("status-zoom")?;
+    page.advance(0.5)?;
+    assert_eq!(page.zoom_of("pdf:spec.pdf")?, 1.0);
+    page.smart_magnify_at(at)?;
+    page.advance(1.0)?;
+    assert!((page.zoom_of("pdf:spec.pdf")? - 2.0).abs() < 0.01);
+    page.advance(1.0)?;
+    page.smart_magnify_at(at)?;
+    page.advance(1.0)?;
+    assert!((page.zoom_of("pdf:spec.pdf")? - 1.0).abs() < 0.01);
+    assert!(shows(&page, "Fit Width"));
     Ok(())
 }
 
