@@ -2,7 +2,7 @@
 # (src/view/, a page of pencere's kit) and the pictures (src/assets/) carried in it by build.rs. The
 # gate, `make dev` and the steps of a release are here; RELEASING.md says in what order and why.
 # Nothing here needs Node but the release steps, which run tools/release.mjs.
-.PHONY: pin fmt lint test test-page test-tools check-timing shots check build pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
+.PHONY: pin fmt lint test test-page test-features test-tools check-timing shots check build pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
 
 # pencere is pinned in one place, Cargo.lock (Cargo.toml names the release): the crate the program is
 # built on is of it, and so are the `pencere` command `make dev` runs textpen under and the stand-in
@@ -54,7 +54,7 @@ test:
 # clock's: a runner under load takes many times what one at rest does, and a test of what the page
 # does should not fail for that. check-timing is the strict one (below).
 test-page:
-	cargo test --locked --bin textpen -- page_tests:: page_uploads:: page_changes:: page_compare:: page_pdf:: --ignored --test-threads=2
+	cargo test --locked --bin textpen -- page_tests:: page_uploads:: page_changes:: page_compare:: page_pdf:: page_shots::tui::nothing_stands_past page_shots::terminal:: --ignored --test-threads=2
 
 # check-timing runs the page's tests with every call of the page held to the kit's 250 ms
 # (CALL_MS=125 for half of it), as a terminal holds it. Not part of the gate: it measures the
@@ -68,8 +68,20 @@ check-timing:
 shots:
 	cargo test --locked --bin textpen page_shots:: -- --ignored
 
+# test-features: the file is built in two types, with the screen of its own (the default) and without it
+# (`--no-default-features`, the smaller). The second is built, linted and tested too, and what the file
+# is made of is held: no code generator (`cranelift-codegen`) in the tree of either type, and no
+# `pencere-tui` in the one without the screen. A file that is shipped is built in a run of cargo of its
+# own, as `cargo build` does here: what `cargo test` builds with (its dev-dependencies) has the code
+# generator in it again.
+test-features:
+	cargo clippy --locked --no-default-features --all-targets -- -D warnings
+	cargo test --locked --no-default-features --bin textpen
+	@! cargo tree --locked -p textpen -e normal | grep -q 'cranelift-codegen' || { echo "test-features: the code generator (cranelift-codegen) is in the tree of textpen"; exit 1; }
+	@! cargo tree --locked -p textpen -e normal --no-default-features | grep -q 'cranelift-codegen\|pencere-tui v' || { echo "test-features: the build without the screen has the code generator or pencere-tui in its tree"; exit 1; }
+
 # check is the gate: the pin of pencere, formatting, lints, the program's tests, the page's tests.
-check: pin lint test test-page test-tools
+check: pin lint test test-page test-features test-tools
 
 # test-tools runs the tests of the installer (install.sh), against a stand-in for GitHub, and those
 # of the release checks (tools/release-files.mjs), against a directory of their own.

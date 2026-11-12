@@ -35,6 +35,14 @@ pictures.LONGEST = 16384
 local MOST = 8
 local MARGIN = 24
 
+-- Whether the terminal draws one that a person can read: not where a picture is drawn in half blocks,
+-- as a terminal with no graphics protocol does (`pencere.draws().coarse_images`), where a page is a
+-- mosaic nothing can be read in. The tab says so in a sentence there (it shows the PDF's text no other
+-- way).
+local function readable()
+	return pictures.draws_pdf and not kit.coarse()
+end
+
 -- How many answers have come, for the preview to know it is to be drawn again.
 local generation = 0
 
@@ -88,8 +96,9 @@ end
 -- terminal holds nothing for it: it opens as any file does. With `options.keep` the tab goes on
 -- showing what it showed (a picture on its way into the project) until the answer comes.
 function pictures.open(tab, plain, options)
-	if text.extension(tab.path) == "pdf" and not pictures.draws_pdf then
-		-- A terminal older than the kit that draws a page of a PDF: the file is not sent to it.
+	if text.extension(tab.path) == "pdf" and not readable() then
+		-- A terminal older than the kit that draws a page of a PDF, or one that draws it in half blocks: the
+		-- file is not sent to it.
 		tab.status = "unopenable"
 		tab.unopenable = { path = tab.path, reason = "no-pdf", message = "This terminal does not show PDFs" }
 		return

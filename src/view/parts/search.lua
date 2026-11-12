@@ -3,6 +3,7 @@
 -- Space opens it and stays, ← → fold a file's matches. F4 and ⇧F4 go through them from anywhere.
 
 local kit = require("../lib/kit")
+local chords = require("../lib/chords")
 local text = require("../lib/text")
 local files = require("../lib/files")
 local docs = require("./docs")
@@ -396,10 +397,10 @@ end
 -- A key in the search's field, or in its results (the page's own keys).
 function act.search_key(key, mods)
 	if S.field == FIELD then
-		if mods.command and mods.alt and (key == "c" or key == "w" or key == "r") then
+		if chords.option(key, mods) then
 			flip(key == "c" and "case" or (key == "w" and "word" or "regex"))
 		elseif key == "enter" then
-			if mods.command then
+			if chords.all_held(mods) then
 				act.open_match(0, true)
 			else
 				search.run()

@@ -314,7 +314,8 @@ pub(crate) fn wait(page: &mut Page, done: impl FnMut(&Page) -> bool) -> Result<(
 
 /// Opens `path` from the quick open, at a line where one is given (`name:12`).
 pub(crate) fn go_to(page: &mut Page, path: &str) -> Result<(), Error> {
-    page.press("cmd+k")?;
+    // `mod`: ⌘ on a Mac's keyboard, Ctrl on any other.
+    page.press("mod+k")?;
     page.type_text(path)?;
     page.press("enter")?;
     let name = path.split(':').next().unwrap_or(path).to_owned();

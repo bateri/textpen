@@ -1027,3 +1027,8 @@ fn the_pictures_of_a_pdf() -> Result<(), Error> {
     write(&page, Palette::Dark, "pdf-too-large");
     Ok(())
 }
+
+#[path = "page_terminal.rs"]
+mod terminal;
+#[path = "page_tui.rs"]
+mod tui;

@@ -85,7 +85,7 @@ local function handing_off()
 		:child(kit.icon("terminal-2", 20, "dim"))
 		:child(b.text(words))
 	if S.handing_off == "shell" then
-		box:child(b.text("exit or ⌃D comes back here"):color("quiet"))
+		box:child(b.text("exit or " .. kit.keys_of("ctrl+d") .. " comes back here"):color("quiet"))
 	end
 	return b.div():overlay():inset(0, 0, 0, 0):bg(b.alpha("background", 0.6)):col():items_center():justify_center():child(box)
 end
@@ -144,7 +144,8 @@ local function settle()
 	local wider = sidebar.settle()
 	local aligned = compare.settle()
 	local pages = pdf.settle()
-	return preview.settle() or wider or aligned or pages
+	local roomy = status.settle()
+	return preview.settle() or wider or aligned or pages or roomy
 end
 
 -- --- What the person does -------------------------------------------------------------------------------

@@ -6,6 +6,7 @@ local text = require("../lib/text")
 local fuzzy = require("@pencere/fuzzy")
 local commands = require("./commands")
 local textsize = require("./textsize")
+local chords = require("../lib/chords")
 
 local b, S, act = kit.b, kit.S, kit.act
 local layout = b.layout
@@ -18,19 +19,25 @@ local SETTINGS_BODY = "settings-body"
 -- The room the list of settings keeps inside its edges, points.
 local SETTINGS_PAD = 6
 
-local TREE_KEYS = {
-	{ "↑ ↓  j k", "Move" },
-	{ "← →  h l", "Fold, unfold, go to the parent" },
-	{ "⏎  o", "Open and go to the editor" },
-	{ "Space", "Open, staying in the tree" },
-	{ "a  ⇧A", "New file, new folder" },
-	{ "r  F2", "Rename or move" },
-	{ "d  ⌫", "Delete" },
-	{ "y  ⇧Y", "Copy the path, the absolute path" },
-	{ ".", "Menu of the row" },
-	{ "⇧R", "Read the folders again" },
-	{ "Esc", "Back to the editor" },
-}
+-- The keys of the tree, in the words of the keyboard (⇧A on a Mac, Shift+A elsewhere).
+local function TREE_KEYS()
+	local function shifted(letter)
+		return kit.keys_of("shift+" .. letter)
+	end
+	return {
+		{ "↑ ↓  j k", "Move" },
+		{ "← →  h l", "Fold, unfold, go to the parent" },
+		{ "⏎  o", "Open and go to the editor" },
+		{ "Space", "Open, staying in the tree" },
+		{ "a  " .. shifted("a"), "New file, new folder" },
+		{ "r  F2", "Rename or move" },
+		{ "d  ⌫", "Delete" },
+		{ "y  " .. shifted("y"), "Copy the path, the absolute path" },
+		{ ".", "Menu of the row" },
+		{ shifted("r"), "Read the folders again" },
+		{ "Esc", "Back to the editor" },
+	}
+end
 
 -- --- The keyboard's sheet ----------------------------------------------------------------------------------
 
@@ -104,7 +111,7 @@ local function help_view(size)
 			local keys = kit.keys_all(command.keys or command.shown, "   ")
 			local words = command.title
 			if command.id == "tab-1" then
-				words, keys = "Go to Tab 1–9", kit.keys_of("ctrl+1") .. " to " .. kit.keys_of("ctrl+9")
+				words, keys = "Go to Tab 1–9", kit.keys_of(chords.tab(1)) .. " to " .. kit.keys_of(chords.tab(9))
 			end
 			group:child(line(words, keys))
 		end
@@ -112,14 +119,19 @@ local function help_view(size)
 	end
 	if query == "" then
 		local group = b.div():col():gap(2)
-			:child(b.text("FILES (A CLICK ON A ROW, OR " .. kit.keys_of("cmd+shift+e") .. " / F6)"):text_size(11):weight(700):color("quiet"))
-		for _, entry in TREE_KEYS do
+			:child(b.text("FILES (A CLICK ON A ROW, OR " .. kit.keys_of("mod+shift+e") .. " / F6)"):text_size(11):weight(700):color("quiet"))
+		for _, entry in TREE_KEYS() do
 			group:child(line(entry[2], entry[1]))
 		end
 		body:child(group)
-		body:child(b.text("⌃C always reaches textpen and ends it; what is not saved is kept as a draft and offered the next "
-			.. "time. The terminal keeps its own keys (⌘T, ⌘W, ⌘P, ⌘1–9 in bateri): everything they would do here is in "
-			.. "the palette, F1."):color("dim"):wrap():text_size(12))
+		local ends = kit.keys_of("ctrl+c") .. " always reaches textpen and ends it; what is not saved is kept as a draft and offered the next time. "
+		if kit.cells() then
+			ends = ends .. "A terminal with no Kitty keyboard protocol cannot send Ctrl with Shift or with Alt: the keys that need "
+				.. "them are in the palette, F1, as every command is."
+		else
+			ends = ends .. "The terminal keeps its own keys (⌘T, ⌘W, ⌘P, ⌘1–9 in bateri): everything they would do here is in the palette, F1."
+		end
+		body:child(b.text(ends):color("dim"):wrap():text_size(12))
 	end
 	return scrim(sheet(760, size):child(head):child(kit.rule_x()):child(body), size)
 end
@@ -213,6 +225,25 @@ local ROWS = {
 	},
 }
 
+-- The rows as the terminal has them: where the page is drawn in the cells of a terminal its text has no size
+-- to set (the cells are the size they are), so that row is not there. Asked when the settings are first shown,
+-- not when the page is read: the terminal says what it draws a moment after the page starts.
+local rows_ready = false
+local function rows()
+	if not rows_ready then
+		rows_ready = true
+		if not kit.zooms() then
+			for index, row in ROWS do
+				if row.key == "textSize" then
+					table.remove(ROWS, index)
+					break
+				end
+			end
+		end
+	end
+	return ROWS
+end
+
 function act.open_settings()
 	act.set_overlay({ kind = "settings", chosen = 1 })
 	S.field = nil
@@ -228,7 +259,7 @@ local function settings_view(size)
 	end
 	head:child(b.spacer()):child(kit.icon_button("sheet-close", "x", "Close", { keys = "escape" }))
 	local body = b.div():id(SETTINGS_BODY):col():gap(2):p(SETTINGS_PAD):grow(1):min_h(0):scroll()
-	for index, row in ROWS do
+	for index, row in rows() do
 		local value = row.value(S.settings)
 		local chosen = index == overlay.chosen
 		body:child(b.div()
@@ -280,7 +311,7 @@ function act.overlay_press(id)
 	local index = tonumber(string.match(id, "^setting:(%d+)$") or "")
 	if index and S.overlay.kind == "settings" then
 		S.overlay.chosen = index
-		act.change_settings(ROWS[index].step(S.settings, 1))
+		act.change_settings(rows()[index].step(S.settings, 1))
 		return true
 	end
 	return id == "sheet"
@@ -319,9 +350,9 @@ function act.overlay_key(key, mods)
 		kit.gather(true)
 		return true
 	elseif overlay.kind == "settings" then
-		local row = ROWS[overlay.chosen]
+		local row = rows()[overlay.chosen]
 		if key == "down" or key == "j" or (mods.control and key == "n") then
-			overlay.chosen = math.min(overlay.chosen + 1, #ROWS)
+			overlay.chosen = math.min(overlay.chosen + 1, #rows())
 			show_chosen_setting(overlay.chosen)
 		elseif key == "up" or key == "k" or (mods.control and key == "p") then
 			overlay.chosen = math.max(overlay.chosen - 1, 1)

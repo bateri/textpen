@@ -36,13 +36,13 @@ local function open(doc, at, line)
 	local comparing = tab and tab.compare and compare.change_at(tab, line) or nil
 	reverting = comparing and { tab = tab, index = comparing } or reverting
 	local after = {
-		{ key = "find_in_project", title = "Find in Project", keys = "cmd+shift+f" },
+		{ key = "find_in_project", title = "Find in Project", keys = "mod+shift+f" },
 	}
 	if reverting then
 		after[#after + 1] = { key = "revert_change", title = "Revert Change", keys = "ctrl+shift+backspace" }
 	end
 	after[#after + 1] = {
-		key = "compare", title = (tab and tab.compare) and "Close Comparison" or "Compare with Last Commit", keys = "cmd+shift+d",
+		key = "compare", title = (tab and tab.compare) and "Close Comparison" or "Compare with Last Commit", keys = "mod+shift+d",
 	}
 	after[#after + 1] = { key = "palette", title = "Command Palette", keys = "f1" }
 	kit.gather(context:editor_menu(ID, {

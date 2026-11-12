@@ -39,20 +39,20 @@ end
 local function head(drawer)
 	local row = b.div():row():items_center():gap(2):h(SIZE.tabs):px(8):no_shrink()
 	local switch = b.div():row():gap(2):p(2):rounded(7):bg("raised1")
-		:child(segment("sidebar-files", "files", "Files", S.sidebar == "files", "cmd+shift+e"))
-		:child(segment("sidebar-search", "search", "Search in files", S.sidebar == "search", "cmd+shift+f"))
-		:child(segment("sidebar-changes", "git-branch", "Changes", S.sidebar == "changes", "cmd+shift+g"))
+		:child(segment("sidebar-files", "files", "Files", S.sidebar == "files", "mod+shift+e"))
+		:child(segment("sidebar-search", "search", "Search in files", S.sidebar == "search", "mod+shift+f"))
+		:child(segment("sidebar-changes", "git-branch", "Changes", S.sidebar == "changes", "mod+shift+g"))
 	row:child(switch)
 	row:child(b.spacer())
 	if S.sidebar == "files" then
-		row:child(kit.icon_button("sidebar-new-file", "file-plus", "New file", { keys = "cmd+alt+n" }))
+		row:child(kit.icon_button("sidebar-new-file", "file-plus", "New file", { keys = "mod+alt+n" }))
 		row:child(kit.icon_button("sidebar-new-folder", "folder-plus", "New folder"))
 		row:child(kit.icon_button("sidebar-collapse", "list-tree", "Collapse folders"))
 	elseif S.sidebar == "changes" and S.git ~= nil then
 		row:child(kit.icon_button("changes-tree", "list-tree", S.changes_tree and "Show as list" or "Show as tree",
 			{ keys = "t", pressed = S.changes_tree }))
 	end
-	row:child(kit.icon_button("sidebar-hide", "layout-sidebar-left-collapse", drawer and "Close" or "Hide sidebar", { keys = "cmd+b" }))
+	row:child(kit.icon_button("sidebar-hide", "layout-sidebar-left-collapse", drawer and "Close" or "Hide sidebar", { keys = "mod+b" }))
 	return b.div():col():no_shrink():child(row):child(kit.rule_x())
 end
 

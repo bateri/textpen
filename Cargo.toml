@@ -42,11 +42,28 @@ libc = "0.2"
 # draws through them can be found and copied too. The shapes it hands out (a letter's matrix) are
 # its own `kurbo`, which it re-exports.
 hayro-interpret = { version = "0.9", default-features = false, features = ["embed-fonts", "embed-cmaps"] }
+# The program's own screen where the terminal hosts no view: the page drawn with the characters of
+# the terminal it is started in (the `terminal` feature). Built with the interpreter compiled by the
+# build (`precompile`) and the PDF reader (`pdf`), which draws a PDF's pages for a terminal that has
+# the Kitty graphics protocol; the code generator is not in the file.
+pencere-tui = { git = "https://github.com/bateri/pencere", rev = "40b074fb4870f3259a2a275b2687566d99797f2c", optional = true, default-features = false, features = ["precompile", "pdf"] }
+
+[features]
+# Two builds: with the screen (the default: a terminal that does not host pencere shows the editor
+# drawn with its characters, and the person's own editor is what is left for a terminal it cannot
+# take), and without it (`--no-default-features`: the smaller file, for a terminal that hosts pencere
+# and for the person who wants only what the other terminal falls back to).
+default = ["terminal"]
+terminal = ["dep:pencere-tui"]
 
 [build-dependencies]
 pencere = { git = "https://github.com/bateri/pencere", rev = "40b074fb4870f3259a2a275b2687566d99797f2c" }
 
 [dev-dependencies]
+# The cells of a terminal a test lays the page out on and draws it into (the pictures of the page in
+# characters, `page_tui.rs`): in the tests of both builds, with what a test builds with has (the code
+# generator); the file that is shipped is built apart from them.
+pencere-tui = { git = "https://github.com/bateri/pencere", rev = "40b074fb4870f3259a2a275b2687566d99797f2c" }
 # Each test has a directory of its own as its home and its project.
 tempfile = "3"
 # The page (src/view/) run as a terminal runs it, with no screen: the kit's interpreter and editors,
@@ -84,6 +101,23 @@ opt-level = 2
 [profile.dev.package.similar]
 opt-level = 2
 
+# The profile of the file that is shipped: `cargo build --profile dist` (nothing builds it yet).
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "warn"
+
+# Local, not committed: the pencere being worked on in ../pencere-tui.
+[patch."https://github.com/bateri/pencere"]
+pencere = { path = "../pencere-tui/program" }
+pencere-drive = { path = "../pencere-tui/kit/drive" }
+pencere-editor = { path = "../pencere-tui/kit/editor" }
+pencere-sandbox = { path = "../pencere-tui/kit/sandbox" }
+pencere-tui = { path = "../pencere-tui/host/tui" }
+pencere-view = { path = "../pencere-tui/kit/view" }
+pencere-wire = { path = "../pencere-tui/wire" }

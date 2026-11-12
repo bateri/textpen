@@ -1,5 +1,7 @@
 //! textpen: a code editor in the terminal pane. In a terminal that shows pencere views the editor
-//! opens in the pane; in one that does not, the person's own `$EDITOR` does.
+//! opens in the pane; in one that does not, the program draws the same page with the characters of the
+//! terminal (`pencere-tui`, the `terminal` feature, on by default); where it cannot (`PENCERE_TUI=0`, a
+//! terminal it cannot take, a build without the feature), the person's own `$EDITOR` does.
 //!
 //! The program holds the project and the open files; the page (`src/view/`, in pencere's kit) is the
 //! editor, drawn by the terminal, and asks the program for what it needs with the calls of
@@ -38,7 +40,11 @@ use std::process::ExitCode;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use base64::Engine;
+#[cfg(not(feature = "terminal"))]
+use pencere::serve;
 use pencere::{EndedBy, Icon, IconTheme, NoViewReason, Options, Outcome};
+#[cfg(feature = "terminal")]
+use pencere_tui::serve;
 
 use state::session::{Focus, Session};
 use state::store::Store;
@@ -143,7 +149,7 @@ fn main() -> ExitCode {
     ));
     let fallen_back = Arc::new(Mutex::new(None));
     let outcome = loop {
-        let outcome = pencere::serve(options(&session, &line.files, &fallen_back));
+        let outcome = serve(options(&session, &line.files, &fallen_back));
         // The view did not come back after the shell had the pane: the person may try again.
         if let Ok(Outcome::NoView(no_view)) = &outcome
             && session.desk.lent()

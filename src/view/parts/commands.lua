@@ -4,6 +4,9 @@
 -- too, and the editor's own that the terminal takes have another key here (⌃G for the next
 -- occurrence, ⌃⇧↑ ⌃⇧↓ for a caret above or below).
 --
+-- The keys are written with `mod`, the main modifier of the keyboard (⌘ on a Mac, Ctrl elsewhere, a
+-- terminal that draws the page itself too); the few that differ by keyboard are in `lib/chords.lua`.
+--
 -- A command whose keys are the editor's own (`shown`, not `keys`) is listed with them and runs
 -- the same command on the editor; its keys stay the editor's. `keys` is the words of one set of
 -- keys or a list of them, each doing the command, the first the one shown.
@@ -18,6 +21,7 @@ local changes = require("./changes")
 local compare = require("./compare")
 local editor_menu = require("./editor_menu")
 local uploads = require("./uploads")
+local chords = require("../lib/chords")
 
 local S, act = kit.S, kit.act
 
@@ -51,11 +55,11 @@ end
 
 -- --- Going places -------------------------------------------------------------------------------------
 
-add({ id = "files", title = "Go to File", category = "Go", keys = "cmd+k", run = function() act.open_palette("files") end })
+add({ id = "files", title = "Go to File", category = "Go", keys = "mod+k", run = function() act.open_palette("files") end })
 add({ id = "commands", title = "Show All Commands", category = "Go", keys = "f1", run = function() act.open_palette("commands") end })
-add({ id = "switch", title = "Switch to Open File", category = "Go", keys = "cmd+e", when = function() return tab_count() > 0 end,
+add({ id = "switch", title = "Switch to Open File", category = "Go", keys = "mod+e", when = function() return tab_count() > 0 end,
 	run = function() act.open_palette("tabs") end })
-add({ id = "line", title = "Go to Line", category = "Go", keys = "cmd+l", when = has_file, run = function() act.open_palette("line") end })
+add({ id = "line", title = "Go to Line", category = "Go", keys = "mod+l", when = has_file, run = function() act.open_palette("line") end })
 add({ id = "language", title = "Change Language", category = "View", when = has_file, run = function() act.open_palette("language") end })
 
 -- --- Changes against git ---------------------------------------------------------------------------------
@@ -79,7 +83,7 @@ local function go(step)
 	end
 end
 
-add({ id = "compare", title = "Compare with Last Commit", category = "View", keys = "cmd+shift+d",
+add({ id = "compare", title = "Compare with Last Commit", category = "View", keys = "mod+shift+d",
 	when = function() return compare.active() or docs.active() ~= nil end,
 	run = function() compare.toggle(S.active) end })
 -- The folds of the comparison with the last commit are the page's: it folds the unchanged stretches of
@@ -87,9 +91,9 @@ add({ id = "compare", title = "Compare with Last Commit", category = "View", key
 local function comparing_in_editor()
 	return compare.active() and S.overlay == nil and S.focus == "editor"
 end
-add({ id = "compare-collapse", title = "Collapse Unchanged Lines", category = "View", keys = "cmd+alt+[",
+add({ id = "compare-collapse", title = "Collapse Unchanged Lines", category = "View", keys = chords.fold,
 	when = comparing_in_editor, hidden = true, run = function() compare.collapse(S.active, true) end })
-add({ id = "compare-expand", title = "Show All Lines", category = "View", keys = "cmd+alt+]",
+add({ id = "compare-expand", title = "Show All Lines", category = "View", keys = chords.unfold,
 	when = comparing_in_editor, hidden = true, run = function() compare.expand(S.active) end })
 add({ id = "next-change", title = "Go to Next Change", category = "Go", keys = "alt+f5", when = has_changes,
 	run = function() go(1) end })
@@ -147,8 +151,8 @@ add({ id = "editor-menu", title = editor_menu.COMMAND.title, category = "Edit", 
 
 -- --- Files ----------------------------------------------------------------------------------------------
 
-add({ id = "save", title = "Save", category = "File", keys = "cmd+s", when = has_file, run = function() act.save() end })
-add({ id = "save-all", title = "Save All", category = "File", keys = "cmd+alt+s",
+add({ id = "save", title = "Save", category = "File", keys = "mod+s", when = has_file, run = function() act.save() end })
+add({ id = "save-all", title = "Save All", category = "File", keys = "mod+alt+s",
 	when = function()
 		for _, tab in S.tabs do
 			if tab.info and tab.info.dirty then
@@ -158,7 +162,7 @@ add({ id = "save-all", title = "Save All", category = "File", keys = "cmd+alt+s"
 		return false
 	end,
 	run = function() act.save_all() end })
-add({ id = "new-file", title = "New File", category = "File", keys = "cmd+alt+n", run = function() act.create("file") end })
+add({ id = "new-file", title = "New File", category = "File", keys = "mod+alt+n", run = function() act.create("file") end })
 add({ id = "new-folder", title = "New Folder", category = "File", run = function() act.create("dir") end })
 add({ id = "rename", title = "Rename", category = "File", keys = "f2",
 	when = function() return (S.focus == "sidebar" and S.tree_selection or S.active) ~= nil end,
@@ -241,7 +245,7 @@ add({ id = "close-others", title = "Close Other Tabs", category = "Tabs", when =
 	run = function() act.close_others(S.active) end })
 add({ id = "close-all", title = "Close All Tabs", category = "Tabs", when = function() return tab_count() > 0 end,
 	run = function() act.close_others(nil) end })
-add({ id = "reopen", title = "Reopen Closed Tab", category = "Tabs", keys = "cmd+shift+t", when = function() return act.can_reopen() end,
+add({ id = "reopen", title = "Reopen Closed Tab", category = "Tabs", keys = "mod+shift+t", when = function() return act.can_reopen() end,
 	run = function() act.reopen_closed() end })
 add({ id = "next-tab", title = "Next Tab", category = "Tabs", keys = { "ctrl+page_down", "ctrl+tab" }, when = function() return tab_count() > 1 end,
 	run = function() act.cycle_tab(1) end })
@@ -256,11 +260,11 @@ for index = 1, 9 do
 		id = "tab-" .. index,
 		title = "Go to Tab " .. index,
 		category = "Tabs",
-		keys = "ctrl+" .. index,
+		keys = chords.tab(index),
 		hidden = index > 1,
 		when = function() return tab_count() >= index or (index == 9 and tab_count() > 0) end,
 		run = function()
-			-- ⌃9 is the last tab, as in a browser.
+			-- The last tab is the ninth key, as in a browser.
 			local tab = index == 9 and S.tabs[#S.tabs] or S.tabs[index]
 			if tab then
 				act.activate(tab.path)
@@ -271,10 +275,10 @@ end
 
 -- --- View -------------------------------------------------------------------------------------------------
 
-add({ id = "sidebar", title = "Toggle Sidebar", category = "View", keys = "cmd+b", run = function() act.toggle_sidebar() end })
-add({ id = "show-files", title = "Show Files", category = "View", keys = "cmd+shift+e", run = function() act.focus_sidebar("files") end })
+add({ id = "sidebar", title = "Toggle Sidebar", category = "View", keys = "mod+b", run = function() act.toggle_sidebar() end })
+add({ id = "show-files", title = "Show Files", category = "View", keys = "mod+shift+e", run = function() act.focus_sidebar("files") end })
 -- With the find bar open the key is what it is in any editor, the previous match.
-add({ id = "show-changes", title = "Show Changes", category = "View", keys = "cmd+shift+g",
+add({ id = "show-changes", title = "Show Changes", category = "View", keys = "mod+shift+g",
 	when = function() return not S.find.open end,
 	run = function() act.focus_sidebar("changes") end })
 add({ id = "changes-tree", title = "Toggle Changes as a Tree", category = "View",
@@ -304,7 +308,7 @@ add({ id = "line-numbers", title = "Line Numbers: On, Relative, Off", category =
 		act.change_settings({ lineNumbers = next_one })
 		kit.toast("Line numbers: " .. next_one, "info", 1.6)
 	end })
-add({ id = "preview", title = "Toggle Markdown Preview", category = "View", keys = "cmd+shift+v",
+add({ id = "preview", title = "Toggle Markdown Preview", category = "View", keys = "mod+shift+v",
 	when = function() return S.active ~= nil and act.is_markdown(S.active) end,
 	run = function() act.toggle_preview() end })
 add({ id = "diff-decorations", title = "Toggle Changes in the Gutter", category = "View",
@@ -312,17 +316,17 @@ add({ id = "diff-decorations", title = "Toggle Changes in the Gutter", category 
 add({ id = "hide-ignored", title = "Toggle Ignored Files in the Tree", category = "View",
 	run = function() act.change_settings({ hideIgnored = not S.settings.hideIgnored }) end })
 add({ id = "indentation", title = "Indentation", category = "View", run = function() act.open_palette("indent") end })
-add({ id = "settings", title = "Settings", category = "textpen", keys = "cmd+,", run = function() act.open_settings() end })
-add({ id = "help", title = "Keyboard Shortcuts", category = "textpen", keys = "cmd+shift+/", run = function() act.open_help() end })
-add({ id = "shell", title = "Open a Shell Here", category = "textpen", keys = "cmd+j",
+add({ id = "settings", title = "Settings", category = "textpen", keys = "mod+,", run = function() act.open_settings() end })
+add({ id = "help", title = "Keyboard Shortcuts", category = "textpen", keys = "mod+shift+/", run = function() act.open_help() end })
+add({ id = "shell", title = "Open a Shell Here", category = "textpen", keys = chords.shell,
 	when = function() return S.boot ~= nil and S.boot.handoff == true end, run = function() act.shell() end })
 add({ id = "quit", title = "Quit textpen", category = "textpen", keys = "ctrl+q", run = function() act.quit() end })
 
 -- --- Search -------------------------------------------------------------------------------------------------
 
-add({ id = "find", title = "Find", category = "Search", keys = "cmd+f", run = function() act.find(false) end })
-add({ id = "replace", title = "Replace", category = "Search", keys = "cmd+alt+f", when = has_file, run = function() act.find(true) end })
-add({ id = "search", title = "Search in Files", category = "Search", keys = "cmd+shift+f", run = function() act.search_selection() end })
+add({ id = "find", title = "Find", category = "Search", keys = "mod+f", run = function() act.find(false) end })
+add({ id = "replace", title = "Replace", category = "Search", keys = "mod+alt+f", when = has_file, run = function() act.find(true) end })
+add({ id = "search", title = "Search in Files", category = "Search", keys = "mod+shift+f", run = function() act.search_selection() end })
 add({ id = "next-match", title = "Next Search Result", category = "Search", keys = "f4",
 	when = function() return S.search.result ~= nil and S.search.result.matches > 0 end,
 	run = function() act.open_match(1) end })
@@ -332,19 +336,19 @@ add({ id = "previous-match", title = "Previous Search Result", category = "Searc
 
 -- --- Editing: the editor's own keys ------------------------------------------------------------------------
 
-add({ id = "undo", title = "Undo", category = "Edit", shown = "cmd+z", when = has_file, run = on_editor({ command = "undo" }) })
-add({ id = "redo", title = "Redo", category = "Edit", shown = "cmd+shift+z", when = has_file, run = on_editor({ command = "redo" }) })
-add({ id = "comment", title = "Toggle Comment", category = "Edit", shown = "cmd+/", when = has_file,
+add({ id = "undo", title = "Undo", category = "Edit", shown = "mod+z", when = has_file, run = on_editor({ command = "undo" }) })
+add({ id = "redo", title = "Redo", category = "Edit", shown = chords.redo, when = has_file, run = on_editor({ command = "redo" }) })
+add({ id = "comment", title = "Toggle Comment", category = "Edit", shown = chords.comment, when = has_file,
 	run = on_editor({ command = "toggle_comment" }) })
 add({ id = "block-comment", title = "Toggle Block Comment", category = "Edit", when = has_file,
 	run = on_editor({ command = "toggle_block_comment" }) })
-add({ id = "delete-line", title = "Delete Line", category = "Edit", keys = { "cmd+shift+k", "ctrl+shift+k" }, when = has_file,
+add({ id = "delete-line", title = "Delete Line", category = "Edit", keys = chords.delete_line, when = has_file,
 	run = on_editor({ command = "delete_lines" }) })
-add({ id = "select-line", title = "Select Line", category = "Selection", keys = "cmd+i", when = has_file,
+add({ id = "select-line", title = "Select Line", category = "Selection", keys = chords.select_line, when = has_file,
 	run = on_editor({ command = "select_line" }) })
 add({ id = "duplicate-line-up", title = "Duplicate Line Up", category = "Edit", keys = "alt+shift+up", when = has_file,
 	run = on_editor({ command = "duplicate_lines_up" }) })
-add({ id = "join-lines", title = "Join Lines", category = "Edit", keys = "ctrl+j", when = has_file,
+add({ id = "join-lines", title = "Join Lines", category = "Edit", keys = chords.join_lines, when = has_file,
 	run = on_editor({ command = "join_lines" }) })
 add({ id = "insert-line", title = "Insert Line Below", category = "Edit", when = has_file,
 	run = on_editor({ command = "insert_blank_line" }) })
@@ -364,9 +368,9 @@ add({ id = "duplicate-line", title = "Duplicate Line", category = "Edit", shown 
 	run = on_editor({ command = "duplicate_lines" }) })
 add({ id = "indent", title = "Indent Line", category = "Edit", shown = "tab", when = has_file, run = on_editor({ command = "indent" }) })
 add({ id = "outdent", title = "Outdent Line", category = "Edit", shown = "shift+tab", when = has_file, run = on_editor({ command = "outdent" }) })
-add({ id = "fold", title = "Fold", category = "Edit", shown = "cmd+alt+[", when = has_file, run = on_editor({ command = "fold" }) })
-add({ id = "unfold", title = "Unfold", category = "Edit", shown = "cmd+alt+]", when = has_file, run = on_editor({ command = "unfold" }) })
-add({ id = "fold-all", title = "Fold All", category = "Edit", keys = "ctrl+alt+[", when = has_file,
+add({ id = "fold", title = "Fold", category = "Edit", shown = chords.fold, when = has_file, run = on_editor({ command = "fold" }) })
+add({ id = "unfold", title = "Unfold", category = "Edit", shown = chords.unfold, when = has_file, run = on_editor({ command = "unfold" }) })
+add({ id = "fold-all", title = "Fold All", category = "Edit", keys = chords.fold_all, when = has_file,
 	run = function()
 		if compare.active() then
 			compare.collapse(S.active, true)
@@ -374,7 +378,7 @@ add({ id = "fold-all", title = "Fold All", category = "Edit", keys = "ctrl+alt+[
 			on_editor({ command = "fold_all" })()
 		end
 	end })
-add({ id = "unfold-all", title = "Unfold All", category = "Edit", keys = "ctrl+alt+]", when = has_file,
+add({ id = "unfold-all", title = "Unfold All", category = "Edit", keys = chords.unfold_all, when = has_file,
 	run = function()
 		if compare.active() then
 			compare.collapse(S.active, false)
@@ -382,11 +386,11 @@ add({ id = "unfold-all", title = "Unfold All", category = "Edit", keys = "ctrl+a
 			on_editor({ command = "unfold_all" })()
 		end
 	end })
-add({ id = "select-all", title = "Select All", category = "Selection", shown = "cmd+a", when = has_file,
+add({ id = "select-all", title = "Select All", category = "Selection", shown = "mod+a", when = has_file,
 	run = on_editor({ command = "select_all" }) })
-add({ id = "select-next", title = "Add Next Occurrence", category = "Selection", keys = "ctrl+g", when = has_file,
+add({ id = "select-next", title = "Add Next Occurrence", category = "Selection", keys = chords.select_next, when = has_file,
 	run = on_editor({ command = "select_next" }) })
-add({ id = "select-all-matches", title = "Select All Occurrences", category = "Selection", keys = "cmd+shift+l", when = has_file,
+add({ id = "select-all-matches", title = "Select All Occurrences", category = "Selection", keys = "mod+shift+l", when = has_file,
 	run = on_editor({ command = "select_occurrences" }) })
 add({ id = "cursor-above", title = "Add Cursor Above", category = "Selection", keys = "ctrl+shift+up", when = has_file,
 	run = on_editor({ command = "add_caret_above" }) })
@@ -403,48 +407,54 @@ local function finding_in_pdf()
 	return S.find.open and S.find.pdf ~= nil and S.find.pdf == pdf.shown() and S.find.count > 0
 end
 
-add({ id = "pdf-zoom-in", title = "Zoom In", category = "PDF", keys = { "cmd++", "cmd+=" }, when = in_pdf,
+-- The zoom keys of a PDF: a terminal that draws the page in its cells leaves the pages fitted.
+local function in_pdf_zoom()
+	return kit.zooms() and in_pdf()
+end
+
+add({ id = "pdf-zoom-in", title = "Zoom In", category = "PDF", keys = { "mod++", "mod+=" }, when = in_pdf_zoom,
 	run = function() pdf.zoom(pdf.shown(), 1) end })
-add({ id = "pdf-zoom-out", title = "Zoom Out", category = "PDF", keys = "cmd+-", when = in_pdf,
+add({ id = "pdf-zoom-out", title = "Zoom Out", category = "PDF", keys = "mod+-", when = in_pdf_zoom,
 	run = function() pdf.zoom(pdf.shown(), -1) end })
-add({ id = "pdf-fit-width", title = "Fit Width", category = "PDF", keys = "cmd+0", when = in_pdf,
+add({ id = "pdf-fit-width", title = "Fit Width", category = "PDF", keys = "mod+0", when = in_pdf_zoom,
 	run = function() pdf.zoom(pdf.shown(), 0) end })
 -- --- The size of the text --------------------------------------------------------------------------------------
 
--- Where a picture or a PDF is in front the keys zoom it; anywhere else they are the page's text size.
+-- Where a picture or a PDF is in front the keys zoom it; anywhere else they are the page's text size. A
+-- terminal that draws the page in its cells has neither: its text is the size its cells are.
 local function in_text()
-	return not (pdf.shown() or pictures.shown())
+	return kit.zooms() and not (pdf.shown() or pictures.shown())
 end
 
-add({ id = "text-bigger", title = "Bigger Text", category = "View", keys = { "cmd++", "cmd+=" }, when = in_text,
+add({ id = "text-bigger", title = "Bigger Text", category = "View", keys = { "mod++", "mod+=" }, when = in_text,
 	run = function() textsize.step(1) end })
-add({ id = "text-smaller", title = "Smaller Text", category = "View", keys = "cmd+-", when = in_text,
+add({ id = "text-smaller", title = "Smaller Text", category = "View", keys = "mod+-", when = in_text,
 	run = function() textsize.step(-1) end })
-add({ id = "text-actual", title = "Actual Text Size", category = "View", keys = "cmd+0", when = in_text,
+add({ id = "text-actual", title = "Actual Text Size", category = "View", keys = "mod+0", when = in_text,
 	run = function() textsize.set(0) end })
 
 -- --- A picture --------------------------------------------------------------------------------------------
 
 local function in_picture()
-	return pictures.shown() ~= nil
+	return kit.zooms() and pictures.shown() ~= nil
 end
 
-add({ id = "picture-zoom-in", title = "Zoom In", category = "Picture", keys = { "cmd++", "cmd+=" }, when = in_picture,
+add({ id = "picture-zoom-in", title = "Zoom In", category = "Picture", keys = { "mod++", "mod+=" }, when = in_picture,
 	run = function() pictures.zoom(pictures.shown(), 1) end })
-add({ id = "picture-zoom-out", title = "Zoom Out", category = "Picture", keys = "cmd+-", when = in_picture,
+add({ id = "picture-zoom-out", title = "Zoom Out", category = "Picture", keys = "mod+-", when = in_picture,
 	run = function() pictures.zoom(pictures.shown(), -1) end })
-add({ id = "picture-fit", title = "Fit", category = "Picture", keys = "cmd+0", when = in_picture,
+add({ id = "picture-fit", title = "Fit", category = "Picture", keys = "mod+0", when = in_picture,
 	run = function() pictures.zoom(pictures.shown(), 0) end })
 
-add({ id = "pdf-go-to-page", title = "Go to Page", category = "Go", keys = "ctrl+g", when = in_pdf,
+add({ id = "pdf-go-to-page", title = "Go to Page", category = "Go", keys = chords.go_to_page, when = in_pdf,
 	run = function() act.open_palette("page") end })
-add({ id = "pdf-next-match", title = "Next Match in PDF", category = "Search", keys = "cmd+g", when = finding_in_pdf,
+add({ id = "pdf-next-match", title = "Next Match in PDF", category = "Search", keys = chords.next_match, when = finding_in_pdf,
 	run = function() act.pdf_step(1) end })
-add({ id = "pdf-previous-match", title = "Previous Match in PDF", category = "Search", keys = "cmd+shift+g", when = finding_in_pdf,
+add({ id = "pdf-previous-match", title = "Previous Match in PDF", category = "Search", keys = chords.previous_match, when = finding_in_pdf,
 	run = function() act.pdf_step(-1) end })
-add({ id = "pdf-copy", title = "Copy", category = "Edit", keys = "cmd+c", when = pdf.can_copy,
+add({ id = "pdf-copy", title = "Copy", category = "Edit", keys = chords.copy, when = pdf.can_copy,
 	run = function() pdf.copy(pdf.shown()) end })
-add({ id = "pdf-select-all", title = "Select All", category = "Selection", keys = "cmd+a", when = pdf.can_select,
+add({ id = "pdf-select-all", title = "Select All", category = "Selection", keys = "mod+a", when = pdf.can_select,
 	run = function() pdf.select_all(pdf.shown()) end })
 
 commands.list = list
@@ -497,7 +507,8 @@ end
 -- The page's outermost box with every command on it: the host lists them and runs them by their
 -- keys, whatever has the keyboard. The host gives a key to the first command that has it, whether
 -- that one can be done now or not, so a command that cannot be done leaves the keys that another
--- command that can has: ⌃G is the next occurrence in a file and the page to go to in a PDF.
+-- command that can has: ⌃G is the next occurrence in a file and the page to go to in a PDF (⌘D and
+-- ⌘G off a Mac).
 function commands.on(root)
 	local claimed = {}
 	for _, command in list do

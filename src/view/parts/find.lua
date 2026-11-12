@@ -1,11 +1,12 @@
 -- Find and replace in the file shown: the editor's own search (it marks what it finds, looks again
 -- as the text changes and says how many and which one the caret is on), with a bar of the page's
 -- that is worked with keys; in a PDF the bar is the same without the replacing, and the program looks
--- in the words of the pages (`pdf.lua` marks what it finds on them): ⏎ and ⇧⏎ go through the matches, ⌥⌘C ⌥⌘W ⌥⌘R switch case, whole words and
--- regular expressions, ⌥⌘F shows the replacement, ⌘⏎ selects every match (in the replacement:
+-- in the words of the pages (`pdf.lua` marks what it finds on them): ⏎ and ⇧⏎ go through the matches, ⌥⌘C ⌥⌘W ⌥⌘R (⌥C ⌥W ⌥R off a Mac) switch case, whole words
+-- and regular expressions, ⌥⌘F shows the replacement, ⌘⏎ (⌥⏎) selects every match (in the replacement:
 -- replaces them all), Esc goes back to the text.
 
 local kit = require("../lib/kit")
+local chords = require("../lib/chords")
 local docs = require("./docs")
 local pdf = require("./pdf")
 
@@ -209,9 +210,9 @@ local function field(id, hint, width, toggles)
 		:max_w(width)
 		:child(b.div():text_field(id):label(hint):grow(1):min_w(0):h_full():child(b.text(hint)))
 	if toggles then
-		box:child(toggle("find-case", F.case, "Match case", "cmd+alt+c"))
-		box:child(toggle("find-word", F.word, "Whole words", "cmd+alt+w"))
-		box:child(toggle("find-regex", F.regex, "Regular expression", "cmd+alt+r"))
+		box:child(toggle("find-case", F.case, "Match case", chords.case))
+		box:child(toggle("find-word", F.word, "Whole words", chords.word))
+		box:child(toggle("find-regex", F.regex, "Regular expression", chords.regex))
 	end
 	if id == QUERY and F.invalid then
 		box:border(1, "error")
@@ -245,7 +246,7 @@ local function bar_view(doc, tab)
 		top:pl(12)
 	else
 		top:child(kit.icon_button("find-expand", F.replacing and "chevron-down" or "chevron-right",
-			F.replacing and "Hide replace" or "Show replace", { keys = "cmd+alt+f", size = 24, icon = 14 }))
+			F.replacing and "Hide replace" or "Show replace", { keys = chords.replace, size = 24, icon = 14 }))
 	end
 	top:child(field(QUERY, "Find", width, true))
 	top:child(b.text(status_words(tab)):color((F.invalid or (none and F.query ~= "" and not no_text)) and "error" or "dim")
@@ -253,7 +254,7 @@ local function bar_view(doc, tab)
 	top:child(kit.icon_button("find-previous", "arrow-up", "Previous match", { keys = "shift+enter", size = 24, icon = 15, disabled = none }))
 	top:child(kit.icon_button("find-next", "arrow-down", "Next match", { keys = "enter", size = 24, icon = 15, disabled = none }))
 	if not narrow and not tab then
-		top:child(kit.icon_button("find-all", "select-all", "Select all matches", { keys = "cmd+enter", size = 24, icon = 15, disabled = none }))
+		top:child(kit.icon_button("find-all", "select-all", "Select all matches", { keys = chords.all, size = 24, icon = 15, disabled = none }))
 	end
 	top:child(b.spacer())
 	top:child(kit.icon_button("find-close", "x", "Close", { keys = "escape", size = 24, icon = 15 }))
@@ -264,7 +265,7 @@ local function bar_view(doc, tab)
 		local row = b.div():row():items_center():gap(4):h(36):px(6):pl(36)
 		row:child(field(REPLACE, "Replace", width, false))
 		row:child(kit.button("find-replace-one", "Replace", { icon = "replace", h = 26, keys = "enter", disabled = none or readonly }))
-		row:child(kit.button("find-replace-all", "All", { h = 26, keys = "cmd+enter", tip = "Replace all matches", disabled = none or readonly }))
+		row:child(kit.button("find-replace-all", "All", { h = 26, keys = chords.all, tip = "Replace all matches", disabled = none or readonly }))
 		bar:child(row)
 	end
 	bar:child(kit.rule_x())
@@ -401,14 +402,14 @@ function find.key(key, mods)
 		return false
 	end
 	local in_replace = S.field == REPLACE
-	if mods.command and mods.alt and (key == "c" or key == "w" or key == "r") then
+	if chords.option(key, mods) then
 		flip(key == "c" and "case" or (key == "w" and "word" or "regex"))
 	elseif key == "escape" then
 		close()
 	elseif key == "enter" then
 		if in_replace then
-			editor_command(mods.command and "replace_all" or "replace", { text = F.replacement })
-		elseif mods.command then
+			editor_command(chords.all_held(mods) and "replace_all" or "replace", { text = F.replacement })
+		elseif chords.all_held(mods) then
 			if not F.pdf then
 				editor_command("select_found")
 				act.focus_editor()

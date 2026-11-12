@@ -629,7 +629,7 @@ function palette.view(size)
 			foot:child(hint({ "up", "down" }, "choose"))
 			foot:child(hint({ "enter" }, overlay.mode == "commands" and "run" or "go"))
 			if overlay.mode == "files" or overlay.mode == "commands" then
-				foot:child(hint({ "cmd+k" }, overlay.mode == "files" and "commands" or "files"))
+				foot:child(hint({ "mod+k" }, overlay.mode == "files" and "commands" or "files"))
 			end
 			foot:child(hint({ "escape" }, "close"))
 		end

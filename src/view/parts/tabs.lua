@@ -126,9 +126,9 @@ function tabs.view(docked)
 	local bar = b.div():row():items_center():h(SIZE.tabs):no_shrink():bg("raised1")
 	if not docked then
 		if S.layout == "narrow" then
-			bar:child(b.div():px(5):child(kit.icon_button("show-sidebar", "menu-2", "Files", { keys = "cmd+b" })))
+			bar:child(b.div():px(5):child(kit.icon_button("show-sidebar", "menu-2", "Files", { keys = "mod+b" })))
 		else
-			bar:child(b.div():px(5):child(kit.icon_button("show-sidebar", "layout-sidebar", "Show sidebar", { keys = "cmd+b" })))
+			bar:child(b.div():px(5):child(kit.icon_button("show-sidebar", "layout-sidebar", "Show sidebar", { keys = "mod+b" })))
 		end
 		bar:child(kit.rule_y())
 	end
@@ -145,15 +145,15 @@ function tabs.view(docked)
 	if active and (changed or compare.active(active)) then
 		local on = compare.active(active)
 		right:child(kit.icon_button("toggle-compare", "file-diff", on and "Close Comparison" or "Compare with Last Commit",
-			{ keys = "cmd+shift+d", pressed = on }))
+			{ keys = "mod+shift+d", pressed = on }))
 	end
 	if active and act.is_markdown(active) then
 		local on = text.index_of(S.preview, active) ~= nil
 		right:child(kit.icon_button("toggle-preview", on and "eye-off" or "eye", on and "Hide preview" or "Preview",
-			{ keys = "cmd+shift+v", pressed = on }))
+			{ keys = "mod+shift+v", pressed = on }))
 	end
 	if #S.tabs > 1 then
-		right:child(kit.icon_button("open-tabs", "chevron-down", "Open files", { keys = "cmd+e" }))
+		right:child(kit.icon_button("open-tabs", "chevron-down", "Open files", { keys = "mod+e" }))
 	end
 	bar:child(right)
 	return b.div():col():no_shrink():child(bar):child(kit.rule_x())

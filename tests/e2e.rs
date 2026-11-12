@@ -324,6 +324,9 @@ fn a_terminal_without_pencere_runs_the_persons_own_editor_with_textpen_passed_ov
         .args(["--no-host", "--passthrough", "--limit", "15", "--"])
         .arg(program())
         .arg("a.txt")
+        // The person's own editor is what a terminal that cannot be drawn in gets; a terminal that
+        // can is drawn in (`PENCERE_TUI=1` asks for that, as does having no host), so it is turned off.
+        .env("PENCERE_TUI", "0")
         .env("VISUAL", "textpen")
         .env("EDITOR", "cat -n");
     let ran = run(command, None, Duration::from_secs(30));

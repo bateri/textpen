@@ -10,6 +10,7 @@
 -- tells the page, `scrolled`, which pages come into view); the others are room.
 
 local kit = require("../lib/kit")
+local chords = require("../lib/chords")
 local text = require("../lib/text")
 local docs = require("./docs")
 local pictures = require("./pictures")
@@ -952,10 +953,10 @@ end
 function pdf.menu(tab, event)
 	local v = tab.sheet
 	act.menu({
-		{ "Copy", "cmd+c", function()
+		{ "Copy", chords.copy, function()
 			pdf.copy(tab)
 		end, selected(v) },
-		{ "Select All", "cmd+a", function()
+		{ "Select All", "mod+a", function()
 			pdf.select_all(tab)
 		end },
 	}, event)
@@ -1206,23 +1207,23 @@ function pdf.hints(tab)
 		end
 		-- The keys are the pages' (the pointer was on them): Enter is the field's, the commands' keys are not.
 		return {
-			{ "cmd+g", "next", "hint:pdf-next" },
-			{ "cmd+shift+g", "previous", "hint:pdf-previous" },
+			{ chords.next_match, "next", "hint:pdf-next" },
+			{ chords.previous_match, "previous", "hint:pdf-previous" },
 			{ "escape", "close", "hint:pdf-close" },
 		}
 	end
 	local v = tab.sheet
 	if v and selected(v) then
 		return {
-			{ "cmd+c", "copy", "hint:pdf-copy" },
-			{ "cmd+f", "find", "hint:find" },
+			{ chords.copy, "copy", "hint:pdf-copy" },
+			{ "mod+f", "find", "hint:find" },
 			{ "escape", "clear", "hint:pdf-clear" },
 		}
 	end
 	return {
-		{ "cmd+f", "find", "hint:find" },
-		{ "ctrl+g", "go to page", "hint:pdf-page" },
-		{ "cmd++", "zoom", "hint:pdf-zoom" },
+		{ "mod+f", "find", "hint:find" },
+		{ chords.go_to_page, "go to page", "hint:pdf-page" },
+		{ "mod++", "zoom", "hint:pdf-zoom" },
 	}
 end
 

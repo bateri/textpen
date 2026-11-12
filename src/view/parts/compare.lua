@@ -790,7 +790,7 @@ local function marks(cmp, tab, rid, list)
 		for _, stretch in list do
 			if not cmp.opened[stretch.old_at] then
 				mark(stretch.new_at + stretch.top - 1, "open:" .. stretch.old_at, "assets/icons/arrows-vertical.svg",
-					"Show " .. stretch.hidden .. " unchanged lines " .. kit.keys_of("cmd+alt+]"))
+					"Show " .. stretch.hidden .. " unchanged lines " .. kit.keys_of("mod+alt+]"))
 			end
 		end
 	end

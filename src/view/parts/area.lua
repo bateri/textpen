@@ -11,10 +11,34 @@ local pictures = require("./pictures")
 local pdf = require("./pdf")
 local uploads = require("./uploads")
 local terminal = require("@pencere/terminal")
+local chords = require("../lib/chords")
 
 local b, S, act = kit.b, kit.S, kit.act
 
 local area = {}
+
+-- The editor's keys where the page is drawn in the cells of a terminal and the keyboard is not a Mac's:
+-- the editor has Ctrl+Z, Ctrl+Y and Ctrl+A of its own there, and the page gives it the comment and the
+-- fold (`lib/chords.lua`) and takes from it the keys of the logo key (Super), which is not what the
+-- terminal sends and which a menu would write for Cut, Copy and Paste.
+local function keymap()
+	if chords.mac or not kit.cells() then
+		return nil
+	end
+	return {
+		[chords.comment] = "toggle_comment",
+		-- What a terminal sends for Ctrl and `/`.
+		["ctrl+_"] = "toggle_comment",
+		[chords.fold] = "fold",
+		[chords.unfold] = "unfold",
+		["cmd+/"] = false,
+		["cmd+alt+["] = false,
+		["cmd+alt+]"] = false,
+		["cmd+c"] = false,
+		["cmd+x"] = false,
+		["cmd+v"] = false,
+	}
+end
 
 -- What the editor is told, from the settings and the file's language; its caret and its selection
 -- as the person's terminal draws them, where the terminal says how (textpen writes none of them).
@@ -48,6 +72,7 @@ function area.options(tab, doc, side)
 		pairs = config.pairs,
 		-- The right button puts the caret as a text view does and the page opens the editor's menu.
 		gestures = { ["right+press"] = "context" },
+		keymap = keymap(),
 		line_height = 1.6,
 		padding = 6,
 		scroll_margin = 3,

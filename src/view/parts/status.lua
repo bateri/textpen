@@ -3,6 +3,7 @@
 -- needed first, as the pane narrows.
 
 local kit = require("../lib/kit")
+local chords = require("../lib/chords")
 local text = require("../lib/text")
 local docs = require("./docs")
 local pdf = require("./pdf")
@@ -17,6 +18,17 @@ local status = {}
 
 -- How long the word that a file was saved stays, seconds.
 local SAVED_SHOWN = 1.4
+
+-- What gives way as the line fills, the least needed first. The branch: its name is cut shorter,
+-- down to nothing; its icon cannot be cut, so where the line has left it less than the icon and a
+-- letter or two take (points), or is too full with it, the branch is not shown at all. Then the keys:
+-- where the line is still too full, they go too. Each comes back, the keys first, when the room
+-- beside it would hold it whole. A page cannot measure its words, so it reads how the line was
+-- laid out (`status.settle`).
+local BRANCH_LEAST = 34
+local gone = { branch = false, keys = false, branch_whole = 0, keys_whole = 0 }
+-- The room the line keeps inside its right edge, points.
+local EDGE = 8
 
 -- The keys that work where the keyboard is, each a button that does what its key does:
 -- { keys, words, id }.
@@ -51,17 +63,17 @@ local function hints(has_file, pages)
 		return {
 			{ "enter", "search", "hint:search-run" },
 			{ "down", "results", "hint:search-results" },
-			{ "cmd+alt+r", "regex", "hint:search-regex" },
+			{ chords.regex, "regex", "hint:search-regex" },
 			{ "escape", "editor", "hint:editor" },
 		}
 	end
 	local out = {
-		{ "cmd+k", "files", "hint:files" },
+		{ "mod+k", "files", "hint:files" },
 		{ "f1", "commands", "hint:commands" },
 	}
 	if has_file then
-		out[#out + 1] = { "cmd+s", "save", "hint:save" }
-		out[#out + 1] = { "cmd+f", "find", "hint:find" }
+		out[#out + 1] = { "mod+s", "save", "hint:save" }
+		out[#out + 1] = { "mod+f", "find", "hint:find" }
 	end
 	out[#out + 1] = { "ctrl+w", "close", "hint:close" }
 	return out
@@ -102,6 +114,48 @@ function status.cursor(doc)
 	return where.line, where.column, where.selected, where.carets, where.big
 end
 
+-- The page was laid out: whether something of the line is to go, or to come back, and the line be
+-- drawn again.
+function status.settle()
+	local line, last = layout.bounds("status/line"), layout.bounds("status-help")
+	-- The line holds more than it has room for: its last item stands past its edge.
+	local over = line ~= nil and last ~= nil and (last.x + last.w) - (line.x + line.w - EDGE) > 0.5
+	if not gone.branch then
+		local box = layout.bounds("status/branch")
+		if box and (box.w < BRANCH_LEAST or over) then
+			gone.branch = true
+			return true
+		end
+	end
+	local keys = layout.bounds("status/keys")
+	if keys then
+		gone.keys_whole = keys.w
+		if over then
+			gone.keys = true
+			return true
+		end
+	end
+	local room = layout.bounds("status/room")
+	if room and not over then
+		if gone.keys and S.layout == "wide" then
+			local branch = layout.bounds("status/branch")
+			if room.w >= gone.keys_whole + 2 * EDGE then
+				gone.keys = false
+				return true
+			elseif branch and room.w + branch.w >= gone.keys_whole + 2 * EDGE then
+				-- Room for the one or the other: the keys before the branch.
+				gone.branch, gone.keys = true, false
+				return true
+			end
+		end
+		if gone.branch and room.w >= gone.branch_whole + EDGE then
+			gone.branch = false
+			return true
+		end
+	end
+	return false
+end
+
 function status.view()
 	local tab = docs.tab_of(S.active)
 	local doc = docs.active()
@@ -109,21 +163,30 @@ function status.view()
 	local pages = pdf.of(tab)
 	local shot = pictures.of(tab)
 	local wide = S.layout == "wide"
-	local row = b.div():row():items_center():gap(4):h(SIZE.status):px(8):no_shrink():bg("raised1"):color("dim"):text_size(11.5)
+	local row = b.div():id("status/line"):row():items_center():gap(4):h(SIZE.status):px(EDGE):no_shrink():bg("raised1"):color("dim"):text_size(11.5)
 	-- The branch of the repository the file shown is in.
 	local git = repos.of(S.git, S.active) or (S.git and not S.git.many and S.git) or nil
 	if git and git.branch then
-		local branch = b.div():row():items_center():gap(4):px(4):min_w(0)
+		-- How wide it is whole, as near as a page can say (it cannot measure its words).
+		local whole = 13 + 4 + 8 + utf8.len(git.branch) * 8
+		local branch = b.div():id("status/branch"):row():items_center():gap(4):px(4):min_w(0)
 			:child(kit.icon("git-branch", 13, "dim"))
 			:child(b.text(git.branch):truncate():min_w(0))
 			:tip("Branch " .. git.branch)
 		if git.ahead and git.ahead > 0 then
 			branch:child(kit.icon("arrow-up", 11, "dim")):child(b.text(tostring(git.ahead)))
+			whole += 11 + 4 + #tostring(git.ahead) * 8
 		end
 		if git.behind and git.behind > 0 then
 			branch:child(kit.icon("arrow-down", 11, "dim")):child(b.text(tostring(git.behind)))
+			whole += 11 + 4 + #tostring(git.behind) * 8
 		end
-		row:child(branch:max_w(180))
+		gone.branch_whole = math.min(whole, 180)
+		if not gone.branch then
+			row:child(branch:max_w(180))
+		end
+	else
+		gone.branch = false
 	end
 	if S.busy > 0 then
 		row:child(kit.spinner(12, "quiet"))
@@ -133,9 +196,11 @@ function status.view()
 		row:child(b.div():row():items_center():gap(3):px(4)
 			:child(kit.icon("check", 12, "success")):child(b.text("Saved"):color("success")))
 	end
-	row:child(b.spacer())
-	if wide then
-		local keys = b.div():row():items_center():gap(6):no_shrink()
+	row:child(b.spacer():id("status/room"))
+	if not wide then
+		gone.keys = false
+	elseif not gone.keys then
+		local keys = b.div():id("status/keys"):row():items_center():gap(6):no_shrink()
 		for _, hint in hints(doc ~= nil, pages) do
 			keys:child(hint_view(hint))
 		end
@@ -145,7 +210,7 @@ function status.view()
 	if doc and info then
 		local line, column, selected, carets, big = status.cursor(doc)
 		local words = string.format("Ln %d, Col %d", line, column)
-		local place = item("status-line", words, "Go to line " .. kit.keys_of("cmd+l"))
+		local place = item("status-line", words, "Go to line " .. kit.keys_of("mod+l"))
 		if selected > 0 then
 			local amount = big and text.bytes(selected) or tostring(selected)
 			place:child(b.text(string.format(" (%s selected%s)", amount, carets > 1 and (", " .. carets .. " carets") or ""))
@@ -167,8 +232,8 @@ function status.view()
 			row:child(item(nil, string.format(words == 1 and "%d word selected" or "%d words selected", words)))
 		end
 		local current, count = pdf.page_of(pages)
-		row:child(item("status-page", string.format("Page %d of %d", current, count), "Go to page " .. kit.keys_of("ctrl+g")))
-		row:child(item("status-zoom", pdf.zoom_words(pages), "Fit to the width " .. kit.keys_of("cmd+0")))
+		row:child(item("status-page", string.format("Page %d of %d", current, count), "Go to page " .. kit.keys_of(chords.go_to_page)))
+		row:child(item("status-zoom", pdf.zoom_words(pages), "Fit to the width " .. kit.keys_of("mod+0")))
 		if S.layout ~= "narrow" then
 			row:child(item(nil, text.bytes_fine(pages.picture.size)))
 		end
@@ -180,9 +245,9 @@ function status.view()
 		row:child(item(nil, pictures.kind(shot)))
 	end
 	if S.boot and S.boot.handoff and S.layout ~= "narrow" then
-		row:child(kit.icon_button("status-shell", "terminal-2", "Shell here", { keys = "cmd+j", size = 20, icon = 13 }))
+		row:child(kit.icon_button("status-shell", "terminal-2", "Shell here", { keys = chords.shell, size = 20, icon = 13 }))
 	end
-	row:child(kit.icon_button("status-help", "help-circle", "Keyboard shortcuts", { keys = "cmd+shift+/", size = 20, icon = 13 }))
+	row:child(kit.icon_button("status-help", "help-circle", "Keyboard shortcuts", { keys = "mod+shift+/", size = 20, icon = 13 }))
 	return b.div():col():no_shrink():child(kit.rule_x()):child(row)
 end
 
