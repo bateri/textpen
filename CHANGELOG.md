@@ -14,7 +14,8 @@ change what the previous one did.
   goes between the fit and the picture's own size, and `⌘+`, `⌘-` and `⌘0` step it and fit it
   again, up to eight times its own size (less for a picture so large that the terminal could not
   draw it larger). The status line says how much of its own size it is shown at, `Fit` or a percent,
-  and a click on it fits the picture.
+  and a click on it fits the picture. In a terminal that cannot zoom a page yet, a picture and a PDF
+  stay fitted, as before, and the zoom keys do nothing.
 
 - **A PDF is made larger by a pinch.** The same pinch, wheel with `⌘` and double tap as a
   picture's, about your fingers and stopping at the steps of the zoom; smaller than the fit, the

@@ -145,7 +145,7 @@ end
 
 -- The scale the box is zoomed to: the terminal's last word, else what was asked.
 local function zoom_of(tab)
-	return layout.zoom_of(pdf.box(tab)) or 1
+	return kit.zoom_of(pdf.box(tab)) or 1
 end
 
 -- Where a page `w` points wide stands across the content in a tab `avail` wide: one that fits with its
@@ -689,15 +689,8 @@ function pdf.view(tab, size)
 	sheet:child(b.div():h(math.max(g.total - (g.tops[to] + g.ph[to]), 0)):no_shrink())
 	-- The box holds the pages as large as the fit makes them (laid out at the box's zoom), in one cell that
 	-- is as wide as they are or as the box where they are narrower (zoomed out), the pages in the middle.
-	return b.div()
-		:id(id)
-		:grid({ "auto" })
-		:grid_rows({ "auto" })
-		:grow(1)
-		:min_w(0)
-		:min_h(0)
-		:scroll()
-		:zoom({ min = g.min_zoom, max = g.max_zoom, smart = math.min(2, g.max_zoom) })
+	local box = b.div():id(id):grid({ "auto" }):grid_rows({ "auto" }):grow(1):min_w(0):min_h(0):scroll()
+	return kit.zoom(box, { min = g.min_zoom, max = g.max_zoom, smart = math.min(2, g.max_zoom) })
 		:bg(GROUND)
 		:child(b.div():col():items_center():child(sheet))
 end
@@ -1034,7 +1027,7 @@ function pdf.zoom(tab, direction)
 		end
 	end
 	if to and math.abs(to - z) > 0.0005 then
-		layout.zoom_to(pdf.box(tab), to, { animate = false })
+		kit.zoom_to(pdf.box(tab), to, { animate = false })
 	end
 	kit.gather(true)
 end

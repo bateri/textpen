@@ -217,7 +217,7 @@ end
 
 -- The scale of the picture's box now: the terminal's last word, else what was asked.
 local function scale_of(tab)
-	return layout.zoom_of(pictures.box(tab)) or 1
+	return kit.zoom_of(pictures.box(tab)) or 1
 end
 
 -- The tab's page: the picture in a box that scrolls and that the person zooms (the terminal does it,
@@ -259,17 +259,8 @@ function pictures.view(tab, size)
 		:child(shown)
 	local held = b.div():col():items_center():justify_center():p(MARGIN):child(frame)
 	-- One cell that is as large as what is in it, and as large as the box where that is less.
-	return b.div()
-		:id(pictures.box(tab))
-		:grid({ "auto" })
-		:grid_rows({ "auto" })
-		:grow(1)
-		:min_w(0)
-		:min_h(0)
-		:scroll()
-		:zoom({ min = 1, max = max, smart = math.min(smart, max) })
-		:bg("background")
-		:child(held)
+	local box = b.div():id(pictures.box(tab)):grid({ "auto" }):grid_rows({ "auto" }):grow(1):min_w(0):min_h(0):scroll()
+	return kit.zoom(box, { min = 1, max = max, smart = math.min(smart, max) }):bg("background"):child(held)
 end
 
 -- The size of the file and the pixels, as the status line says them.
@@ -338,7 +329,7 @@ function pictures.zoom(tab, direction)
 		end
 	end
 	if math.abs(to - now) > 0.0005 then
-		layout.zoom_to(id, to, { animate = false })
+		kit.zoom_to(id, to, { animate = false })
 	end
 	kit.gather(true)
 end

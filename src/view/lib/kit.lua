@@ -376,6 +376,31 @@ local function carries(element, path)
 	return element
 end
 
+-- A box that zooms, on a terminal whose kit has them (pencere 40b074f and after). On one of an older kit
+-- there is no `zoom`, `layout.zoom_of` or `layout.zoom_to`: the box only scrolls, a picture and a PDF stay
+-- at their fit and the zoom keys do nothing, and the page goes on as it was.
+local function zoom(element, rule)
+	if element.zoom ~= nil then
+		element:zoom(rule)
+	end
+	return element
+end
+
+-- The scale the terminal zoomed the box `id` to, or nil where it has not (or cannot).
+local function zoom_of(id)
+	if b.layout.zoom_of == nil then
+		return nil
+	end
+	return b.layout.zoom_of(id)
+end
+
+-- Asks the terminal to zoom the box `id` to `scale`, where its kit can.
+local function zoom_to(id, scale, to)
+	if b.layout.zoom_to ~= nil then
+		b.layout.zoom_to(id, scale, to)
+	end
+end
+
 -- A line across or down, in the theme's colour of rules.
 local function rule_x(color)
 	return b.div():h(1):w_full():no_shrink():bg(color or "border")
@@ -430,6 +455,9 @@ return {
 	INDENT = INDENT,
 	indent_guides = indent_guides,
 	carries = carries,
+	zoom = zoom,
+	zoom_of = zoom_of,
+	zoom_to = zoom_to,
 	rule_x = rule_x,
 	rule_y = rule_y,
 	toast = toast,
