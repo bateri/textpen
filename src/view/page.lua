@@ -26,6 +26,8 @@ local changes = require("./parts/changes")
 local compare = require("./parts/compare")
 local editor_menu = require("./parts/editor_menu")
 local pdf = require("./parts/pdf")
+local pictures = require("./parts/pictures")
+local textsize = require("./parts/textsize")
 local uploads = require("./parts/uploads")
 
 local b, ui, S, SIZE, act = kit.b, kit.ui, kit.S, kit.SIZE, kit.act
@@ -303,7 +305,14 @@ local function handle(event)
 		reply = (kind ~= "viewport" or compare.moved(event)) or nil
 	elseif kind == "scrolled" then
 		compare.scrolled(event)
-		reply = pdf.scrolled(event) or nil
+		reply = pdf.scrolled(event) or pictures.scrolled(event) or nil
+	elseif kind == "magnify" then
+		-- A pinch that no box that zooms (a picture, a PDF) took: the size of the page's text.
+		reply = textsize.magnify(event) or nil
+	elseif kind == "carried" then
+		-- The system's drag of a file out of the page is over: the page is drawn without what the drag
+		-- marked (the kit's `Ui` has let go of it already).
+		reply = true
 	elseif kind == "move" then
 		reply = moved(event)
 	elseif kind == "leave" then

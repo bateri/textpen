@@ -5,6 +5,7 @@ local kit = require("../lib/kit")
 local text = require("../lib/text")
 local fuzzy = require("@pencere/fuzzy")
 local commands = require("./commands")
+local textsize = require("./textsize")
 
 local b, S, act = kit.b, kit.S, kit.act
 local layout = b.layout
@@ -186,6 +187,22 @@ local ROWS = {
 		detail = "Leave what git ignores out of the tree",
 		value = function(s) return s.hideIgnored and "On" or "Off" end,
 		step = function(s) return { hideIgnored = not s.hideIgnored } end,
+	},
+	{
+		key = "textSize",
+		title = "Text size",
+		detail = "Points more than the terminal's own",
+		value = function(s) return textsize.words(s.textSize or 0) end,
+		-- Round like the other rows: past the largest the smallest, so a click is never lost at the end.
+		step = function(s, by)
+			local size = (s.textSize or 0) + by
+			if size > textsize.MAX then
+				size = textsize.MIN
+			elseif size < textsize.MIN then
+				size = textsize.MAX
+			end
+			return { textSize = size }
+		end,
 	},
 	{
 		key = "autoSave",

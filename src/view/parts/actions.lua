@@ -494,6 +494,9 @@ function act.change_settings(change)
 	if change.diffDecorations ~= nil then
 		marks.refresh_all()
 	end
+	if change.textSize ~= nil then
+		kit.gather({ text_size = settings.textSize })
+	end
 	if settings_timer then
 		settings_timer:cancel()
 	end
@@ -635,6 +638,8 @@ function act.start(boot)
 	local ui = boot.ui
 	S.boot = boot
 	S.settings = boot.settings
+	-- The text size that was kept, said to the terminal.
+	kit.gather({ text_size = S.settings.textSize or 0 })
 	-- Opened on files, as $EDITOR is: the sidebar is not shown, and what is done to it is the run's.
 	if boot.closeQuits == true then
 		S.run_sidebar = false

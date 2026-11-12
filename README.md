@@ -136,13 +136,19 @@ theme and the editor follows, live.
 **Search in the project's files**, as words, whole words or patterns, with the matches by
 file; go through them from anywhere with `F4` and `⇧F4`.
 
-**Pictures**: a PNG, a JPEG or an SVG opens in its tab, fitted into it and not made larger, with its
-size and its pixels under it. A file past 8 MiB or 4096 pixels is not drawn, and says so. It needs
-a terminal that shows the page at `lua` 0.1, as bateri does.
+**Pictures**: a PNG, a JPEG or an SVG opens in its tab, fitted into it and not made larger. A
+pinch makes it larger about your fingers, the wheel with `⌘` held does the same, a double tap with
+two fingers goes between the fit and the picture's own size, and `⌘+`, `⌘-` and `⌘0` step it (the
+steps of a PDF's zoom, of the picture's own size) and fit it again, up to eight times its own size.
+The status line says how much of its own size it is shown at (`Fit`, or `250%`; a click fits it),
+with the size of the file and its pixels. A file past 8 MiB or 4096 pixels is not drawn, and says
+so. It needs a terminal that shows the page at `lua` 0.1, as bateri does.
 
 **PDFs** open in their tab as pages one under the other, scrolled by the terminal, sharp at any
-zoom: `⌘+`, `⌘-` and `⌘0` step the zoom and fit the width, `Page Down`, `Home` and `End` go through
-the pages, and `⌃G` goes to a page. The words of a PDF are selected with the pointer (a double click
+zoom: a pinch makes the pages larger about your fingers, the wheel with `⌘` held and a double tap
+with two fingers do the same, and `⌘+`, `⌘-` and `⌘0` step the zoom and fit the width (smaller than
+the fit, the pages are narrower than the tab and in its middle). `Page Down`, `Home` and `End` go
+through the pages, and `⌃G` goes to a page. The words of a PDF are selected with the pointer (a double click
 a word, a triple click a line, `⌘A` all of them) and copied with `⌘C`; `⌘F` finds in all the pages,
 as words, whole words or patterns, and `Enter` and `⇧Enter` (or `⌘G`) go from match to match. A PDF
 with no words in it (a scan) is shown and says it has none to select or find. The program reads the
@@ -162,6 +168,13 @@ written. In a Markdown file, `⌘V` with a picture on the pasteboard puts it bes
 at the caret; the preview holds its place until it is whole. A pause of a few seconds leaves the percent where
 it is; with no word for 30 seconds the row says "Upload stalled" and offers **Retry**. It needs a terminal that shows the
 page at `lua` 0.1, as bateri does.
+
+**Drag a file out of textpen**: a row of the tree (a file or a folder), or a tab, dragged out of the
+page, brings its path (from the root of the machine) to where it is dropped: into a terminal's
+pane, where it is quoted for the shell and put at the cursor without being run, or into another
+application as text. A tab dragged along the strip still puts the tabs in order. A name with a line
+break or a control of the direction of text in it is not carried, and stays in the page alone. It
+needs a terminal that carries what a page offers, as bateri does.
 
 <details>
 <summary>Five pictures of an upload</summary>
@@ -245,6 +258,7 @@ type `@`, `#`, `[` or `{`.
 | `⌘⌥]`, `⌃⌥]`, `⌃⌥[`        | in the comparison, open the stretch at the caret, show every line, fold   |
 | `⇧F10`                     | the editor's right-click menu, at the caret                               |
 | `⇧⌘V`                      | the preview of a Markdown file                                            |
+| `⌘+`, `⌘-`, `⌘0`           | in a picture or a PDF: larger, smaller, fit; in text: its size, a point a step |
 | `⌘,`, `⇧⌘/`                | the settings, every key                                                   |
 | `⌘J`                       | a shell in the project, in this pane                                      |
 | `⌃Q`                       | quit, asking about what is not saved                                      |
@@ -258,8 +272,11 @@ and under its folders `h` `l` fold and unfold. The keys the status line shows ar
 click does what the key does.
 
 `⌃C` always reaches textpen and ends it, whatever has the keyboard; what is not saved is
-kept as a draft. The text is the size the terminal draws its own: its own keys make it larger
-or smaller, and textpen has no zoom of its own.
+kept as a draft. **The size of the text** is the terminal's, and `⌘+`, `⌘-` and `⌘0` (or a pinch
+that no picture or PDF takes) make the page's text larger or smaller than that, a step a point, and
+back to the terminal's: textpen asks the terminal to draw its page larger, and the text of your
+terminal stays as it was. The size is kept, and **Text size** in the settings sets it (-4 to 24
+points).
 
 ## How it works
 

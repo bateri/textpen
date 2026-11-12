@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use pencere_drive::headless::{Error, Focus, Headless, InProcess};
-use pencere_view::{Id, MenuEntry, Paint, Point, Shortcut};
+use pencere_view::{GesturePhase, Id, MenuEntry, Paint, Point, Shortcut};
 use serde_json::Value;
 
 use crate::options;
@@ -967,7 +967,10 @@ fn dragging_the_sidebars_edge_makes_only_the_trees_rows_in_view() -> Result<(), 
         mods: Mods::default(),
         count: 1,
     })?;
-    page.pointer(Input::Move(Point::new(at.x + 40.0, at.y)))?;
+    page.pointer(Input::Move {
+        at: Point::new(at.x + 40.0, at.y),
+        mods: Mods::default(),
+    })?;
     assert_eq!(
         page.bounds("resizer").map(|rect| rect.x),
         Some(edge.x + 40.0)
@@ -978,7 +981,10 @@ fn dragging_the_sidebars_edge_makes_only_the_trees_rows_in_view() -> Result<(), 
         "the rows in view stay where they were"
     );
     assert_eq!(place(&page, ahead), None, "no row past the view is made");
-    page.pointer(Input::Move(Point::new(at.x + 40.0, at.y + 30.0)))?;
+    page.pointer(Input::Move {
+        at: Point::new(at.x + 40.0, at.y + 30.0),
+        mods: Mods::default(),
+    })?;
     let drawn = page.replies().last().map(|answer| answer.reply.redraw);
     assert_eq!(
         drawn,
@@ -988,6 +994,7 @@ fn dragging_the_sidebars_edge_makes_only_the_trees_rows_in_view() -> Result<(), 
     page.pointer(Input::Release {
         at: Point::new(at.x + 40.0, at.y + 30.0),
         button: Button::Left,
+        mods: Mods::default(),
     })?;
     assert_eq!(place(&page, seen), Some(before));
     assert!(
@@ -1658,8 +1665,8 @@ fn picture_in_front(page: &mut Page, bytes: &[u8]) -> Result<(String, pencere_vi
         .ok_or(Error::NoSuch(name))
 }
 
-/// A picture opens in its tab, fitted into it and not made larger, with its size and its pixels under
-/// it; it is let go when its tab closes.
+/// A picture opens in its tab, fitted into it and not made larger, with its size and its pixels in the
+/// status line; it is let go when its tab closes.
 #[test]
 #[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
 fn a_picture_opens_in_its_tab_fitted_with_its_size_under_it_and_is_let_go_when_it_closes()
@@ -1759,6 +1766,228 @@ fn a_picture_is_fitted_into_a_small_pane() -> Result<(), Error> {
     assert!(rect.w < 600.0 && rect.h < 330.0 - 36.0 - 24.0, "{rect:?}");
     assert!((rect.w / rect.h - 4.0 / 3.0).abs() < 0.02, "{rect:?}");
     assert!(shows(&page, "1600 × 1200"), "{:?}", page_words(&page));
+    Ok(())
+}
+
+/// What the status line says of the zoom of the picture in front: "Fit", or the percent of its own size.
+fn zoom_words(page: &Page) -> Option<String> {
+    page_words(page).into_iter().find(|words| {
+        words == "Fit"
+            || words.strip_suffix('%').is_some_and(|number| {
+                !number.is_empty() && number.chars().all(|c| c.is_ascii_digit())
+            })
+    })
+}
+
+/// The picture drawn, as `picture_in_front` finds it.
+fn drawn_now(page: &mut Page, bytes: &[u8]) -> Result<pencere_view::Rect, Error> {
+    Ok(picture_in_front(page, bytes)?.1)
+}
+
+fn middle_of(rect: pencere_view::Rect) -> Point {
+    Point::new(rect.x + rect.w / 2.0, rect.y + rect.h / 2.0)
+}
+
+/// A pinch over a picture makes it larger about the point between the fingers, and the status line
+/// says how much of its own size it is shown at, where it said it was fitted.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_pinch_makes_a_picture_larger_about_the_fingers_and_the_status_line_says_by_how_much()
+-> Result<(), Error> {
+    let (project, files) = with_pictures();
+    let session = project.session(&["photo.png"]);
+    recording(&session);
+    let mut page = project.open_holding(&session, WIDE, &[&files[1].1])?;
+    let fitted = drawn_now(&mut page, &files[1].1)?;
+    assert_eq!(zoom_words(&page).as_deref(), Some("Fit"));
+    assert_eq!(page.zoom_of("picture:photo.png")?, 1.0);
+    let scale = fitted.w / 1600.0;
+
+    // The fingers are over the middle: the picture grows about it, and says what it is now.
+    let middle = middle_of(fitted);
+    page.pinch_at(middle, 0.5)?;
+    page.advance(0.5)?;
+    let zoom = page.zoom_of("picture:photo.png")?;
+    assert!((zoom - 1.5).abs() < 0.01, "{zoom}");
+    let larger = drawn_now(&mut page, &files[1].1)?;
+    assert!(
+        (larger.w - fitted.w * 1.5).abs() < 2.0,
+        "{larger:?} from {fitted:?}"
+    );
+    let centre = middle_of(larger);
+    assert!(
+        (centre.x - middle.x).abs() < 6.0 && (centre.y - middle.y).abs() < 6.0,
+        "{larger:?} about {middle:?}"
+    );
+    let shown = (f64::from(scale) * 1.5 * 100.0).round() as i32;
+    let said = zoom_words(&page).expect("the zoom in the status line");
+    let said: i32 = said.trim_end_matches('%').parse().expect("a percent");
+    assert!((said - shown).abs() <= 1, "{said}% for {shown}%");
+
+    // A pinch over the tab's strip, away from the picture, is not the picture's: it is the page's text.
+    let strip = page.bounds("tab:photo.png").expect("the tab");
+    assert_eq!(page.text_size(), 0);
+    page.pinch_at(middle_of(strip), 0.5)?;
+    page.advance(0.5)?;
+    assert!((page.zoom_of("picture:photo.png")? - zoom).abs() < 0.01);
+    assert!(page.text_size() > 0, "the page's text became larger");
+
+    // The status line's own: back to fit.
+    page.click("status-zoom")?;
+    page.advance(0.5)?;
+    assert_eq!(zoom_words(&page).as_deref(), Some("Fit"));
+    let back = drawn_now(&mut page, &files[1].1)?;
+    assert!((back.w - fitted.w).abs() < 1.5, "{back:?} from {fitted:?}");
+    Ok(())
+}
+
+/// ⌘+ and ⌘− go by the steps of a PDF's zoom, of the picture's own size, from where it is and not
+/// below what fits; ⌘0 fits it.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_zoom_keys_step_a_picture_by_the_steps_and_fit_it_again() -> Result<(), Error> {
+    let (project, files) = with_pictures();
+    let session = project.session(&["photo.png"]);
+    recording(&session);
+    let mut page = project.open_holding(&session, WIDE, &[&files[1].1])?;
+    let fitted = drawn_now(&mut page, &files[1].1)?;
+    let scale = fitted.w / 1600.0;
+    let steps = [
+        0.25, 0.33, 0.5, 0.67, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0_f32,
+    ];
+    let above = steps
+        .iter()
+        .position(|step| *step > scale * 1.001)
+        .expect("a step above the fit");
+    let says = |page: &Page, step: f32| {
+        assert_eq!(
+            zoom_words(page),
+            Some(format!("{}%", (step * 100.0).round() as i32)),
+        );
+    };
+
+    page.press("cmd+=")?;
+    page.advance(0.5)?;
+    says(&page, steps[above]);
+    assert_eq!(
+        page.text_size(),
+        0,
+        "the keys are the picture's where one is in front"
+    );
+    page.press("cmd++")?;
+    page.advance(0.5)?;
+    says(&page, steps[above + 1]);
+    let larger = drawn_now(&mut page, &files[1].1)?;
+    assert!(
+        (larger.w - 1600.0 * steps[above + 1]).abs() < 2.0,
+        "{larger:?} for {}",
+        steps[above + 1]
+    );
+    page.press("cmd+-")?;
+    page.advance(0.5)?;
+    says(&page, steps[above]);
+    // The step below the fit is the fit.
+    page.press("cmd+-")?;
+    page.advance(0.5)?;
+    assert_eq!(zoom_words(&page).as_deref(), Some("Fit"));
+    page.press("cmd+-")?;
+    page.advance(0.5)?;
+    assert_eq!(zoom_words(&page).as_deref(), Some("Fit"));
+    page.press("cmd+=")?;
+    page.press("cmd+=")?;
+    page.press("cmd+=")?;
+    page.advance(1.0)?;
+    assert_ne!(zoom_words(&page).as_deref(), Some("Fit"));
+    page.press("cmd+0")?;
+    page.advance(1.0)?;
+    assert_eq!(zoom_words(&page).as_deref(), Some("Fit"));
+    assert_eq!(page.zoom_of("picture:photo.png")?, 1.0);
+
+    // A double tap with two fingers goes to the picture's own size and back.
+    let middle = middle_of(drawn_now(&mut page, &files[1].1)?);
+    page.smart_magnify_at(middle)?;
+    page.advance(1.0)?;
+    assert_eq!(zoom_words(&page).as_deref(), Some("100%"));
+    page.advance(1.0)?;
+    page.smart_magnify_at(middle)?;
+    page.advance(1.0)?;
+    assert_eq!(zoom_words(&page).as_deref(), Some("Fit"));
+
+    // The zoom is the tab's: another tab in front, it is as it was when the tab comes back.
+    page.press("cmd+=")?;
+    page.advance(0.5)?;
+    let zoomed = zoom_words(&page);
+    assert_ne!(zoomed.as_deref(), Some("Fit"));
+    page.click("row:README.md")?;
+    wait(&mut page, |page| page.bounds("tab:README.md").is_some())?;
+    page.click("tab:photo.png")?;
+    drawn_now(&mut page, &files[1].1)?;
+    page.advance(0.5)?;
+    assert_eq!(zoom_words(&page), zoomed);
+    Ok(())
+}
+
+/// A small picture is not made larger to fit, so its fit is its own size and a double tap goes
+/// larger; it is made larger up to eight times its size and no more, and wherever it is, all of it
+/// can be scrolled to.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_small_picture_zooms_to_eight_times_its_size_and_all_of_it_is_within_reach() -> Result<(), Error>
+{
+    let (project, files) = with_pictures();
+    let session = project.session(&["logo.png"]);
+    recording(&session);
+    let mut page = project.open_holding(&session, WIDE, &[&files[0].1])?;
+    let fitted = drawn_now(&mut page, &files[0].1)?;
+    assert!((fitted.w - 200.0).abs() < 1.0, "{fitted:?}");
+    assert_eq!(zoom_words(&page).as_deref(), Some("Fit"));
+    let middle = middle_of(fitted);
+
+    page.press("cmd+=")?;
+    page.advance(0.5)?;
+    assert_eq!(zoom_words(&page).as_deref(), Some("125%"));
+
+    // The fingers come apart a little at a time, and go on past eight times the picture's size.
+    page.magnify_at(middle, 0.0, GesturePhase::Begin)?;
+    for _ in 0..30 {
+        page.magnify_at(middle, 0.1, GesturePhase::Move)?;
+    }
+    page.magnify_at(middle, 0.0, GesturePhase::End)?;
+    page.advance(1.0)?;
+    assert!((page.zoom_of("picture:logo.png")? - 8.0).abs() < 0.01);
+    assert_eq!(zoom_words(&page).as_deref(), Some("800%"));
+    page.press("cmd+=")?;
+    page.advance(0.5)?;
+    assert_eq!(zoom_words(&page).as_deref(), Some("800%"));
+
+    // Scrolled to either end, the whole of the picture comes to the box, and the box shows no more
+    // of the picture than it has.
+    let room = page.bounds("picture:logo.png").expect("the box");
+    let at = middle_of(room);
+    // The picture stayed about the fingers (a picture that fills less of the box than the box is is
+    // laid in the middle of it, and keeps them within a few of its eight times' points), and is
+    // scrolled to the start of it from there.
+    let held = drawn_now(&mut page, &files[0].1)?;
+    let centre = middle_of(held);
+    assert!(
+        (centre.x - middle.x).abs() < 40.0 && (centre.y - middle.y).abs() < 40.0,
+        "{held:?} about {middle:?}"
+    );
+    page.release()?;
+    page.wheel_at(at, -50_000.0, -50_000.0)?;
+    page.advance(1.0)?;
+    let first = drawn_now(&mut page, &files[0].1)?;
+    assert!(
+        first.x >= room.x - 0.5 && first.y >= room.y - 0.5,
+        "the start of the picture is out of reach: {first:?} in {room:?}"
+    );
+    page.wheel_at(at, 50_000.0, 50_000.0)?;
+    page.advance(1.0)?;
+    let last = drawn_now(&mut page, &files[0].1)?;
+    assert!(
+        last.x + last.w <= room.x + room.w + 0.5 && last.y + last.h <= room.y + room.h + 0.5,
+        "the end of the picture is out of reach: {last:?} in {room:?}"
+    );
     Ok(())
 }
 
@@ -1950,6 +2179,120 @@ fn the_settings_are_changed_and_kept_and_the_keys_are_listed() -> Result<(), Err
         "{:?}",
         page_words(&page)
     );
+    Ok(())
+}
+
+/// ⌘+, ⌘− and ⌘0 make the page's text larger, smaller and as the terminal's: the terminal is asked to
+/// draw the page that many points larger (`text_size`), within what the program keeps, and the size is
+/// kept in the settings and asked again when the page opens.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_text_size_keys_ask_the_terminal_for_a_larger_page_and_it_is_kept() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    assert_eq!(
+        page.text_size(),
+        0,
+        "as the terminal's until the person says"
+    );
+    page.press("cmd+=")?;
+    assert_eq!(page.text_size(), 1);
+    page.press("cmd++")?;
+    assert_eq!(page.text_size(), 2);
+    page.press("cmd+-")?;
+    assert_eq!(page.text_size(), 1);
+    page.press("cmd+0")?;
+    assert_eq!(page.text_size(), 0);
+    page.press("cmd+-")?;
+    page.press("cmd+-")?;
+    assert_eq!(page.text_size(), -2);
+    for _ in 0..40 {
+        page.press("cmd+=")?;
+    }
+    assert_eq!(page.text_size(), 24, "no larger than the program keeps");
+    for _ in 0..40 {
+        page.press("cmd+-")?;
+    }
+    assert_eq!(page.text_size(), -4, "no smaller");
+    // The settings' row goes round like the others, so a click at the end is not lost.
+    page.press("cmd+,")?;
+    for _ in 0..8 {
+        page.press("down")?;
+    }
+    page.press("left")?;
+    assert_eq!(page.text_size(), 24, "past the smallest, the largest");
+    page.press("space")?;
+    assert_eq!(page.text_size(), -4, "past the largest, the smallest");
+    page.press("escape")?;
+    // The palette has them, with the keys.
+    page.press("cmd+k")?;
+    page.type_text(">text")?;
+    wait(&mut page, |page| {
+        shows(page, "Bigger Text") && shows(page, "Smaller Text") && shows(page, "Actual Text Size")
+    })?;
+    page.press("escape")?;
+
+    // Kept, and said when the page is opened again.
+    page.press("cmd+0")?;
+    for _ in 0..3 {
+        page.press("cmd+=")?;
+    }
+    wait(&mut page, |_| session.settings().text_size == 3)?;
+    let again = project.open(&session, WIDE)?;
+    assert_eq!(
+        again.text_size(),
+        3,
+        "said at the start, the terminal not asked by a person"
+    );
+    Ok(())
+}
+
+/// A pinch that no box that zooms took makes the text larger a step at every stretch of it, and the
+/// way it goes: a pinch too short for a step makes none, and one that comes to the limit stops there.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_pinch_over_the_code_makes_the_text_larger_by_steps() -> Result<(), Error> {
+    use pencere_view::GesturePhase;
+    let project = lantern();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    let at = Point::new(WIDE.0 / 2.0, WIDE.1 / 2.0);
+    page.pinch_at(at, 0.05)?;
+    assert_eq!(page.text_size(), 0, "too short for a step");
+    page.magnify_at(at, 0.0, GesturePhase::Begin)?;
+    for _ in 0..10 {
+        page.magnify_at(at, 0.1, GesturePhase::Move)?;
+    }
+    page.magnify_at(at, 0.0, GesturePhase::End)?;
+    // Ten times 1.1 is 2.59 times: eleven stretches of 8%.
+    assert!(
+        (10..=12).contains(&page.text_size()),
+        "{}",
+        page.text_size()
+    );
+    let larger = page.text_size();
+    page.magnify_at(at, 0.0, GesturePhase::Begin)?;
+    for _ in 0..4 {
+        page.magnify_at(at, -0.1, GesturePhase::Move)?;
+    }
+    page.magnify_at(at, 0.0, GesturePhase::End)?;
+    assert!(
+        page.text_size() < larger && page.text_size() >= larger - 5,
+        "{} from {larger}",
+        page.text_size()
+    );
+    page.magnify_at(at, 0.0, GesturePhase::Begin)?;
+    for _ in 0..80 {
+        page.magnify_at(at, 0.1, GesturePhase::Move)?;
+    }
+    page.magnify_at(at, 0.0, GesturePhase::End)?;
+    assert_eq!(page.text_size(), 24);
+    // A pinch back from the limit is a step as soon as it is the way back.
+    page.magnify_at(at, 0.0, GesturePhase::Begin)?;
+    page.magnify_at(at, -0.1, GesturePhase::Move)?;
+    page.magnify_at(at, 0.0, GesturePhase::End)?;
+    assert_eq!(page.text_size(), 23);
     Ok(())
 }
 
@@ -2773,6 +3116,112 @@ fn the_tabs_scroll_away_from_the_tab_in_front_and_come_to_the_next_one() -> Resu
     Ok(())
 }
 
+/// A row of the tree is carried out of the page to a terminal pane or another application as the path
+/// it stands for, from the root of the machine, a file's and a folder's; a click on it is not that.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_row_of_the_tree_is_carried_out_of_the_page_as_the_path_it_stands_for() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    let outside = Point::new(WIDE.0 + 80.0, 200.0);
+    let path = |name: &str| project.root().join(name).to_string_lossy().into_owned();
+    page.drag_out("row:config.yaml", outside)?;
+    let [carry] = page.carries() else {
+        panic!("one file carried: {:?}", page.carries());
+    };
+    assert_eq!(carry.id, Id::named("row:config.yaml"));
+    assert_eq!(carry.carry, pencere_view::Carry::path(path("config.yaml")));
+    assert_eq!(Some(carry.rect), page.bounds("row:config.yaml"));
+    page.finish_carry(true)?;
+    page.drag_out("row:worker", outside)?;
+    assert_eq!(
+        page.carries().last().map(|carry| carry.carry.clone()),
+        Some(pencere_view::Carry::path(path("worker"))),
+        "a folder carries its path too"
+    );
+    page.finish_carry(false)?;
+    // The drag is over: the page hears the pointer again, and a click is a click.
+    page.click("row:Dockerfile")?;
+    wait(&mut page, |page| page.bounds("tab:Dockerfile").is_some())?;
+    assert_eq!(page.carries().len(), 2, "a click carries nothing");
+    Ok(())
+}
+
+/// A tab is the page's own drag while the pointer is in the page (it changes the order) and what the
+/// system carries from the moment it is out: the file's path, with the order as it was.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_tab_is_put_in_order_in_the_page_and_carried_out_of_it() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["README.md", "src/server.ts", "config.yaml"]);
+    let mut page = project.open(&session, WIDE)?;
+    let order = |page: &Page| {
+        let mut tabs: Vec<(f32, &str)> = ["README.md", "src/server.ts", "config.yaml"]
+            .into_iter()
+            .map(|name| {
+                let tab = page.bounds(&format!("tab:{name}")).expect("a tab");
+                (tab.x, name)
+            })
+            .collect();
+        tabs.sort_by(|a, b| a.0.total_cmp(&b.0));
+        tabs.into_iter().map(|(_, name)| name).collect::<Vec<_>>()
+    };
+    assert_eq!(order(&page), ["README.md", "src/server.ts", "config.yaml"]);
+    let middle = |page: &Page, name: &str| {
+        let tab = page.bounds(&format!("tab:{name}")).expect("a tab");
+        Point::new(tab.x + tab.w / 2.0, tab.y + tab.h / 2.0)
+    };
+    // Inside the page: README.md put down on config.yaml goes after it, and nothing is carried.
+    let (from, onto) = (middle(&page, "README.md"), middle(&page, "config.yaml"));
+    page.drag_between(from, onto)?;
+    assert_eq!(order(&page), ["src/server.ts", "config.yaml", "README.md"]);
+    assert!(page.carries().is_empty(), "{:?}", page.carries());
+    // Out of the page, the path is carried and the order stays.
+    page.drag_out("tab:src/server.ts", Point::new(WIDE.0 + 80.0, 12.0))?;
+    let [carry] = page.carries() else {
+        panic!("one tab carried: {:?}", page.carries());
+    };
+    assert_eq!(carry.id, Id::named("tab:src/server.ts"));
+    assert_eq!(
+        carry.carry,
+        pencere_view::Carry::path(project.root().join("src/server.ts").to_string_lossy())
+    );
+    page.finish_carry(true)?;
+    assert_eq!(order(&page), ["src/server.ts", "config.yaml", "README.md"]);
+    // A click on a tab is still a click on it.
+    page.click("tab:config.yaml")?;
+    wait(&mut page, |page| text(page).contains("port: 8080"))?;
+    Ok(())
+}
+
+/// A name no drag out of the page may carry (a line break, a control of the direction of text) is
+/// not carried, and the page goes on: the row and the tab of it are the page's alone.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_name_that_may_not_be_carried_is_left_in_the_page() -> Result<(), Error> {
+    let project = lantern();
+    let (broken, turned) = ("two\nlines.txt", "ab\u{202e}gnp.txt");
+    project.write(broken, "x");
+    project.write(turned, "y");
+    let session = project.session(&["README.md", broken, turned]);
+    let mut page = project.open(&session, WIDE)?;
+    let outside = Point::new(WIDE.0 + 80.0, 200.0);
+    for id in [
+        format!("row:{broken}"),
+        format!("row:{turned}"),
+        format!("tab:{broken}"),
+        format!("tab:{turned}"),
+    ] {
+        page.drag_out(&id, outside)?;
+        assert!(page.carries().is_empty(), "{id:?}: {:?}", page.carries());
+    }
+    // Another name is carried all the same.
+    page.drag_out("row:config.yaml", outside)?;
+    assert_eq!(page.carries().len(), 1);
+    Ok(())
+}
+
 /// Every open file's editor takes its text as the terminal makes it (`editor_ready`), shown or
 /// hidden, with nothing refused.
 #[test]
@@ -2898,6 +3347,7 @@ fn right_press_at_line(page: &mut Page, name: &str, line: usize) -> Result<(), E
     page.pointer(Input::Release {
         at,
         button: Button::Right,
+        mods: Mods::default(),
     })
 }
 
