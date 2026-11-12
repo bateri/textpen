@@ -6,6 +6,7 @@ local kit = require("../lib/kit")
 local text = require("../lib/text")
 local docs = require("./docs")
 local pdf = require("./pdf")
+local pictures = require("./pictures")
 local search = require("./search")
 local repos = require("../lib/repos")
 
@@ -106,6 +107,7 @@ function status.view()
 	local doc = docs.active()
 	local info = tab and tab.info
 	local pages = pdf.of(tab)
+	local shot = pictures.of(tab)
 	local wide = S.layout == "wide"
 	local row = b.div():row():items_center():gap(4):h(SIZE.status):px(8):no_shrink():bg("raised1"):color("dim"):text_size(11.5)
 	-- The branch of the repository the file shown is in.
@@ -172,6 +174,11 @@ function status.view()
 		end
 		row:child(item(nil, "PDF"))
 	end
+	if shot then
+		row:child(item("status-zoom", pictures.zoom_words(shot), "Fit to the tab " .. kit.keys_of("cmd+0")))
+		row:child(item(nil, pictures.caption(shot)))
+		row:child(item(nil, pictures.kind(shot)))
+	end
 	if S.boot and S.boot.handoff and S.layout ~= "narrow" then
 		row:child(kit.icon_button("status-shell", "terminal-2", "Shell here", { keys = "cmd+j", size = 20, icon = 13 }))
 	end
@@ -198,6 +205,8 @@ function status.press(id)
 		local tab = pdf.shown()
 		if tab then
 			pdf.zoom(tab, 0)
+		elseif pictures.shown() then
+			pictures.zoom(pictures.shown(), 0)
 		end
 	elseif id == "status-indent" then
 		act.open_palette("indent")

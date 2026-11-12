@@ -24,12 +24,10 @@ local pdf = {}
 local GAP = 16
 local SIDE = 40
 
--- The scales the zoom keys go by (1 is a point of the page to a point of the tab), and the longest side
--- a page is shown with, points: the terminal draws a page where it is seen, in parts of at most 4096
--- pixels, so what bounds a page is the 65536 pixels its whole may come to (16384 points at four to the
--- point); a page of the sizes people make is sharp at every step to 400%.
-local STEPS = { 0.25, 0.33, 0.5, 0.67, 0.75, 1, 1.25, 1.5, 2, 3, 4 }
-local LONGEST = 16384
+-- The scales the zoom keys go by and the longest side a page is shown with are a picture's too
+-- (`pictures.lua`).
+local STEPS = pictures.STEPS
+local LONGEST = pictures.LONGEST
 
 -- How many pages' words are kept, and how many pages one selection may hold (what is copied is read
 -- from the words kept, and all of a selection's pages are kept).

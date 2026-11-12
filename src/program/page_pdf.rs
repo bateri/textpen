@@ -138,6 +138,7 @@ fn click_count(page: &mut Page, at: Point, count: u32) -> Result<(), Error> {
         page.pointer(Input::Release {
             at,
             button: Button::Left,
+            mods: Mods::default(),
         })?;
     }
     Ok(())
@@ -449,7 +450,10 @@ fn a_pdf_with_no_text_says_so_in_the_bar() -> Result<(), Error> {
     wait(&mut page, |page| shows(page, "No text in this PDF"))?;
     assert!(!shows(&page, "No results"));
     let at = middle(&page, "pdf-page:1")?;
-    page.pointer(Input::Move(at))?;
+    page.pointer(Input::Move {
+        at,
+        mods: Mods::default(),
+    })?;
     assert_eq!(page.cursor(), Some(Cursor::Arrow));
     Ok(())
 }
@@ -485,12 +489,15 @@ fn selecting_the_words_of_a_pdf_and_copying_them() -> Result<(), Error> {
 
     // The pointer over a line of words is the text pointer, and elsewhere on the page the arrow.
     let over = Point::new(line.x + line.w / 2.0, line.y + line.h / 2.0);
-    page.pointer(Input::Move(over))?;
+    page.pointer(Input::Move {
+        at: over,
+        mods: Mods::default(),
+    })?;
     assert_eq!(page.cursor(), Some(Cursor::Text));
-    page.pointer(Input::Move(Point::new(
-        on_page.x + on_page.w - 8.0,
-        on_page.y + on_page.h - 8.0,
-    )))?;
+    page.pointer(Input::Move {
+        at: Point::new(on_page.x + on_page.w - 8.0, on_page.y + on_page.h - 8.0),
+        mods: Mods::default(),
+    })?;
     assert_eq!(page.cursor(), Some(Cursor::Arrow));
 
     // A double click is a word: "needle" is the third to the eighth character of its line of 22.

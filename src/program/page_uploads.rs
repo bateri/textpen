@@ -85,6 +85,7 @@ pub(crate) fn click(page: &mut Page, name: &str) -> Result<(), Error> {
     page.page_mut().input(Input::Release {
         at,
         button: Button::Left,
+        mods: Mods::default(),
     });
     through(page.settle())
 }

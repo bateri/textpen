@@ -7,6 +7,20 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Added
+
+- **A picture is made larger by a pinch.** A pinch on a trackpad makes the picture in its tab
+  larger about your fingers, the wheel with `⌘` held does the same, a double tap with two fingers
+  goes between the fit and the picture's own size, and `⌘+`, `⌘-` and `⌘0` step it and fit it
+  again, up to eight times its own size (less for a picture so large that the terminal could not
+  draw it larger). The status line says how much of its own size it is shown at, `Fit` or a percent,
+  and a click on it fits the picture.
+
+### Changed
+
+- **The size of a picture is in the status line.** It was a line under the picture; the picture has
+  that room now.
+
 ## [0.7.0] - 2026-11-11
 
 ### Added

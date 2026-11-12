@@ -136,9 +136,13 @@ theme and the editor follows, live.
 **Search in the project's files**, as words, whole words or patterns, with the matches by
 file; go through them from anywhere with `F4` and `⇧F4`.
 
-**Pictures**: a PNG, a JPEG or an SVG opens in its tab, fitted into it and not made larger, with its
-size and its pixels under it. A file past 8 MiB or 4096 pixels is not drawn, and says so. It needs
-a terminal that shows the page at `lua` 0.1, as bateri does.
+**Pictures**: a PNG, a JPEG or an SVG opens in its tab, fitted into it and not made larger. A
+pinch makes it larger about your fingers, the wheel with `⌘` held does the same, a double tap with
+two fingers goes between the fit and the picture's own size, and `⌘+`, `⌘-` and `⌘0` step it (the
+steps of a PDF's zoom, of the picture's own size) and fit it again, up to eight times its own size.
+The status line says how much of its own size it is shown at (`Fit`, or `250%`; a click fits it),
+with the size of the file and its pixels. A file past 8 MiB or 4096 pixels is not drawn, and says
+so. It needs a terminal that shows the page at `lua` 0.1, as bateri does.
 
 **PDFs** open in their tab as pages one under the other, scrolled by the terminal, sharp at any
 zoom: `⌘+`, `⌘-` and `⌘0` step the zoom and fit the width, `Page Down`, `Home` and `End` go through
@@ -245,6 +249,7 @@ type `@`, `#`, `[` or `{`.
 | `⌘⌥]`, `⌃⌥]`, `⌃⌥[`        | in the comparison, open the stretch at the caret, show every line, fold   |
 | `⇧F10`                     | the editor's right-click menu, at the caret                               |
 | `⇧⌘V`                      | the preview of a Markdown file                                            |
+| `⌘+`, `⌘-`, `⌘0`           | in a picture or a PDF: larger, smaller, fit                               |
 | `⌘,`, `⇧⌘/`                | the settings, every key                                                   |
 | `⌘J`                       | a shell in the project, in this pane                                      |
 | `⌃Q`                       | quit, asking about what is not saved                                      |

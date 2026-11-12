@@ -262,6 +262,75 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     Ok(())
 }
 
+/// A picture in its tab as the status line says it: fitted, larger by a pinch, a small one at eight
+/// times its size, in an 80×24 pane. For looking at; written to target/shots/.
+#[test]
+#[ignore = "shots: draws the page in the fonts of this machine into target/shots/"]
+fn the_pictures_of_a_picture_zoomed() -> Result<(), Error> {
+    use pencere_view::GesturePhase;
+    let fonts = fonts();
+    let out = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/shots");
+    std::fs::create_dir_all(&out).expect("the folder");
+    let write = |page: &Page, palette: Palette, name: &str| {
+        let png = page.shot_in(&fonts, palette).expect("a picture");
+        std::fs::write(out.join(format!("{name}.png")), png).expect("the picture written");
+    };
+    let art = lantern_art();
+    let small = png(160, 100, |x, y| {
+        [(x * 255 / 160) as u8, (y * 255 / 100) as u8, 120]
+    });
+    for (name, size, palette) in [
+        ("picture-dark-wide", (1280.0, 800.0), Palette::Dark),
+        ("picture-light-80x24", PANE, Palette::Light),
+    ] {
+        let project = lantern();
+        project.write_bytes("assets/lantern.png", &art);
+        project.write_bytes("assets/dot.png", &small);
+        with_git(&project);
+        let mut page = open_pictured(
+            &project,
+            &["assets/lantern.png", "src/server.ts"],
+            size,
+            &fonts,
+            &[&art, &small],
+        )?;
+        write(&page, palette, &format!("{name}-fit"));
+        // Larger by a pinch about the middle of what is drawn, then the keys: one step more, then the
+        // size of the picture itself by a double tap.
+        let room = page.bounds("picture:assets/lantern.png").expect("its box");
+        let middle = pencere_view::Point::new(room.x + room.w / 2.0, room.y + room.h / 2.0);
+        page.magnify_at(middle, 0.0, GesturePhase::Begin)?;
+        for _ in 0..8 {
+            page.magnify_at(middle, 0.1, GesturePhase::Move)?;
+        }
+        page.magnify_at(middle, 0.0, GesturePhase::End)?;
+        page.advance(1.0)?;
+        write(&page, palette, &format!("{name}-pinched"));
+        page.press("cmd+0")?;
+        page.advance(1.0)?;
+        page.smart_magnify_at(middle)?;
+        page.advance(1.5)?;
+        write(&page, palette, &format!("{name}-own-size"));
+        // A small one: its fit is its own size, and it goes to eight times it.
+        if size != PANE {
+            page.click("row:assets/dot.png")?;
+            page.advance(1.5)?;
+            write(&page, palette, &format!("{name}-small"));
+            let room = page.bounds("picture:assets/dot.png").expect("its box");
+            let middle = pencere_view::Point::new(room.x + room.w / 2.0, room.y + room.h / 2.0);
+            page.release()?;
+            page.magnify_at(middle, 0.0, GesturePhase::Begin)?;
+            for _ in 0..30 {
+                page.magnify_at(middle, 0.1, GesturePhase::Move)?;
+            }
+            page.magnify_at(middle, 0.0, GesturePhase::End)?;
+            page.advance(1.0)?;
+            write(&page, palette, &format!("{name}-small-eightfold"));
+        }
+    }
+    Ok(())
+}
+
 /// The project made a repository, and the file the comparison is shown on changed as a person
 /// working in it would have left it: a line changed, a line made into three, two added at the top and
 /// two taken away.
@@ -867,6 +936,7 @@ fn the_pictures_of_a_pdf() -> Result<(), Error> {
         page.pointer(pencere_view::Input::Release {
             at,
             button: pencere_view::Button::Left,
+            mods: pencere_view::Mods::default(),
         })?;
         page.advance(0.5)?;
         write(&page, palette, &format!("{name}-select"));

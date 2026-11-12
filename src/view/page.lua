@@ -26,6 +26,7 @@ local changes = require("./parts/changes")
 local compare = require("./parts/compare")
 local editor_menu = require("./parts/editor_menu")
 local pdf = require("./parts/pdf")
+local pictures = require("./parts/pictures")
 local uploads = require("./parts/uploads")
 
 local b, ui, S, SIZE, act = kit.b, kit.ui, kit.S, kit.SIZE, kit.act
@@ -303,7 +304,7 @@ local function handle(event)
 		reply = (kind ~= "viewport" or compare.moved(event)) or nil
 	elseif kind == "scrolled" then
 		compare.scrolled(event)
-		reply = pdf.scrolled(event) or nil
+		reply = pdf.scrolled(event) or pictures.scrolled(event) or nil
 	elseif kind == "move" then
 		reply = moved(event)
 	elseif kind == "leave" then
