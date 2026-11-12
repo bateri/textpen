@@ -193,7 +193,16 @@ local ROWS = {
 		title = "Text size",
 		detail = "Points more than the terminal's own",
 		value = function(s) return textsize.words(s.textSize or 0) end,
-		step = function(s, by) return { textSize = textsize.clamp((s.textSize or 0) + by) } end,
+		-- Round like the other rows: past the largest the smallest, so a click is never lost at the end.
+		step = function(s, by)
+			local size = (s.textSize or 0) + by
+			if size > textsize.MAX then
+				size = textsize.MIN
+			elseif size < textsize.MIN then
+				size = textsize.MAX
+			end
+			return { textSize = size }
+		end,
 	},
 	{
 		key = "autoSave",

@@ -2215,6 +2215,16 @@ fn the_text_size_keys_ask_the_terminal_for_a_larger_page_and_it_is_kept() -> Res
         page.press("cmd+-")?;
     }
     assert_eq!(page.text_size(), -4, "no smaller");
+    // The settings' row goes round like the others, so a click at the end is not lost.
+    page.press("cmd+,")?;
+    for _ in 0..8 {
+        page.press("down")?;
+    }
+    page.press("left")?;
+    assert_eq!(page.text_size(), 24, "past the smallest, the largest");
+    page.press("space")?;
+    assert_eq!(page.text_size(), -4, "past the largest, the smallest");
+    page.press("escape")?;
     // The palette has them, with the keys.
     page.press("cmd+k")?;
     page.type_text(">text")?;
