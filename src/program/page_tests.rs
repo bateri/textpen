@@ -3106,6 +3106,112 @@ fn the_tabs_scroll_away_from_the_tab_in_front_and_come_to_the_next_one() -> Resu
     Ok(())
 }
 
+/// A row of the tree is carried out of the page to a terminal pane or another application as the path
+/// it stands for, from the root of the machine, a file's and a folder's; a click on it is not that.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_row_of_the_tree_is_carried_out_of_the_page_as_the_path_it_stands_for() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    let outside = Point::new(WIDE.0 + 80.0, 200.0);
+    let path = |name: &str| project.root().join(name).to_string_lossy().into_owned();
+    page.drag_out("row:config.yaml", outside)?;
+    let [carry] = page.carries() else {
+        panic!("one file carried: {:?}", page.carries());
+    };
+    assert_eq!(carry.id, Id::named("row:config.yaml"));
+    assert_eq!(carry.carry, pencere_view::Carry::path(path("config.yaml")));
+    assert_eq!(Some(carry.rect), page.bounds("row:config.yaml"));
+    page.finish_carry(true)?;
+    page.drag_out("row:worker", outside)?;
+    assert_eq!(
+        page.carries().last().map(|carry| carry.carry.clone()),
+        Some(pencere_view::Carry::path(path("worker"))),
+        "a folder carries its path too"
+    );
+    page.finish_carry(false)?;
+    // The drag is over: the page hears the pointer again, and a click is a click.
+    page.click("row:Dockerfile")?;
+    wait(&mut page, |page| page.bounds("tab:Dockerfile").is_some())?;
+    assert_eq!(page.carries().len(), 2, "a click carries nothing");
+    Ok(())
+}
+
+/// A tab is the page's own drag while the pointer is in the page (it changes the order) and what the
+/// system carries from the moment it is out: the file's path, with the order as it was.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_tab_is_put_in_order_in_the_page_and_carried_out_of_it() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["README.md", "src/server.ts", "config.yaml"]);
+    let mut page = project.open(&session, WIDE)?;
+    let order = |page: &Page| {
+        let mut tabs: Vec<(f32, &str)> = ["README.md", "src/server.ts", "config.yaml"]
+            .into_iter()
+            .map(|name| {
+                let tab = page.bounds(&format!("tab:{name}")).expect("a tab");
+                (tab.x, name)
+            })
+            .collect();
+        tabs.sort_by(|a, b| a.0.total_cmp(&b.0));
+        tabs.into_iter().map(|(_, name)| name).collect::<Vec<_>>()
+    };
+    assert_eq!(order(&page), ["README.md", "src/server.ts", "config.yaml"]);
+    let middle = |page: &Page, name: &str| {
+        let tab = page.bounds(&format!("tab:{name}")).expect("a tab");
+        Point::new(tab.x + tab.w / 2.0, tab.y + tab.h / 2.0)
+    };
+    // Inside the page: README.md put down on config.yaml goes after it, and nothing is carried.
+    let (from, onto) = (middle(&page, "README.md"), middle(&page, "config.yaml"));
+    page.drag_between(from, onto)?;
+    assert_eq!(order(&page), ["src/server.ts", "config.yaml", "README.md"]);
+    assert!(page.carries().is_empty(), "{:?}", page.carries());
+    // Out of the page, the path is carried and the order stays.
+    page.drag_out("tab:src/server.ts", Point::new(WIDE.0 + 80.0, 12.0))?;
+    let [carry] = page.carries() else {
+        panic!("one tab carried: {:?}", page.carries());
+    };
+    assert_eq!(carry.id, Id::named("tab:src/server.ts"));
+    assert_eq!(
+        carry.carry,
+        pencere_view::Carry::path(project.root().join("src/server.ts").to_string_lossy())
+    );
+    page.finish_carry(true)?;
+    assert_eq!(order(&page), ["src/server.ts", "config.yaml", "README.md"]);
+    // A click on a tab is still a click on it.
+    page.click("tab:config.yaml")?;
+    wait(&mut page, |page| text(page).contains("port: 8080"))?;
+    Ok(())
+}
+
+/// A name no drag out of the page may carry (a line break, a control of the direction of text) is
+/// not carried, and the page goes on: the row and the tab of it are the page's alone.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_name_that_may_not_be_carried_is_left_in_the_page() -> Result<(), Error> {
+    let project = lantern();
+    let (broken, turned) = ("two\nlines.txt", "ab\u{202e}gnp.txt");
+    project.write(broken, "x");
+    project.write(turned, "y");
+    let session = project.session(&["README.md", broken, turned]);
+    let mut page = project.open(&session, WIDE)?;
+    let outside = Point::new(WIDE.0 + 80.0, 200.0);
+    for id in [
+        format!("row:{broken}"),
+        format!("row:{turned}"),
+        format!("tab:{broken}"),
+        format!("tab:{turned}"),
+    ] {
+        page.drag_out(&id, outside)?;
+        assert!(page.carries().is_empty(), "{id:?}: {:?}", page.carries());
+    }
+    // Another name is carried all the same.
+    page.drag_out("row:config.yaml", outside)?;
+    assert_eq!(page.carries().len(), 1);
+    Ok(())
+}
+
 /// Every open file's editor takes its text as the terminal makes it (`editor_ready`), shown or
 /// hidden, with nothing refused.
 #[test]

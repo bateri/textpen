@@ -19,9 +19,14 @@ change what the previous one did.
 - **A PDF is made larger by a pinch.** The same pinch, wheel with `⌘` and double tap as a
   picture's, about your fingers and stopping at the steps of the zoom; smaller than the fit, the
   pages are narrower than the tab and in its middle.
-- **The text of the code is made larger by `⌘+`, `⌘-` and `⌘0`, or a pinch over it.** textpen asks
+- **The text of the code is made larger by `⌘+`, `⌘-` and `⌘0`, or a pinch that no picture or PDF takes.** textpen asks
   the terminal to draw its page a few points larger (the terminal's own text stays), keeps the
   size, and has a **Text size** in the settings (-4 to 24 points).
+
+- **A file is dragged out of textpen.** A row of the tree, a file's or a folder's, or a tab, dragged
+  out of the page, brings its path into a terminal's pane (quoted for the shell, not run) or into
+  another application as text; a tab dragged along the strip still puts the tabs in order, and a
+  name with a line break in it is not carried.
 
 ### Changed
 

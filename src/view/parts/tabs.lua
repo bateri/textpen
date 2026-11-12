@@ -88,6 +88,11 @@ local function tab_view(tab, hint)
 		:selected(active)
 		:label(text.basename(path) .. (dirty and ", not saved" or ""))
 		:tip(path .. (dirty and " · not saved" or "") .. (info and info.readonly and " · read-only" or ""))
+	-- In the page it puts the tab in order; out of it, the file goes where it is dropped (a file that is
+	-- gone from the disk has no path to go).
+	if not (info and info.missing) then
+		kit.carries(element, path)
+	end
 	element:child(b.div():absolute():inset(0, 0, nil, 0):h(2):bg(active and "accent" or (target and b.alpha("accent", 0.6) or nil)))
 	element:child(b.div():absolute():inset(0, 0, 0, nil):w(1):bg("border"))
 	element:child(kit.icon(kind.icon, 14, kind.color))

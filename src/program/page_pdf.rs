@@ -706,14 +706,23 @@ fn a_pdf_that_is_none_opens_as_a_file_that_is_not_text() -> Result<(), Error> {
 #[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
 fn a_pdf_tab_is_as_it_was_left_when_it_comes_back() -> Result<(), Error> {
     let (_project, mut page) = open_pdf(PAGES, WIDE)?;
+    page.press("cmd+=")?;
+    page.release()?;
     page.press("end")?;
     wait(&mut page, |page| shows(page, "Page 3 of 3"))?;
+    let zoom = page.zoom_of("pdf:spec.pdf")?;
+    assert!(zoom > 1.0, "zoomed: {zoom}");
     page.click("tab:README.md")?;
     wait(&mut page, |page| pages_drawn(page).is_empty())?;
     page.click("tab:spec.pdf")?;
     wait(&mut page, |page| !pages_drawn(page).is_empty())?;
     page.advance(0.3)?;
     assert!(shows(&page, "Page 3 of 3"), "{:?}", page_words(&page));
+    assert!(
+        (page.zoom_of("pdf:spec.pdf")? - zoom).abs() < 0.01,
+        "the zoom is kept with the tab: {zoom} then {}",
+        page.zoom_of("pdf:spec.pdf")?
+    );
     Ok(())
 }
 

@@ -45,12 +45,7 @@ function textsize.step(by)
 	return textsize.set(textsize.current() + by)
 end
 
--- What the terminal is told when the page opens: the size that was kept.
-function textsize.say()
-	kit.gather({ text_size = textsize.current() })
-end
-
--- What the status line and the settings say of the size.
+-- What the settings' sheet says of the size.
 function textsize.words(size)
 	size = size or textsize.current()
 	if size == 0 then
@@ -59,27 +54,33 @@ function textsize.words(size)
 	return string.format("%+d pt", size)
 end
 
--- A pinch no box that zooms took: a step at every `STEP` it comes to, the way it goes.
+-- A pinch no box that zooms took: a step at every `STEP` it comes to, the way it goes. Whether the size changed.
 function textsize.magnify(event)
+	local changed = false
 	if event.phase == "begin" then
 		pinch = 0
 	end
 	pinch += math.log(math.max(1 + event.by, 0.01))
 	while pinch >= STEP do
 		pinch -= STEP
-		if not textsize.step(1) then
+		if textsize.step(1) then
+			changed = true
+		else
 			pinch = 0
 		end
 	end
 	while pinch <= -STEP do
 		pinch += STEP
-		if not textsize.step(-1) then
+		if textsize.step(-1) then
+			changed = true
+		else
 			pinch = 0
 		end
 	end
 	if event.phase == "end" then
 		pinch = 0
 	end
+	return changed
 end
 
 return textsize

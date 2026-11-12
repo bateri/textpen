@@ -169,6 +169,13 @@ at the caret; the preview holds its place until it is whole. A pause of a few se
 it is; with no word for 30 seconds the row says "Upload stalled" and offers **Retry**. It needs a terminal that shows the
 page at `lua` 0.1, as bateri does.
 
+**Drag a file out of textpen**: a row of the tree (a file or a folder), or a tab, dragged out of the
+page, brings its path (from the root of the machine) to where it is dropped: into a terminal's
+pane, where it is quoted for the shell and put at the cursor without being run, or into another
+application as text. A tab dragged along the strip still puts the tabs in order. A name with a line
+break or a control of the direction of text in it is not carried, and stays in the page alone. It
+needs a terminal that carries what a page offers, as bateri does.
+
 <details>
 <summary>Five pictures of an upload</summary>
 
@@ -266,9 +273,10 @@ click does what the key does.
 
 `⌃C` always reaches textpen and ends it, whatever has the keyboard; what is not saved is
 kept as a draft. **The size of the text** is the terminal's, and `⌘+`, `⌘-` and `⌘0` (or a pinch
-over the code) make the page's text larger or smaller than that, a step a point, and back to the
-terminal's: textpen asks the terminal to draw its page larger, and the text of your terminal stays
-as it was. The size is kept, and **Text size** in the settings sets it (-4 to 24 points).
+that no picture or PDF takes) make the page's text larger or smaller than that, a step a point, and
+back to the terminal's: textpen asks the terminal to draw its page larger, and the text of your
+terminal stays as it was. The size is kept, and **Text size** in the settings sets it (-4 to 24
+points).
 
 ## How it works
 

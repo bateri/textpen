@@ -295,6 +295,7 @@ local function row_view(row, index, ctx)
 		:expanded(is_dir and row.open)
 		:selected(selected)
 		:tip(path)
+	kit.carries(element, path)
 	if is_dir and uploads.dropping(path) then
 		element:border(1, "accent")
 	end

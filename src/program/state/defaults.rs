@@ -106,17 +106,13 @@ pub const TEXT_SIZES: (i32, i32) = (-4, 24);
 
 /// As [`clamp`], for a size that may be below 0.
 pub fn clamp_signed(value: f64, (minimum, maximum): (i32, i32)) -> i32 {
-    let whole = (value + 0.5).floor();
-    if whole <= f64::from(minimum) {
-        minimum
-    } else if whole >= f64::from(maximum) {
-        maximum
-    } else {
-        // Between two i32, so it is one.
-        #[allow(clippy::cast_possible_truncation)]
-        let whole = whole as i32;
-        whole
-    }
+    let whole = (value + 0.5)
+        .floor()
+        .clamp(f64::from(minimum), f64::from(maximum));
+    // Between two i32, so it is one.
+    #[allow(clippy::cast_possible_truncation)]
+    let whole = whole as i32;
+    whole
 }
 
 /// A number as a setting has it: whole, and within its sizes.

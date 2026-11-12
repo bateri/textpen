@@ -344,6 +344,38 @@ local function indent_guides(element, depth)
 	end
 end
 
+-- Whether `why`, the error of `carry`, is its refusal of what it was given (the kit's rule of what a
+-- drag out of the view may carry), and not a mistake in the call.
+local function refused(why)
+	return type(why) == "string"
+		and (string.find(why, "a carry is one line", 1, true) ~= nil or string.find(why, "the url of a carry", 1, true) ~= nil)
+end
+
+-- Makes `element` (named already) something dragged out of the page to a terminal pane or another
+-- application: the file at `path` (as the project names it), from the root of the machine. A name the
+-- kit may not hand the system (a line break, a control of the direction of text: the kit's own rule,
+-- which `carry` refuses by an error) is left as it is, an element of the page alone, and so is the
+-- element of a terminal whose kit has no `carry`; any other error is the page's own and goes on.
+local function carries(element, path)
+	if element.carry == nil then
+		return element
+	end
+	local root = S.boot and S.boot.root or ""
+	local whole = nil
+	if string.sub(path, 1, 1) == "/" then
+		whole = path
+	elseif string.sub(root, 1, 1) == "/" then
+		whole = root .. "/" .. path
+	end
+	if whole ~= nil then
+		local ok, why = pcall(element.carry, element, { path = whole })
+		if not ok and not refused(why) then
+			error(why, 0)
+		end
+	end
+	return element
+end
+
 -- A line across or down, in the theme's colour of rules.
 local function rule_x(color)
 	return b.div():h(1):w_full():no_shrink():bg(color or "border")
@@ -397,6 +429,7 @@ return {
 	button = button,
 	INDENT = INDENT,
 	indent_guides = indent_guides,
+	carries = carries,
 	rule_x = rule_x,
 	rule_y = rule_y,
 	toast = toast,
