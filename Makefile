@@ -2,17 +2,22 @@
 # (src/view/, a page of pencere's kit) and the pictures (src/assets/) carried in it by build.rs. The
 # gate, `make dev` and the steps of a release are here; RELEASING.md says in what order and why.
 # Nothing here needs Node but the release steps, which run tools/release.mjs.
-.PHONY: pin fmt lint test test-page test-tools check-timing shots check build pencere-src pencere fake-host pencere-ref dev dist sums release-prepare release publish
+.PHONY: pin fmt lint test test-page test-tools check-timing shots check build pencere-src pencere fake-host pencere-ref pencere-dir dev dist sums release-prepare release publish
 
 # pencere is pinned in one place, Cargo.lock (Cargo.toml names the release): the crate the program is
 # built on is of it, and so are the `pencere` command `make dev` runs textpen under and the stand-in
-# terminal the program's tests run it in, which are built from it in .cache/pencere. To work against
-# a checkout you are changing, say so; one that is not at Cargo.lock's ref is said to be so, and used:
+# terminal the program's tests run it in, which are built from it in PENCERE_CACHE, below. To work
+# against a checkout you are changing, say so; one that is not at Cargo.lock's ref is said to be so,
+# and used:
 #
 #   make dev PENCERE_SRC=../pencere
 # The ref is the commit Cargo.lock takes it at, or the tag of the crates' release it takes.
 PENCERE_REF = $(shell awk '/^name = "pencere"$$/ { getline v; getline s; gsub(/version = |"/, "", v); if (s ~ /^source = "registry/) print "crates-v" v; else { sub(/.*\#/, "", s); sub(/"$$/, "", s); print s } exit }' Cargo.lock)
-PENCERE_CACHE = .cache/pencere
+# Every pen, and every worktree of one, built on the same ref shares one checkout of pencere and its
+# target, in PENCERE_HOME (~/.cache/pencere-build, or under XDG_CACHE_HOME): a folder for each ref,
+# made whole once and never changed after. Cargo locks a target that two builds share.
+PENCERE_HOME ?= $(or $(XDG_CACHE_HOME),$(HOME)/.cache)/pencere-build
+PENCERE_CACHE = $(PENCERE_HOME)/$(PENCERE_REF)
 PENCERE_SRC ?= $(PENCERE_CACHE)
 PENCERE ?= $(PENCERE_SRC)/target/release/pencere
 PENCERE_GIT = https://github.com/bateri/pencere
@@ -20,7 +25,7 @@ PENCERE_GIT = https://github.com/bateri/pencere
 # The stand-in terminal the program's tests run textpen in (FAKE_HOST): by default the one built in
 # the pencere checkout beside this one. `make fake-host` builds one at Cargo.lock's pencere instead:
 #
-#   make fake-host && make check FAKE_HOST=.cache/pencere/target/debug/pencere-fake-host
+#   make fake-host && make check FAKE_HOST="$(make -s pencere-dir)/target/debug/pencere-fake-host"
 FAKE_HOST ?= ../pencere/target/debug/pencere-fake-host
 
 # pin: main is built on a pencere anyone can fetch, the release Cargo.lock names. A branch that waits
@@ -80,18 +85,26 @@ test-tools:
 build:
 	cargo build --locked --release
 
-# pencere-src makes PENCERE_SRC ready: fetched at Cargo.lock's ref when it is the cache (one checkout,
-# moved to another ref when Cargo.lock moves, so that cargo builds again only what changed).
+# pencere-src makes PENCERE_SRC ready: fetched at Cargo.lock's ref when it is the cache. The fetch
+# is made in a folder of its own and moved to PENCERE_CACHE when it is whole, so that two pens that
+# fetch the same ref together cannot spoil it: the one that is late throws its copy away.
 pencere-src:
 	@command -v cargo >/dev/null || { echo "pencere: cargo is not installed: pencere is built from its source (https://rustup.rs)"; exit 1; }
 	@ref="$(PENCERE_REF)"; test -n "$$ref" || { echo "pencere: Cargo.lock takes no pencere"; exit 1; }; \
 	if [ "$(PENCERE_SRC)" = "$(PENCERE_CACHE)" ]; then \
-		if [ "$$(cat $(PENCERE_CACHE).ref 2>/dev/null)" != "$$ref" ]; then \
+		if [ ! -f "$(PENCERE_CACHE)/.git/pencere-fetched" ]; then \
+			[ ! -e "$(PENCERE_CACHE)" ] || { echo "pencere: $(PENCERE_CACHE) was not fetched whole: remove it"; exit 1; }; \
 			echo "pencere: fetching $(PENCERE_GIT) at $$ref into $(PENCERE_CACHE)"; \
-			{ test -d "$(PENCERE_CACHE)/.git" || git init -q "$(PENCERE_CACHE)"; } && \
-			git -C "$(PENCERE_CACHE)" fetch -q --depth 1 "$(PENCERE_GIT)" "$$ref" && \
-			git -C "$(PENCERE_CACHE)" checkout -q --detach --force FETCH_HEAD && \
-			echo "$$ref" > "$(PENCERE_CACHE).ref" || exit 1; \
+			mkdir -p "$(PENCERE_HOME)" && tmp=$$(mktemp -d "$(PENCERE_HOME)/.fetch.XXXXXX") || exit 1; \
+			trap 'rm -rf "$$tmp"' EXIT HUP INT TERM; \
+			git init -q "$$tmp" && \
+			git -C "$$tmp" fetch -q --depth 1 "$(PENCERE_GIT)" "$$ref" && \
+			git -C "$$tmp" checkout -q --detach FETCH_HEAD && \
+			echo "$$ref" > "$$tmp/.git/pencere-fetched" || exit 1; \
+			if [ ! -f "$(PENCERE_CACHE)/.git/pencere-fetched" ]; then \
+				mv "$$tmp" "$(PENCERE_CACHE)" || exit 1; \
+				rm -rf "$(PENCERE_CACHE)/$${tmp##*/}"; \
+			fi; \
 		fi; \
 	else \
 		head=$$(git -C "$(PENCERE_SRC)" rev-parse HEAD 2>/dev/null); \
@@ -111,6 +124,10 @@ fake-host: pencere-src
 # pencere-ref says which pencere Cargo.lock takes.
 pencere-ref:
 	@echo "$(PENCERE_REF)"
+
+# pencere-dir says where the checkout of that pencere and its target are, fetched yet or not.
+pencere-dir:
+	@echo "$(PENCERE_CACHE)"
 
 # dev runs textpen from its files in this pane, in a terminal that hosts pencere (bateri): the page
 # is shown again when a file of src/view/ or src/assets/ changes, and the program built and run again

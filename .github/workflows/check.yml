@@ -4,8 +4,8 @@
 #
 # pencere, which textpen is built and tested with, is the one Cargo.lock takes: the program is built
 # on that crate, and the stand-in terminal the tests run it in is built from the same commit
-# (`make fake-host`, into .cache/pencere). Nothing else says which pencere. Moving it is a change of
-# Cargo.toml and Cargo.lock, and of nothing here.
+# (`make fake-host`, into ~/.cache/pencere-build/<commit>). Nothing else says which pencere. Moving
+# it is a change of Cargo.toml and Cargo.lock, and of nothing here.
 name: check
 
 on:
@@ -31,15 +31,21 @@ jobs:
         with:
           toolchain: 1.99.1
           components: clippy, rustfmt
+      # pencere is fetched before the cache is restored, which restores its target into the checkout.
+      - name: Fetch pencere, the one Cargo.lock takes
+        id: pencere
+        run: |
+          make pencere-src
+          echo "dir=$(make -s pencere-dir)" >> "$GITHUB_OUTPUT"
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: gate
           workspaces: |
             . -> target
-            .cache/pencere -> target
+            ${{ steps.pencere.outputs.dir }} -> target
       - name: The stand-in terminal, of the pencere Cargo.lock takes
         run: make fake-host
-      - run: make check FAKE_HOST=.cache/pencere/target/debug/pencere-fake-host
+      - run: make check FAKE_HOST="${{ steps.pencere.outputs.dir }}/target/debug/pencere-fake-host"
       - name: Say what the gate was held to
         run: |
           {

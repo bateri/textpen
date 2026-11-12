@@ -66,7 +66,8 @@ git and its time limit, a hangup, the drafts, a long text in pieces, a big direc
 a search, the command line, and the shell: its directory, its environment and its first line, the
 editor shown again and told how it ended, a shell that cannot start, a hangup while it has the pane. The stand-in is the one `FAKE_HOST` names, or
 `../pencere/target/debug/pencere-fake-host` (`cargo build -p pencere-fake-host` in a pencere
-checkout); `make fake-host` builds one of the pencere `Cargo.lock` takes, in `.cache/pencere`. One
+checkout); `make fake-host` builds one of the pencere `Cargo.lock` takes, in
+`~/.cache/pencere-build/<commit>` (`make pencere-dir` says where). One
 that is not there, or that cannot show a whole result (`PENCERE_FAKE_GIST`), fails the run.
 Nothing is skipped.
 
