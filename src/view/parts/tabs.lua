@@ -95,7 +95,7 @@ local function tab_view(tab, hint)
 	end
 	element:child(b.div():absolute():inset(0, 0, nil, 0):h(2):bg(active and "accent" or (target and b.alpha("accent", 0.6) or nil)))
 	element:child(b.div():absolute():inset(0, 0, 0, nil):w(1):bg("border"))
-	element:child(kit.icon(kind.icon, 14, kind.color))
+	element:child(kit.kind_icon(kind.icon, 14, kind.color))
 	local name = b.rich({
 		b.span(text.basename(path)):color(name_color),
 		hint and b.span(" " .. hint):color("quiet") or nil,

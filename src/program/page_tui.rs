@@ -13,7 +13,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use pencere_drive::headless::{Error, Headless, InProcess};
-use pencere_tui::{CanvasMode, Cells, Frame, ImageMode, Options, Theme, render, show_texts};
+use pencere_tui::{
+    CanvasMode, Cells, Depth, Frame, ImageMode, Options, Screen, Theme, render, show_texts,
+};
 use pencere_view::{Id, Paint, Rect};
 
 use super::{lantern_art, spec_pdf, with_changed_server, with_git};
@@ -161,7 +163,10 @@ fn shoot_with(
             &page.page().images(),
             &options,
         );
-        if !frame.waiting || tries >= 100 {
+        // A frame does not wait for a page that is being drawn (it shows the one that stands in for it
+        // until it is), so the picture here is the drawn one: it is what a person sees a moment later.
+        let drawing = page.page().images().is_some_and(|images| images.busy());
+        if !(frame.waiting || drawing) || tries >= 100 {
             break frame;
         }
         tries += 1;
@@ -486,6 +491,10 @@ fn nothing_stands_past_its_box_on_any_screen_at_any_size_of_a_terminal() -> Resu
 const PX: usize = 12;
 const PY: usize = 24;
 
+/// The layer of a picture that covers its cells: under their grounds, over the colour that is under it
+/// where it covers a part of a cell only (which is a layer of its own, lower).
+const GROUND: i32 = -1_073_741_825;
+
 struct Seen {
     z: i32,
     /// The left and top pixel of the cells it is placed on, and how many pixels across and down.
@@ -499,12 +508,25 @@ impl Seen {
         Self::at(placement, (PX, PY))
     }
 
-    /// As [`Seen::of`], for a terminal whose cells are `cell` pixels across and down.
+    /// As [`Seen::of`], for a terminal whose cells are `cell` pixels across and down. A picture that
+    /// is put at a pixel of its first cell (`offset`) is as large as its own pixels; one that has
+    /// none is stretched over its cells.
     fn at(placement: &pencere_tui::Placement, (px, py): (usize, usize)) -> Self {
-        let (cols, rows) = (usize::from(placement.cols), usize::from(placement.rows));
-        let (width, height) = (cols * px, rows * py);
         let source = placement.rgba();
         let (sw, sh) = (placement.width as usize, placement.height as usize);
+        if let Some((dx, dy)) = placement.offset {
+            return Self {
+                z: placement.z,
+                at: (
+                    usize::from(placement.col) * px + dx as usize,
+                    usize::from(placement.row) * py + dy as usize,
+                ),
+                size: (sw, sh),
+                pixels: source.as_chunks::<4>().0.to_vec(),
+            };
+        }
+        let (cols, rows) = (usize::from(placement.cols), usize::from(placement.rows));
+        let (width, height) = (cols * px, rows * py);
         let mut pixels = Vec::with_capacity(width * height);
         for y in 0..height {
             for x in 0..width {
@@ -610,7 +632,7 @@ fn the_marks_and_lines_of_a_found_word_stand_on_the_word_in_the_pixels_of_a_term
     // and under the text.
     let page = seen
         .iter()
-        .filter(|seen| seen.z < -1_000_000_000)
+        .filter(|seen| seen.z == GROUND)
         .max_by_key(|seen| seen.size.0 * seen.size.1)
         .expect("the picture of the page is drawn");
     let over_the_page = |seen: &&Seen| {
@@ -807,6 +829,113 @@ fn the_icons_of_the_welcome_the_palette_and_a_read_only_file_are_characters_wher
     assert!(missing.is_empty(), "{missing:#?}");
 }
 
+/// Where the terminal draws no pictures, a folder in the tree says whether it is open by an arrow, a file
+/// by nothing (a lock file's row has no lock: the lock is a read-only file's), and the icons of the
+/// strips above a file (kept changes, deleted) and of the palette's line and open-files modes are
+/// characters too.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_icons_of_the_tree_the_strips_and_the_palette_are_characters_or_nothing_where_the_terminal_has_no_pictures()
+ {
+    use crate::page_tests::Project;
+    let size = (160, 48);
+    let mut missing = Vec::new();
+    let nopics = |page: &mut Page, name: &str| {
+        shoot(
+            page,
+            name,
+            size,
+            &Theme::dark(),
+            ImageMode::Blocks,
+            CanvasMode::Characters,
+        )
+        .expect("the frame")
+    };
+    // The tree: a folder shut and open, a file, and a lock file.
+    let project = Project::new(&[
+        ("README.md", "# Lantern\n"),
+        ("Cargo.lock", "# lock\n"),
+        ("src/main.rs", "fn main() {}\n"),
+    ]);
+    let session = project.session(&["README.md"]);
+    let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
+    let mut page = open_tui_with(program, size, &[], false).expect("the page opens");
+    wait(&mut page, |page| shown(page).is_some()).expect("an editor");
+    page.advance(1.5).expect("the page settles");
+    let frame = nopics(&mut page, "tree-shut");
+    let line = cells_of(&page, &frame, "rowline:src");
+    if !line.contains('\u{25b8}') {
+        missing.push(format!("a shut folder has no arrow: {line:?}"));
+    }
+    for file in ["README.md", "Cargo.lock"] {
+        let line = cells_of(&page, &frame, &format!("rowline:{file}"));
+        if line.contains(['\u{25b8}', '\u{25be}', '\u{2298}']) {
+            missing.push(format!("the row of {file} has an icon: {line:?}"));
+        }
+    }
+    page.click("row:src").expect("the folder opens");
+    page.advance(0.5).expect("the page settles");
+    let frame = nopics(&mut page, "tree-open");
+    let line = cells_of(&page, &frame, "rowline:src");
+    if !line.contains('\u{25be}') {
+        missing.push(format!("an open folder has no arrow: {line:?}"));
+    }
+    // The palette's modes: a line, and an open file.
+    let mut check = |page: &Page, frame: &Frame, scene: &str, id: &str| {
+        let held = cells_of(page, frame, id);
+        if !held.chars().any(|c| !c.is_whitespace()) {
+            missing.push(format!("{scene}: {id} is {held:?}"));
+        }
+    };
+    page.press("ctrl+l").expect("the line");
+    page.advance(0.5).expect("the palette opens");
+    let frame = nopics(&mut page, "palette-line-icons");
+    check(&page, &frame, "palette of a line", "palette-icon");
+    page.press("escape").expect("the palette closes");
+    page.press("ctrl+e").expect("the open files");
+    page.advance(0.5).expect("the palette opens");
+    let frame = nopics(&mut page, "palette-open-icons");
+    check(&page, &frame, "palette of open files", "palette-icon");
+    page.press("escape").expect("the palette closes");
+    drop(page);
+    // Changes kept from the last run: the strip above the file.
+    let project = lantern();
+    {
+        let session = project.session(&["README.md"]);
+        let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
+        let mut page = open_tui_with(program, size, &[], false).expect("the page opens");
+        wait(&mut page, |page| shown(page).is_some()).expect("an editor");
+        let editor = shown(&page).expect("an editor");
+        page.caret_to(&editor, 0).expect("the caret");
+        page.type_text("draft ").expect("typing");
+        page.advance(1.0).expect("the page settles");
+        session.ending();
+    }
+    let session = project.session(&["README.md"]);
+    let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
+    let mut page = open_tui_with(program, size, &[], false).expect("the page opens");
+    wait(&mut page, |page| {
+        page.bounds("banner-icon:history").is_some()
+    })
+    .expect("the strip");
+    page.advance(0.5).expect("the page settles");
+    let frame = nopics(&mut page, "banner-history-icons");
+    check(&page, &frame, "kept changes", "banner-icon:history");
+    drop(page);
+    // A file that is gone from the disk.
+    let project = lantern();
+    let session = project.session(&["README.md"]);
+    let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
+    let mut page = open_tui_with(program, size, &[], false).expect("the page opens");
+    wait(&mut page, |page| shown(page).is_some()).expect("an editor");
+    std::fs::remove_file(project.root().join("README.md")).expect("removed");
+    wait(&mut page, |page| page.bounds("banner-icon:trash").is_some()).expect("the strip");
+    page.advance(0.5).expect("the page settles");
+    let frame = nopics(&mut page, "banner-trash-icons");
+    check(&page, &frame, "a deleted file", "banner-icon:trash");
+    assert!(missing.is_empty(), "{missing:#?}");
+}
+
 // --- The marks of a PDF against the words the PDF has -----------------------------------------------
 
 /// A page of 612 × 792 points with "needle" set in three places of it: near the top left, as far right as
@@ -898,7 +1027,7 @@ fn marks_stand_on_the_words(pixels: (u32, u32), next: usize, from_top: bool) -> 
     let seen = found_needles((160, 48), pixels, next).expect("the page opens");
     let page = seen
         .iter()
-        .filter(|seen| seen.z < -1_000_000_000)
+        .filter(|seen| seen.z == GROUND)
         .max_by_key(|seen| seen.size.0 * seen.size.1)
         .expect("the picture of the page is drawn");
     let (left, top, right, bottom) = page
@@ -1039,7 +1168,7 @@ fn a_square_picture_is_a_square_on_the_pixels_of_a_terminal() {
             let seen = square_picture(size, pixels).expect("the page opens");
             let picture = seen
                 .iter()
-                .filter(|seen| seen.z < -1_000_000_000)
+                .filter(|seen| seen.z == GROUND)
                 .max_by_key(|seen| seen.size.0 * seen.size.1)
                 .expect("the picture is drawn");
             // Its blue is 128 everywhere; the cells' ground around it is not that.
@@ -1052,6 +1181,89 @@ fn a_square_picture_is_a_square_on_the_pixels_of_a_terminal() {
                     "{size:?} cells of {pixels:?} pixels: the square is {across} by {down} pixels"
                 ));
             }
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+// --- A page that is scrolled is not sent again ------------------------------------------------------
+
+/// How many pictures of pixels (`a=t`, `a=T`) and how many placements (`a=p`) a stream has.
+fn graphics_in(stream: &[u8]) -> (usize, usize) {
+    let count = |needle: &[u8]| {
+        stream
+            .windows(needle.len())
+            .filter(|window| *window == needle)
+            .count()
+    };
+    (
+        count(b"\x1b_Ga=t,") + count(b"\x1b_Ga=T,"),
+        count(b"\x1b_Ga=p,"),
+    )
+}
+
+/// What a terminal is sent as the PDF's pages are scrolled by less than a cell at a time, the way a wheel
+/// turns them (and again with a find open, its marks on the page): the pixels of the page and of each
+/// mark go once, and after them each step is where the pictures are put.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn scrolling_a_pdf_sends_its_pixels_once_and_only_moves_them_with_a_find_open_or_not() {
+    let mut wrong = Vec::new();
+    for find in [false, true] {
+        let (_project, mut page) = open_pdf(&spec_pdf(), (160, 48)).expect("the PDF opens");
+        page.press("ctrl+g").expect("a key");
+        page.type_text("3").expect("typed");
+        page.press("enter").expect("a key");
+        page.advance(0.5).expect("time");
+        if find {
+            page.press("ctrl+f").expect("a key");
+            page.type_text("attach").expect("typed");
+            wait(&mut page, |page| shows(page, " of ")).expect("the finds");
+            page.press("enter").expect("a key");
+        }
+        let mut screen = Screen::new(Depth::True);
+        let mut sent = Vec::new();
+        let mut stood = Vec::new();
+        for step in 0..14 {
+            if step > 0 {
+                // Seven points of the page: a few pixels of the terminal's, not a cell.
+                page.wheel("pdf:docs/pencere-spec.pdf", 0.0, 7.0)
+                    .expect("the wheel");
+            }
+            let frame = shoot(
+                &mut page,
+                "pdf-scroll",
+                (160, 48),
+                &Theme::dark(),
+                ImageMode::Kitty,
+                CanvasMode::Characters,
+            )
+            .expect("a frame");
+            sent.push(graphics_in(&screen.draw(&frame, None)));
+            // Where the page's picture is, to the pixel: the page moves with the wheel.
+            if let Some(page) = frame
+                .placements
+                .iter()
+                .filter(|placed| placed.z == GROUND)
+                .max_by_key(|placed| placed.width * placed.height)
+            {
+                stood.push((page.row, page.offset, page.y));
+            }
+        }
+        stood.dedup();
+        if stood.len() < 6 {
+            wrong.push(format!(
+                "find open {find}: the page did not move: {stood:?}"
+            ));
+        }
+        let (first, later) = (
+            sent[0].0,
+            sent[1..].iter().map(|(sent, _)| sent).sum::<usize>(),
+        );
+        if first == 0 || later > 0 || sent.iter().any(|(_, placed)| *placed == 0) {
+            wrong.push(format!(
+                "find open {find}: pictures sent and put, by step: {sent:?}"
+            ));
         }
     }
     assert!(wrong.is_empty(), "{wrong:#?}");

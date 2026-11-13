@@ -42,6 +42,9 @@ none of the three, and a picture and a PDF stay as they fit.
 - **In a terminal that hosts nothing:** the marks of a found word in a PDF stand on the word, a square
   picture is square, the pane's title in tmux is left alone, and the lock, search, command and keyboard
   icons are characters where the terminal has no pictures.
+- **In a terminal that hosts nothing, folders and the other icons are characters too:** a closed folder
+  is ▸ and an open one ▾, the lock-file mark is gone, and the history, trash, `#` and stack icons are
+  ← ⌫ # □. A PDF page scrolls without being sent again.
 
 ## [0.7.0] - 2026-11-11
 

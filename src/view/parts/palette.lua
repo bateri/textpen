@@ -146,7 +146,7 @@ local function file_item(path, positions, pool, place)
 	local state = S.git and S.git.changes and S.git.changes[path]
 	return {
 		id = path,
-		icon = { kind.icon, kind.color },
+		icon = { kind.icon, kind.color, kind = true },
 		title = marked(path, positions, name_start, #path + 1),
 		detail = name_start > 1 and marked(path, positions, 1, name_start - 1) or nil,
 		git = state,
@@ -287,7 +287,7 @@ local function tab_items(query)
 		local kind = files.kind(path)
 		out[#out + 1] = {
 			id = path,
-			icon = { kind.icon, kind.color },
+			icon = { kind.icon, kind.color, kind = true },
 			title = marked(path, hit.positions, name_start, #path + 1),
 			detail = name_start > 1 and plain(text.dirname(path)) or nil,
 			current = path == S.active,
@@ -518,7 +518,8 @@ local function item_view(item, index, chosen)
 		:role("menu_item")
 		:selected(index == chosen)
 	if item.icon then
-		row:child(b.div():w(16):row():items_center():justify_center():no_shrink():child(kit.icon(item.icon[1], 16, item.icon[2])))
+		local icon = item.icon.kind and kit.kind_icon or kit.icon
+		row:child(b.div():w(16):row():items_center():justify_center():no_shrink():child(icon(item.icon[1], 16, item.icon[2])))
 	end
 	local words = b.div():row():items_center():gap(10):grow(1):min_w(0)
 	if item.lead then

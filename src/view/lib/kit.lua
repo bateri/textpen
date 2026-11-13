@@ -220,8 +220,8 @@ end
 
 -- The characters that say what the icons of the buttons do, where a picture is coarse (each is in the
 -- fonts a terminal has by default, Menlo and SF Mono, but the few Menlo alone has, which SF Mono falls
--- back from). The icons of a file's kind and of a language are not here: a row is as clear without one
--- (`lock` is, for a file that is read-only, and so is the lock of a lock file's row).
+-- back from). The icons of a file's kind and of a language are not here (`kind_icon`: a row is as clear
+-- without one); `lock` is, for a file that is read-only, and `folder` says whether it is open by an arrow.
 local CHARACTERS = {
 	x = "×",
 	check = "✓",
@@ -251,6 +251,12 @@ local CHARACTERS = {
 	["file-search"] = "▤",
 	command = "⌘",
 	keyboard = "⌨",
+	folder = "▸",
+	["folder-open"] = "▾",
+	history = "←",
+	trash = "⌫",
+	hash = "#",
+	["stack-2"] = "□",
 }
 
 -- One of the pictures of src/assets/icons (Tabler's, MIT), `size` points, in a colour of the theme; or,
@@ -261,6 +267,16 @@ local function icon(name, size, color)
 	end
 	size = size or 15
 	return b.image("assets/icons/" .. name .. ".svg"):size(size, size):tint(color or "dim"):no_shrink()
+end
+
+-- The icon of what a file is: the picture of its kind or of its language. Where a picture is coarse there is
+-- none (a row is as clear without one, and a lock file's row is not a read-only file's): nil, or, with `keep`,
+-- the one cell it would have been in a column of rows whose names stand under one another.
+local function kind_icon(name, size, color, keep)
+	if coarse_pictures() then
+		return keep and b.text(" "):no_shrink() or nil
+	end
+	return icon(name, size, color)
 end
 
 -- The keys of a command as the host's keyboard writes them (`@pencere/keys`: "cmd+shift+k" is
@@ -537,6 +553,7 @@ return {
 	syntaxes = syntaxes,
 	hovered = hovered,
 	icon = icon,
+	kind_icon = kind_icon,
 	syntax_options = syntax_options,
 	keys_of = keys_of,
 	keys_all = keys_all,

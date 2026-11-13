@@ -92,7 +92,7 @@ function act.welcome_view(size)
 				:px(10)
 				:rounded(6)
 				:bg(kit.hovered(id) and b.alpha("foreground", 0.06) or nil)
-				:child(kit.icon(kind.icon, 14, kind.color))
+				:child(kit.kind_icon(kind.icon, 14, kind.color))
 				:child(b.rich({ b.span(text.basename(path)), b.span(" " .. text.dirname(path)):color("quiet") }):truncate():min_w(0)))
 		end
 		inner:child(recent)

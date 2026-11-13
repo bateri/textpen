@@ -294,7 +294,7 @@ local function row_view(row)
 	if level then
 		kit.indent_guides(element, level)
 	end
-	element:child(kit.icon(kind.icon, 15, kind.color))
+	element:child(kit.kind_icon(kind.icon, 15, kind.color, true))
 	local words = b.text(name):color(files.GIT_COLOR[row.state] or "foreground")
 	if nested then
 		element:child(words:truncate():min_w(0))
