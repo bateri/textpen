@@ -13,8 +13,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use pencere_drive::headless::{Error, Headless, InProcess};
+use pencere_tui::compose::{Image, Terminal};
 use pencere_tui::{
-    CanvasMode, Cells, Depth, Frame, ImageMode, Options, Screen, Theme, render, show_texts,
+    CanvasMode, Cells, Depth, Frame, ImageMode, Options, Rgb, Screen, Theme, render, show_texts,
 };
 use pencere_view::{Id, Paint, Rect};
 
@@ -1123,7 +1124,7 @@ fn the_marks_of_found_words_stand_on_the_words_of_the_pdf_in_the_pixels_of_a_ter
 
 /// A picture of 240 by 240 pixels open in its tab, drawn for a terminal whose cells are `pixels` across and
 /// down: the pictures it puts on the terminal's pixels.
-fn square_picture(size: (u16, u16), pixels: (u32, u32)) -> Result<Vec<Seen>, Error> {
+fn square_picture(size: (u16, u16), pixels: (u32, u32)) -> Result<(Frame, Vec<Seen>), Error> {
     let bytes = crate::page_tests::png(240, 240, |x, y| {
         [
             u8::try_from(x).unwrap_or(0),
@@ -1150,11 +1151,12 @@ fn square_picture(size: (u16, u16), pixels: (u32, u32)) -> Result<Vec<Seen>, Err
         pixels,
     )?;
     let cell = (pixels.0 as usize, pixels.1 as usize);
-    Ok(frame
+    let seen = frame
         .placements
         .iter()
         .map(|placement| Seen::at(placement, cell))
-        .collect())
+        .collect();
+    Ok((frame, seen))
 }
 
 /// A square picture is square where it is drawn, in the pixels of the terminal, to two pixels: a picture
@@ -1165,7 +1167,7 @@ fn a_square_picture_is_a_square_on_the_pixels_of_a_terminal() {
     let mut wrong = Vec::new();
     for size in [(160, 48), (80, 24)] {
         for pixels in [(12, 24), (9, 20), (10, 21), (7, 15)] {
-            let seen = square_picture(size, pixels).expect("the page opens");
+            let (_, seen) = square_picture(size, pixels).expect("the page opens");
             let picture = seen
                 .iter()
                 .filter(|seen| seen.z == GROUND)
@@ -1184,6 +1186,450 @@ fn a_square_picture_is_a_square_on_the_pixels_of_a_terminal() {
         }
     }
     assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+// --- What the terminal shows of the pictures, to the pixel ------------------------------------------------
+
+/// The terminal's own ground in what the guards below look at: every pixel of the screen is a cell's
+/// or a picture's, and none is this.
+const SENTINEL: Rgb = Rgb::new(255, 0, 255);
+const WHITE: Rgb = Rgb::new(255, 255, 255);
+
+/// What a terminal shows once `frame` is written to it by `screen`.
+fn terminal_shows(screen: &mut Screen, terminal: &mut Terminal, frame: &Frame) -> Image {
+    terminal.feed(&screen.draw(frame, None));
+    terminal.show(frame)
+}
+
+/// Writes `image` as a PPM file in the folder `TUI_FRAMES` names, where it is set: a frame of a guard,
+/// for the eye.
+fn keep(image: &Image, name: &str) {
+    if let Ok(folder) = std::env::var("TUI_FRAMES") {
+        std::fs::create_dir_all(&folder).expect("the folder");
+        std::fs::write(Path::new(&folder).join(format!("{name}.ppm")), image.ppm())
+            .expect("the frame written");
+    }
+}
+
+/// The rows of `image` that have paper (the pixel of a page of the PDF that is the colour of nothing
+/// written on it): the row, and the pixel columns of the first and the one after the last.
+fn rows_of_paper(image: &Image) -> Vec<(u32, u32, u32)> {
+    let mut rows = Vec::new();
+    for y in 0..image.height {
+        let mut found: Option<(u32, u32)> = None;
+        for x in 0..image.width {
+            if image.at(x, y) == WHITE {
+                found = Some(found.map_or((x, x + 1), |(first, _)| (first, x + 1)));
+            }
+        }
+        if let Some((first, last)) = found {
+            rows.push((y, first, last));
+        }
+    }
+    rows
+}
+
+/// How many pages the rows of paper are: the stretches of rows with paper, a row of none between them.
+fn pages_in(rows: &[(u32, u32, u32)]) -> usize {
+    let mut pages = 0;
+    let mut before = None;
+    for (y, _, _) in rows {
+        if before.is_none_or(|before| *y > before + 1) {
+            pages += 1;
+        }
+        before = Some(*y);
+    }
+    pages
+}
+
+/// Two pages of the PDF are on the screen (the end of the second and the start of the third), the
+/// page scrolled by a stretch that is not a number of cells, with a find open or not, on terminals
+/// whose cells are not alike: the paper of both stands on the same pixel columns, the first and
+/// last of each, and no pixel of the screen is the terminal's own.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_pages_of_a_pdf_stand_on_the_same_pixel_columns_scrolled_by_less_than_a_cell_with_a_find_open_or_not()
+ {
+    let mut wrong = Vec::new();
+    for find in [false, true] {
+        let (_project, mut page) = open_pdf(&spec_pdf(), (160, 49)).expect("the PDF opens");
+        // Without the sidebar the pages are the width of the window and their boxes are not whole cells.
+        page.press("ctrl+b").expect("a key");
+        page.advance(0.6).expect("time");
+        page.press("ctrl+g").expect("a key");
+        page.type_text("3").expect("typed");
+        page.press("enter").expect("a key");
+        page.advance(0.5).expect("time");
+        if find {
+            page.press("ctrl+f").expect("a key");
+            page.type_text("attach").expect("typed");
+            wait(&mut page, |page| shows(page, " of ")).expect("the finds");
+            page.press("enter").expect("a key");
+        }
+        page.wheel("pdf:docs/pencere-spec.pdf", 0.0, -230.0)
+            .expect("the wheel");
+        page.advance(1.0).expect("time");
+        for cell in [(13, 29), (12, 24), (9, 20)] {
+            let frame = shoot_with(
+                &mut page,
+                "pdf-edges",
+                (160, 49),
+                &Theme::dark(),
+                ImageMode::Kitty,
+                CanvasMode::Characters,
+                cell,
+            )
+            .expect("a frame");
+            let image = terminal_shows(
+                &mut Screen::new(Depth::True),
+                &mut Terminal::new(cell, SENTINEL),
+                &frame,
+            );
+            keep(
+                &image,
+                &format!("edges-find-{find}-cell{}x{}", cell.0, cell.1),
+            );
+            let name = format!("find {find}, cell {cell:?}");
+            let rows = rows_of_paper(&image);
+            if pages_in(&rows) < 2 {
+                wrong.push(format!("{name}: {} page(s) on the screen", pages_in(&rows)));
+                continue;
+            }
+            let lefts = rows.iter().map(|(_, left, _)| *left);
+            let rights = rows.iter().map(|(_, _, right)| *right);
+            let (left, right) = (
+                lefts.clone().max().unwrap_or(0) - lefts.min().unwrap_or(0),
+                rights.clone().max().unwrap_or(0) - rights.min().unwrap_or(0),
+            );
+            if left > 1 || right > 1 {
+                // Where the edges are, from the row each stands on first.
+                let mut runs: Vec<(u32, u32, u32)> = Vec::new();
+                for &(y, from, to) in &rows {
+                    if runs.last().is_none_or(|&(_, a, b)| a != from || b != to) {
+                        runs.push((y, from, to));
+                    }
+                }
+                runs.truncate(8);
+                wrong.push(format!(
+                    "{name}: the edges of the paper move by {left} pixels at the left and {right} at the right: (row, left, right) {runs:?}"
+                ));
+            }
+            // On a terminal whose cell has the page's proportions to a hundredth the pages are where the
+            // page's layout put them, to the pixel; on another their box is wider than they are.
+            if cell == (13, 29) {
+                let layout = page.list().items.iter().find_map(|item| match item {
+                    Paint::Image(picture) if picture.src.starts_with("sha256:") => {
+                        Some(picture.rect)
+                    }
+                    _ => None,
+                });
+                let (across, edge) = (cell.0 as f32 / cell_pt(), |x: f32| x.round() as i64);
+                if let (Some(layout), Some(&(_, first, last))) = (layout, rows.first()) {
+                    let (want_left, want_right) = (
+                        edge(layout.x * across),
+                        edge((layout.x + layout.w) * across),
+                    );
+                    if (i64::from(first) - want_left).abs() > 1
+                        || (i64::from(last) - want_right).abs() > 1
+                    {
+                        wrong.push(format!(
+                            "{name}: the paper is from pixel {first} to {last}, the layout's is from {want_left} to {want_right}"
+                        ));
+                    }
+                }
+            }
+            let own = (0..image.height)
+                .flat_map(|y| (0..image.width).map(move |x| (x, y)))
+                .find(|(x, y)| image.at(*x, *y) == SENTINEL);
+            if let Some(at) = own {
+                wrong.push(format!("{name}: the terminal's own ground at {at:?}"));
+            }
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+/// A square picture on a terminal whose cell is not the page's: its sides are cells that the picture
+/// covers a part of or none of, and they are the ground of what the picture is in and not a ground of
+/// the picture's box that is lighter.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_square_picture_has_the_ground_of_the_tab_at_its_sides_where_the_cells_are_not_its_own() {
+    let mut wrong = Vec::new();
+    for size in [(160, 49), (80, 24)] {
+        for cell in [(13, 29), (9, 20), (10, 21), (7, 15)] {
+            let (frame, seen) = square_picture(size, cell).expect("the page opens");
+            let image = terminal_shows(
+                &mut Screen::new(Depth::True),
+                &mut Terminal::new(cell, SENTINEL),
+                &frame,
+            );
+            keep(
+                &image,
+                &format!("square-{}x{}-cell{}x{}", size.0, size.1, cell.0, cell.1),
+            );
+            let picture = seen
+                .iter()
+                .filter(|seen| seen.z == GROUND)
+                .max_by_key(|seen| seen.size.0 * seen.size.1)
+                .expect("the picture is drawn");
+            let (left, top, right, bottom) = picture
+                .bounds_where(|[_, _, blue, alpha]| alpha == 255 && blue == 128)
+                .expect("the picture has pixels");
+            let (cw, ch) = (cell.0 as usize, cell.1 as usize);
+            let name = format!("{size:?} cells of {cell:?} pixels");
+            let middle = u32::try_from((top + bottom) / 2).unwrap_or(0);
+            let at = |x: usize| image.at(u32::try_from(x).unwrap_or(0), middle);
+            let ground = at(left.saturating_sub(3 * cw));
+            for x in left.saturating_sub(cw)..left {
+                if at(x) != ground {
+                    wrong.push(format!(
+                        "{name}: {:?} at pixel {x} at the left of the square, which is {left}, and {ground:?} beyond",
+                        at(x)
+                    ));
+                    break;
+                }
+            }
+            for x in right..right + cw {
+                if at(x) != ground && x < image.width as usize {
+                    wrong.push(format!(
+                        "{name}: {:?} at pixel {x} at the right of the square, which is {right}, and {ground:?} beyond",
+                        at(x)
+                    ));
+                    break;
+                }
+            }
+            let _ = (ch, frame.waiting);
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+/// A palette over the PDF: the page is as dim as the cells are (the scrim of the page is over all of
+/// the screen, the palette's panel over a part), the page is not sent again for it, and not when the
+/// palette is gone.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_pdf_under_the_palette_is_as_dim_as_the_cells_and_is_not_sent_again_for_it() {
+    let size = (160, 49);
+    let cell = (13, 29);
+    let (_project, mut page) = open_pdf(&spec_pdf(), size).expect("the PDF opens");
+    page.press("ctrl+b").expect("a key");
+    page.advance(0.6).expect("time");
+    let mut screen = Screen::new(Depth::True);
+    let mut terminal = Terminal::new(cell, SENTINEL);
+    let frame_of = |page: &mut Page, name: &str| {
+        shoot_with(
+            page,
+            name,
+            size,
+            &Theme::dark(),
+            ImageMode::Kitty,
+            CanvasMode::Characters,
+            cell,
+        )
+        .expect("a frame")
+    };
+    let first = frame_of(&mut page, "pdf-calm");
+    let calm = terminal_shows(&mut screen, &mut terminal, &first);
+    let sent = terminal.loads().len();
+    page.press("ctrl+g").expect("a key");
+    page.advance(0.6).expect("time");
+    let second = frame_of(&mut page, "pdf-palette");
+    let covered = terminal_shows(&mut screen, &mut terminal, &second);
+    // The scrim the page lays over all the screen (the last box of its size, not solid).
+    let theme = Theme::dark();
+    let screen_size = (f32::from(size.0) * cell_pt(), f32::from(size.1) * row_pt());
+    let scrim = page.list().items.iter().rev().find_map(|item| match item {
+        Paint::Quad(quad)
+            if quad.rect.w >= screen_size.0 - 1.0 && quad.rect.h >= screen_size.1 - 1.0 =>
+        {
+            quad.fill.as_ref().map(|fill| theme.resolve(fill))
+        }
+        _ => None,
+    });
+    // The pictures of a page (of a hundred pixels on a side and more), not the icons of the palette.
+    let is_page = |load: &&pencere_tui::compose::Load| load.width >= 100 && load.height >= 100;
+    let sent_for_it = terminal
+        .loads()
+        .iter()
+        .skip(sent)
+        .filter(is_page)
+        .map(|load| (load.width, load.height))
+        .collect::<Vec<_>>();
+    let sent = terminal.loads().len();
+    page.press("escape").expect("a key");
+    page.advance(0.6).expect("time");
+    let third = frame_of(&mut page, "pdf-calm-again");
+    let again = terminal_shows(&mut screen, &mut terminal, &third);
+    keep(&calm, "palette-calm");
+    keep(&covered, "palette-over-pdf");
+    keep(&again, "palette-gone");
+    let sent_after = terminal.loads().iter().skip(sent).filter(is_page).count();
+    // A pixel of the paper near the bottom of the screen, at the left of the page: not under the panel.
+    let rows = rows_of_paper(&calm);
+    let &(y, left, _) = rows
+        .iter()
+        .rev()
+        .find(|(y, _, _)| *y + 40 < calm.height)
+        .expect("paper");
+    let (x, y) = (left + 3, y);
+    assert_eq!(calm.at(x, y), WHITE);
+    // The colour a white cell has under the scrim.
+    let (scrim_color, strength) = scrim.expect("the palette has a scrim over the page");
+    assert!(strength < 0.98, "the scrim is not solid: {strength}");
+    let expected = WHITE.mix(scrim_color, strength);
+    let found = covered.at(x, y);
+    let near = |a: u8, b: u8| a.abs_diff(b) <= 3;
+    assert!(
+        near(expected.r, found.r) && near(expected.g, found.g) && near(expected.b, found.b),
+        "a white cell under the scrim is {expected:?} and the paper {found:?}"
+    );
+    assert_eq!(
+        (sent_for_it.len(), sent_after),
+        (0, 0),
+        "pictures of pixels sent for the palette {sent_for_it:?} and for its going"
+    );
+    assert_eq!(
+        again.at(x, y),
+        WHITE,
+        "the page is itself when the palette is gone"
+    );
+}
+
+/// A PDF on a screen so wide that its pages are more than a screen holds whole (the sandbox draws them
+/// in parts, at a size of its own that is not quite the one they are drawn at): the pieces of the page
+/// are sent as pixels, with ink in them, and the first page seen again after another is the page it
+/// was and is sent nothing.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_pdf_on_a_wide_screen_is_drawn_in_pieces_and_not_sent_again_when_it_is_come_back_to() {
+    let cell = (13, 29);
+    let (_project, mut page) = open_pdf(&spec_pdf(), (320, 49)).expect("the PDF opens");
+    page.press("ctrl+b").expect("a key");
+    page.advance(0.6).expect("time");
+    let mut screen = Screen::new(Depth::True);
+    let mut terminal = Terminal::new(cell, SENTINEL);
+    let mut frame_at = |page: &mut Page| {
+        let frame = shoot_with(
+            page,
+            "pdf-wide",
+            (320, 49),
+            &Theme::dark(),
+            ImageMode::Kitty,
+            CanvasMode::Characters,
+            cell,
+        )
+        .expect("a frame");
+        let before = terminal.loads().len();
+        let image = terminal_shows(&mut screen, &mut terminal, &frame);
+        let sent = terminal
+            .loads()
+            .iter()
+            .skip(before)
+            .filter(|load| load.width >= 100 && load.height >= 100)
+            .count();
+        (image, sent)
+    };
+    let go_to_page = |page: &mut Page, number: &str| {
+        page.press("ctrl+g").expect("a key");
+        page.type_text(number).expect("typed");
+        page.press("enter").expect("a key");
+        page.advance(1.0).expect("time");
+    };
+    // The dark of the letters on the paper, where the paper is.
+    let ink = |image: &Image| {
+        (0..image.height)
+            .flat_map(|y| (0..image.width).map(move |x| (x, y)))
+            .filter(|&(x, y)| {
+                let pixel = image.at(x, y);
+                x > 300
+                    && x < image.width - 300
+                    && pixel.r < 60
+                    && pixel.g < 60
+                    && pixel.b < 60
+                    && image.at(x, y.saturating_sub(40)).r > 100
+            })
+            .count()
+    };
+    let (first, sent_first) = frame_at(&mut page);
+    go_to_page(&mut page, "3");
+    let (third, sent_third) = frame_at(&mut page);
+    go_to_page(&mut page, "1");
+    let (again, sent_again) = frame_at(&mut page);
+    keep(&first, "wide-pdf-page1");
+    keep(&third, "wide-pdf-page3");
+    keep(&again, "wide-pdf-page1-again");
+    eprintln!("WIDE sent {sent_first} {sent_third} {sent_again}");
+    assert!(
+        sent_first > 0 && sent_first <= 12,
+        "pieces sent for the first screen: {sent_first}"
+    );
+    assert!(
+        sent_third > 0,
+        "pieces sent for the third page: {sent_third}"
+    );
+    assert!(
+        ink(&first) > 200 && ink(&third) > 200,
+        "ink: {} {}",
+        ink(&first),
+        ink(&third)
+    );
+    assert_eq!(sent_again, 0, "pieces sent for the first page again");
+    // The page itself: the bars above and under it and the scrollbar at its right say where it is, and
+    // are not the page's.
+    let differing = (60..again.height - 60)
+        .flat_map(|y| (0..again.width - 30).map(move |x| (x, y)))
+        .filter(|&(x, y)| again.at(x, y) != first.at(x, y))
+        .count();
+    assert!(
+        differing < 200,
+        "the first page again differs from what it was at {differing} pixels"
+    );
+}
+
+/// A terminal that draws the page in its cells has no pinch and no zoom key (a cell is the size it
+/// is): the status line says nothing of the zoom of a PDF or a picture, has no zoom for a button, and
+/// the hint of the PDF's keys has no zoom in it.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_status_line_of_the_cells_has_no_zoom_hint_and_no_zoom_button_for_a_pdf_or_a_picture() {
+    let (_project, page) = open_pdf(&spec_pdf(), (160, 49)).expect("the PDF opens");
+    let words = page_words(&page);
+    let zoomy = |words: &[String]| -> Vec<String> {
+        words
+            .iter()
+            .filter(|word| {
+                let lower = word.to_lowercase();
+                lower.contains("zoom") || *word == "Fit Width" || *word == "Fit"
+            })
+            .cloned()
+            .collect()
+    };
+    assert!(zoomy(&words).is_empty(), "a PDF: {:?}", zoomy(&words));
+    assert!(page.bounds("status-zoom").is_none(), "a PDF has a button");
+    let bytes = crate::page_tests::png(240, 240, |x, y| {
+        [
+            u8::try_from(x).unwrap_or(0),
+            u8::try_from(y).unwrap_or(0),
+            128,
+        ]
+    });
+    let project = lantern();
+    project.write_bytes("docs/square.png", &bytes);
+    with_git(&project);
+    let session = project.session(&["docs/square.png", "README.md"]);
+    recording(&session);
+    let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
+    let mut page = open_tui(program, (160, 49), &[&bytes]).expect("the page opens");
+    wait(&mut page, |page| !pictures_drawn(page).is_empty()).expect("the picture");
+    page.advance(1.0).expect("time");
+    let words = page_words(&page);
+    assert!(zoomy(&words).is_empty(), "a picture: {:?}", zoomy(&words));
+    assert!(
+        page.bounds("status-zoom").is_none(),
+        "a picture has a button"
+    );
 }
 
 // --- A page that is scrolled is not sent again ------------------------------------------------------

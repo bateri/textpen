@@ -975,6 +975,7 @@ dependencies = [
 name = "pencere-tui"
 version = "0.4.1"
 dependencies = [
+ "miniz_oxide 0.9.1",
  "pencere",
  "pencere-drive",
  "pencere-sandbox",

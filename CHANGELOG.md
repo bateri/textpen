@@ -37,6 +37,9 @@ none of the three, and a picture and a PDF stay as they fit.
 ### Changed
 
 - **The size of a picture is in the status line.** It was a line under the picture.
+- **In a terminal that hosts nothing, a PDF and a picture have no zoom:** the status line has no
+  zoom button and the PDF's keys have no zoom hint, as a cell is the size it is. The pages of a PDF
+  stand on the same pixel columns, and a PDF under the palette is as dim as the text.
 - On the cells of a terminal the page has no rule rows between its bars and its panels, the palette's
   query is on the row of its scope, and the busy mark turns (braille, a tenth of a second a step).
 - **In a terminal that hosts nothing:** the marks of a found word in a PDF stand on the word, a square
