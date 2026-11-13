@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use pencere_drive::headless::{Error, Headless, InProcess};
 use pencere_tui::{CanvasMode, Cells, Frame, ImageMode, Options, Theme, render, show_texts};
-use pencere_view::Id;
+use pencere_view::{Id, Paint, Rect};
 
 use super::{lantern_art, spec_pdf, with_changed_server, with_git};
 use crate::options;
@@ -450,4 +450,313 @@ fn nothing_stands_past_its_box_on_any_screen_at_any_size_of_a_terminal() -> Resu
     assert!(looked >= 900, "only {looked} windows were looked at");
     assert!(found.is_empty(), "{} kinds: {found:#?}", found.len());
     Ok(())
+}
+
+// --- The marks and lines of a page in the pixels of a terminal with pictures --------------------------------
+
+/// What a frame's pictures put on the pixels of the terminal: for each picture, the pixels it covers
+/// (the cells it is placed on, `PX` pixels across and `PY` down a cell), each the picture's pixel
+/// that falls there, as red, green, blue and opacity.
+const PX: usize = 12;
+const PY: usize = 24;
+
+struct Seen {
+    z: i32,
+    /// The left and top pixel of the cells it is placed on, and how many pixels across and down.
+    at: (usize, usize),
+    size: (usize, usize),
+    pixels: Vec<[u8; 4]>,
+}
+
+impl Seen {
+    fn of(placement: &pencere_tui::Placement) -> Self {
+        let (cols, rows) = (usize::from(placement.cols), usize::from(placement.rows));
+        let (width, height) = (cols * PX, rows * PY);
+        let source = placement.rgba();
+        let (sw, sh) = (placement.width as usize, placement.height as usize);
+        let mut pixels = Vec::with_capacity(width * height);
+        for y in 0..height {
+            for x in 0..width {
+                let (u, v) = ((x * sw / width).min(sw - 1), (y * sh / height).min(sh - 1));
+                let at = (v * sw + u) * 4;
+                pixels.push([source[at], source[at + 1], source[at + 2], source[at + 3]]);
+            }
+        }
+        Self {
+            z: placement.z,
+            at: (
+                usize::from(placement.col) * PX,
+                usize::from(placement.row) * PY,
+            ),
+            size: (width, height),
+            pixels,
+        }
+    }
+
+    /// The pixel at the terminal's pixel `x`, `y`, if the picture covers it.
+    fn pixel(&self, x: usize, y: usize) -> Option<[u8; 4]> {
+        let (left, top) = (x.checked_sub(self.at.0)?, y.checked_sub(self.at.1)?);
+        (left < self.size.0 && top < self.size.1).then(|| self.pixels[top * self.size.0 + left])
+    }
+
+    /// The pixels of the terminal that the picture draws on (opaque at all), as the smallest box:
+    /// left, top, right and bottom, the last two not included.
+    fn bounds(&self) -> Option<(usize, usize, usize, usize)> {
+        let mut bounds: Option<(usize, usize, usize, usize)> = None;
+        for y in 0..self.size.1 {
+            for x in 0..self.size.0 {
+                if self.pixels[y * self.size.0 + x][3] > 0 {
+                    let (x, y) = (x + self.at.0, y + self.at.1);
+                    bounds = Some(match bounds {
+                        None => (x, y, x + 1, y + 1),
+                        Some((l, t, r, b)) => (l.min(x), t.min(y), r.max(x + 1), b.max(y + 1)),
+                    });
+                }
+            }
+        }
+        bounds
+    }
+}
+
+/// Whether the terminal's pixel `x`, `y` of the page is ink: dark where the page's picture is drawn.
+fn ink(page: &Seen, x: usize, y: usize) -> bool {
+    page.pixel(x, y)
+        .is_some_and(|[r, g, b, a]| a > 0 && u32::from(r) + u32::from(g) + u32::from(b) < 3 * 190)
+}
+
+/// A frame of the PDF open at its third page, "attach" found and the first of the finds chosen, drawn
+/// for a terminal with the Kitty graphics protocol, as the pictures it puts on the terminal's pixels.
+fn found_pdf(size: (u16, u16)) -> Result<(Frame, Vec<Seen>), Error> {
+    let (_project, mut page) = open_pdf(&spec_pdf(), size)?;
+    page.press("ctrl+g")?;
+    page.type_text("3")?;
+    page.press("enter")?;
+    page.advance(0.5)?;
+    page.press("ctrl+f")?;
+    page.type_text("attach")?;
+    wait(&mut page, |page| shows(page, " of "))?;
+    page.press("enter")?;
+    page.press("enter")?;
+    page.advance(1.0)?;
+    let frame = shoot(
+        &mut page,
+        "pdf-pixels",
+        size,
+        &Theme::dark(),
+        ImageMode::Kitty,
+        CanvasMode::Characters,
+    )?;
+    let seen = frame.placements.iter().map(Seen::of).collect();
+    Ok((frame, seen))
+}
+
+/// The mark of a word found in a PDF stands on the word in the pixels of a terminal that draws pictures:
+/// on the one line of text it is in, and no wider than the word by more than a few pixels, where a mark
+/// that is the cells it touches (a cell is 12 by 24 pixels, a line of the page 20) covers the line under
+/// the word and the letters beside it. (How tall the mark is above and below the letters is the text
+/// layer's: the box of the word, taller than its ink in a heading.)
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_marks_and_lines_of_a_found_word_stand_on_the_word_in_the_pixels_of_a_terminal() {
+    let (_frame, seen) = found_pdf((160, 48)).expect("the page opens");
+    // The picture of the page is the lowest, under the grounds of the cells; the marks are over it
+    // and under the text.
+    let page = seen
+        .iter()
+        .filter(|seen| seen.z < -1_000_000_000)
+        .max_by_key(|seen| seen.size.0 * seen.size.1)
+        .expect("the picture of the page is drawn");
+    let over_the_page = |seen: &&Seen| {
+        seen.at.0 >= page.at.0
+            && seen.at.1 >= page.at.1
+            && seen.at.0 + seen.size.0 <= page.at.0 + page.size.0
+            && seen.at.1 + seen.size.1 <= page.at.1 + page.size.1
+    };
+    let marks: Vec<&Seen> = seen
+        .iter()
+        .filter(|seen| seen.z == -1)
+        .filter(over_the_page)
+        .collect();
+    assert!(
+        marks.len() >= 3,
+        "the finds of the page are marked ({} pictures over it)",
+        marks.len()
+    );
+    // The lines of text of the page: the rows of its pixels that have ink, from a blank row to the next.
+    let (left, top) = page.at;
+    let (right, bottom) = (left + page.size.0, top + page.size.1);
+    let has_ink = |y: usize| (left..right).any(|x| ink(page, x, y));
+    let mut lines: Vec<(usize, usize)> = Vec::new();
+    let mut from = None;
+    for y in top..=bottom {
+        match (from, y < bottom && has_ink(y)) {
+            (None, true) => from = Some(y),
+            (Some(start), false) => {
+                lines.push((start, y));
+                from = None;
+            }
+            _ => {}
+        }
+    }
+    let mut wrong = Vec::new();
+    for mark in &marks {
+        let Some((l, t, r, b)) = mark.bounds() else {
+            continue;
+        };
+        let touched = lines
+            .iter()
+            .filter(|(start, end)| *start < b && t < *end)
+            .count();
+        // The ink inside the mark, as the smallest box.
+        let mut inked: Option<(usize, usize, usize, usize)> = None;
+        for y in t..b {
+            for x in l..r {
+                if ink(page, x, y) {
+                    inked = Some(match inked {
+                        None => (x, y, x + 1, y + 1),
+                        Some((il, it, ir, ib)) => {
+                            (il.min(x), it.min(y), ir.max(x + 1), ib.max(y + 1))
+                        }
+                    });
+                }
+            }
+        }
+        let Some((il, it, ir, ib)) = inked else {
+            wrong.push(format!(
+                "the mark at {l},{t} to {r},{b} has no word under it"
+            ));
+            continue;
+        };
+        // How far the mark reaches past the word: left, above, right, below.
+        let past = (il - l, it - t, r - ir, b - ib);
+        if touched != 1 || past.0 > 4 || past.2 > 4 {
+            wrong.push(format!(
+                "the mark at {l},{t} to {r},{b} covers {touched} lines of text and reaches {past:?} pixels (left, above, right, below) past the ink under it"
+            ));
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+// --- The line over the open tab --------------------------------------------------------------------
+
+/// The lines over the tabs of the page: boxes thinner than half a row, wider than three columns, in the
+/// first two rows.
+fn tab_lines(page: &Page) -> Vec<Rect> {
+    let (n, row) = (cell_pt(), row_pt());
+    page.list()
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Paint::Quad(quad)
+                if quad.fill.is_some()
+                    && quad.rect.h < row / 2.0
+                    && quad.rect.w >= 3.0 * n
+                    && quad.rect.y < 2.0 * row =>
+            {
+                Some(quad.rect)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// The page at an editor with two tabs, and the line over the open one.
+fn tabs_open(size: (u16, u16)) -> (Page, Rect) {
+    let project = lantern();
+    with_git(&project);
+    let page = open(&project, &["src/server.ts", "README.md"], size).expect("the page opens");
+    let lines = tab_lines(&page);
+    assert_eq!(lines.len(), 1, "one line over the open tab: {lines:?}");
+    let line = lines[0];
+    (page, line)
+}
+
+/// The line over the open tab runs unbroken across the title where the terminal draws pictures: it is
+/// a picture over the title's letters, as thick as the page has it. (A line of characters is cut by the
+/// letters: each cell of the title is the letter or the line.)
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_line_over_the_open_tab_is_one_picture_across_its_title_where_the_terminal_has_pictures() {
+    let size = (160, 48);
+    let (mut page, line) = tabs_open(size);
+    let (n, row) = (cell_pt(), row_pt());
+    let (first, last) = (
+        (line.x / n).floor() as usize,
+        ((line.x + line.w) / n).ceil() as usize,
+    );
+    let frame = shoot(
+        &mut page,
+        "tab-line",
+        size,
+        &Theme::dark(),
+        ImageMode::Kitty,
+        CanvasMode::Characters,
+    )
+    .expect("the frame");
+    let seen: Vec<Seen> = frame
+        .placements
+        .iter()
+        .filter(|p| p.z > 0)
+        .filter(|p| usize::from(p.col) < last && usize::from(p.col + p.cols) > first)
+        .map(Seen::of)
+        .collect();
+    assert!(!seen.is_empty(), "the line is a picture over the text");
+    let (left, right) = (
+        (line.x * PX as f32 / n).round() as usize,
+        ((line.x + line.w) * PX as f32 / n).round() as usize,
+    );
+    let top = (line.y * PY as f32 / row).round() as usize;
+    let thick = ((line.h * PY as f32 / row).round() as usize).max(1);
+    let gaps: Vec<usize> = (left..right)
+        .filter(|x| {
+            !(top..top + thick).all(|y| {
+                seen.iter()
+                    .any(|seen| seen.pixel(*x, y).is_some_and(|[_, _, _, alpha]| alpha > 0))
+            })
+        })
+        .collect();
+    assert!(
+        gaps.is_empty(),
+        "the line is broken at {} of its {} pixels across: {gaps:?}",
+        gaps.len(),
+        right - left
+    );
+}
+
+/// Where the terminal has no pictures the line over the open tab is not drawn: a line of characters
+/// has the letters of the title's cells missing from it, and the parts left read as marks beside the
+/// title.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_line_over_the_open_tab_is_not_drawn_in_pieces_where_the_terminal_has_no_pictures() {
+    let size = (160, 48);
+    let (mut page, line) = tabs_open(size);
+    let n = cell_pt();
+    let (first, last) = (
+        (line.x / n).floor() as usize,
+        ((line.x + line.w) / n).ceil() as usize,
+    );
+    let frame = shoot(
+        &mut page,
+        "tab-line",
+        size,
+        &Theme::dark(),
+        ImageMode::Blocks,
+        CanvasMode::Characters,
+    )
+    .expect("the frame");
+    let text = frame.text();
+    for (at, characters) in text.lines().take(2).enumerate() {
+        let parts = characters
+            .chars()
+            .skip(first)
+            .take(last - first)
+            .filter(|c| matches!(c, '\u{2594}' | '\u{2581}'))
+            .count();
+        assert_eq!(
+            parts, 0,
+            "row {at} has {parts} parts of the line left over the tab: {characters:?}"
+        );
+    }
 }
