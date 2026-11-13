@@ -623,15 +623,29 @@ end
 
 -- --- The panels -----------------------------------------------------------------------------------------
 
+-- Whether the person's files change hands with the project here: not in the cells of a terminal that
+-- hosts nothing, which gives the program no way to read a file the person chose or to write one where
+-- they chose (the panels of its screen name a path of the machine; the program is on that machine, and
+-- the person has the shell for a copy).
+function uploads.offered()
+	return not kit.cells()
+end
+
 -- The Open panel, for files to go into the folder `dir`. Asked for in the reply to a command, a key
 -- or a press, which the terminal counts as the person's move.
 function uploads.choose(dir)
+	if not uploads.offered() then
+		return
+	end
 	S.picking = dir
 	kit.gather({ pick = { multiple = true } })
 end
 
 -- The Save panel, for the project's file `path`, proposing its name.
 function uploads.save_as(path)
+	if not uploads.offered() then
+		return
+	end
 	S.saving = path
 	kit.gather({ save = { name = text.basename(path) } })
 end
@@ -658,6 +672,9 @@ end
 
 -- The folder a command uploads into: the folder chosen in the tree.
 function uploads.chosen_dir()
+	if not uploads.offered() then
+		return nil
+	end
 	local entry = S.tree_selection and act.tree_entry(S.tree_selection)
 	if entry and entry.kind == "dir" then
 		return entry.path
@@ -668,6 +685,9 @@ end
 -- The file a command downloads: the file chosen in the tree where the keys are there, else the one
 -- shown; one that is in the project and on its disk.
 function uploads.chosen_file()
+	if not uploads.offered() then
+		return nil
+	end
 	local path = S.focus == "sidebar" and S.tree_selection or S.active
 	if not path or string.sub(path, 1, 1) == "/" then
 		return nil

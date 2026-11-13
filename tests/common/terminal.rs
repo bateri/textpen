@@ -111,16 +111,22 @@ impl Terminal {
         }
     }
 
-    /// Reads what the program has written, and answers the questions it asked.
+    /// Reads what the program has written, and answers the questions it asked. A pty holds a few
+    /// kilobytes, so a program that writes a picture waits on this reader for every few: it is read as
+    /// long as it writes, and left when it has been quiet a few milliseconds.
     fn pump(&mut self) {
         let mut buffer = [0_u8; 65536];
-        loop {
+        let mut quiet = 0;
+        while quiet < 3 {
             // SAFETY: a read into a buffer of this size, from the master.
             let n = unsafe { libc::read(self.master, buffer.as_mut_ptr().cast(), buffer.len()) };
-            if n <= 0 {
-                break;
+            if n > 0 {
+                self.raw.extend_from_slice(&buffer[..n as usize]);
+                quiet = 0;
+            } else {
+                quiet += 1;
+                std::thread::sleep(Duration::from_millis(1));
             }
-            self.raw.extend_from_slice(&buffer[..n as usize]);
         }
         if !self.asked && contains(&self.raw, b"\x1b[c") {
             self.asked = true;
@@ -235,6 +241,58 @@ pub fn count(haystack: &[u8], needle: &[u8]) -> usize {
         .windows(needle.len())
         .filter(|window| *window == needle)
         .count()
+}
+
+/// A picture the program sent the terminal (a Kitty graphics command that carries pixels): the keys of
+/// its command, and the pixels it says it has.
+#[derive(Debug)]
+pub struct Sent {
+    pub keys: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// The pictures in what the program wrote: each command that starts one (a chunked picture is one command
+/// and the chunks that follow it, which carry no keys of their own but `m`). The query the program asks
+/// first (`a=q`, a pixel), and a command that moves or deletes a picture, are not pictures.
+pub fn sent(raw: &[u8]) -> Vec<Sent> {
+    let mut found = Vec::new();
+    let mut at = 0;
+    while at + 3 <= raw.len() {
+        if &raw[at..at + 3] != b"\x1b_G" {
+            at += 1;
+            continue;
+        }
+        let from = at + 3;
+        let mut end = from;
+        while end < raw.len() && !(raw[end] == 0x1b && raw.get(end + 1) == Some(&b'\\')) {
+            end += 1;
+        }
+        let command = String::from_utf8_lossy(&raw[from..end]).into_owned();
+        let keys = command.split(';').next().unwrap_or("").to_owned();
+        let value = |name: &str| {
+            keys.split(',')
+                .find_map(|pair| pair.strip_prefix(name)?.strip_prefix('='))
+                .and_then(|number| number.parse::<u32>().ok())
+        };
+        let query = keys.split(',').any(|pair| pair == "a=q");
+        if let (Some(width), Some(height), false) = (value("s"), value("v"), query) {
+            found.push(Sent {
+                keys: keys.clone(),
+                width,
+                height,
+            });
+        }
+        at = end + 2;
+    }
+    found
+}
+
+/// `text` with its runs of white space made one space, as much of it as a failure's message can say.
+pub fn squeezed(text: &str) -> String {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let line = words.join(" ");
+    line.chars().take(700).collect()
 }
 
 /// `raw` as the text a screen would hold, the escape sequences (CSI, OSC and the pictures' APC) taken out.

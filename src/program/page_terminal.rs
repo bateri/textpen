@@ -364,3 +364,55 @@ fn the_editors_menu_names_no_key_a_terminal_cannot_send_on_a_linux_keyboard() ->
     assert!(seen > 0, "{:?}", menu.entries);
     Ok(())
 }
+
+/// The Open and Save panels of a terminal that hosts nothing take a path of the machine the program is on,
+/// and the program has no way to read what they name or to write where they say: the page does not
+/// offer to upload to the project or to download from it (the menu of a row, the palette).
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_persons_files_are_not_offered_in_the_cells_of_a_terminal_that_hosts_nothing()
+-> Result<(), Error> {
+    let project = lantern();
+    let mut page = open(&project, &[], (160, 48))?;
+    wait(&mut page, |page| page.bounds("row:src").is_some())?;
+    let titles = |page: &Page| -> Vec<String> {
+        page.menu()
+            .map(|menu| {
+                menu.entries
+                    .iter()
+                    .filter_map(|entry| match entry {
+                        pencere_view::MenuEntry::Item { title, .. } => Some(title.clone()),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    // A folder's menu has its own entries, and not the person's files'.
+    page.right_click("row:src")?;
+    let folder = titles(&page);
+    assert!(folder.iter().any(|title| title == "New File"), "{folder:?}");
+    assert!(
+        folder.iter().all(|title| !title.contains("Upload")),
+        "{folder:?}"
+    );
+    page.press("escape")?;
+    // A file's, the same.
+    page.click("row:src")?;
+    wait(&mut page, |page| page.bounds("row:src/server.ts").is_some())?;
+    page.right_click("row:src/server.ts")?;
+    let file = titles(&page);
+    assert!(file.iter().any(|title| title == "Rename"), "{file:?}");
+    assert!(
+        file.iter().all(|title| !title.contains("Download")),
+        "{file:?}"
+    );
+    page.press("escape")?;
+    // And the palette lists a command of the page (it is there to be found) but neither of these.
+    page.press("f1")?;
+    page.type_text("Upload")?;
+    page.advance(0.5)?;
+    assert!(!shows(&page, "Upload Files"), "{:?}", page_words(&page));
+    page.type_text("")?;
+    Ok(())
+}

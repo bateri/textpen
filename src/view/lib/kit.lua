@@ -242,6 +242,8 @@ local CHARACTERS = {
 	["menu-2"] = "≡",
 	["loader-2"] = "…",
 	search = "⌕",
+	files = "▤",
+	["git-branch"] = "ψ",
 	["alert-triangle"] = "!",
 	["file-alert"] = "!",
 }

@@ -44,7 +44,18 @@ fn row_pt() -> f32 {
         .unwrap_or(18.0)
 }
 
-fn open_tui(program: InProcess, (cols, rows): (u16, u16), files: &[&[u8]]) -> Result<Page, Error> {
+fn open_tui(program: InProcess, size: (u16, u16), files: &[&[u8]]) -> Result<Page, Error> {
+    open_tui_with(program, size, files, has_pictures())
+}
+
+/// The page of a terminal that draws pictures (`pictures`) or draws none, and so tells its page that a
+/// picture is coarse.
+fn open_tui_with(
+    program: InProcess,
+    (cols, rows): (u16, u16),
+    files: &[&[u8]],
+    pictures: bool,
+) -> Result<Page, Error> {
     let (n, row) = (cell_pt(), row_pt());
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -55,7 +66,7 @@ fn open_tui(program: InProcess, (cols, rows): (u16, u16), files: &[&[u8]]) -> Re
         // What the screen tells its page of the keyboard: a terminal has none of a Mac's.
         .keyboard(pencere_view::KeyConvention::Linux)
         // What the screen tells its page.
-        .draws(if has_pictures() {
+        .draws(if pictures {
             vec![pencere_view::Drawing::Cells]
         } else {
             vec![
@@ -527,6 +538,11 @@ fn ink(page: &Seen, x: usize, y: usize) -> bool {
 /// A frame of the PDF open at its third page, "attach" found and the first of the finds chosen, drawn
 /// for a terminal with the Kitty graphics protocol, as the pictures it puts on the terminal's pixels.
 fn found_pdf(size: (u16, u16)) -> Result<(Frame, Vec<Seen>), Error> {
+    found_pdf_then(size, 0)
+}
+
+/// As [`found_pdf`], and the next find chosen `next` times more.
+fn found_pdf_then(size: (u16, u16), next: usize) -> Result<(Frame, Vec<Seen>), Error> {
     let (_project, mut page) = open_pdf(&spec_pdf(), size)?;
     page.press("ctrl+g")?;
     page.type_text("3")?;
@@ -537,6 +553,9 @@ fn found_pdf(size: (u16, u16)) -> Result<(Frame, Vec<Seen>), Error> {
     wait(&mut page, |page| shows(page, " of "))?;
     page.press("enter")?;
     page.press("enter")?;
+    for _ in 0..next {
+        page.press("enter")?;
+    }
     page.advance(1.0)?;
     let frame = shoot(
         &mut page,
@@ -636,6 +655,43 @@ fn the_marks_and_lines_of_a_found_word_stand_on_the_word_in_the_pixels_of_a_term
         }
     }
     assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+/// The marks of the finds over the page's picture, by where they are on the terminal's pixels: the
+/// smallest box each draws on, left, top, right and bottom.
+fn mark_boxes(seen: &[Seen]) -> Vec<(usize, usize, usize, usize)> {
+    let mut boxes: Vec<(usize, usize, usize, usize)> = seen
+        .iter()
+        .filter(|seen| seen.z == -1)
+        .filter_map(Seen::bounds)
+        .collect();
+    boxes.sort_by_key(|(l, t, ..)| (*t / 12, *l));
+    boxes
+}
+
+/// The find that is chosen has its frame on the same box its fill has when another is chosen: a mark does
+/// not move by being the current one (it was a few pixels below the others, its top edge on the tops of
+/// the letters, where the others stand above).
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_chosen_find_stands_on_the_box_it_has_when_another_is_chosen() {
+    let (_frame, first) = found_pdf_then((160, 48), 0).expect("the page opens");
+    let (_frame, second) = found_pdf_then((160, 48), 1).expect("the page opens");
+    let (one, two) = (mark_boxes(&first), mark_boxes(&second));
+    assert_eq!(one.len(), two.len(), "{one:?} against {two:?}");
+    assert!(one.len() >= 3, "the finds are marked: {one:?}");
+    let mut moved = Vec::new();
+    for (at, (a, b)) in one.iter().zip(&two).enumerate() {
+        // The frame is a pixel or two out from the fill it holds.
+        let apart = |x: usize, y: usize| x.abs_diff(y);
+        if apart(a.0, b.0) > 2 || apart(a.1, b.1) > 2 || apart(a.2, b.2) > 2 || apart(a.3, b.3) > 2
+        {
+            moved.push(format!(
+                "mark {at}: {a:?} when chosen first, {b:?} when chosen second"
+            ));
+        }
+    }
+    assert!(moved.is_empty(), "{moved:#?}");
 }
 
 // --- The line over the open tab --------------------------------------------------------------------
@@ -759,4 +815,55 @@ fn the_line_over_the_open_tab_is_not_drawn_in_pieces_where_the_terminal_has_no_p
             "row {at} has {parts} parts of the line left over the tab: {characters:?}"
         );
     }
+}
+
+/// Where the terminal draws no pictures, the icons of the sidebar's buttons and of the branch in the
+/// status line are characters, as the icons of the other buttons are: a picture of 15 points in half
+/// blocks of a cell is nothing the eye finds, and the button reads as a gap.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_icons_of_the_sidebar_and_of_the_branch_are_characters_where_the_terminal_has_no_pictures() {
+    let size = (160, 48);
+    let project = lantern();
+    with_git(&project);
+    let session = project.session(&["src/server.ts"]);
+    let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
+    let mut page = open_tui_with(program, size, &[], false).expect("the page opens");
+    wait(&mut page, |page| shown(page).is_some()).expect("an editor");
+    page.advance(1.5).expect("the page settles");
+    let frame = shoot(
+        &mut page,
+        "editor-icons",
+        size,
+        &Theme::dark(),
+        ImageMode::Blocks,
+        CanvasMode::Characters,
+    )
+    .expect("the frame");
+    let text = frame.text();
+    let rows: Vec<Vec<char>> = text.lines().map(|line| line.chars().collect()).collect();
+    let cells = |id: &str| -> String {
+        let rect = page
+            .bounds(id)
+            .unwrap_or_else(|| panic!("{id} is on the page"));
+        let (col, row) = ((rect.x / cell_pt()) as usize, (rect.y / row_pt()) as usize);
+        let width = ((rect.w / cell_pt()).ceil() as usize).max(1);
+        rows.get(row)
+            .map(|line| line.iter().skip(col).take(width).collect())
+            .unwrap_or_default()
+    };
+    for id in ["sidebar-files", "sidebar-search", "sidebar-changes"] {
+        let held = cells(id);
+        assert!(
+            held.chars().any(|c| !c.is_whitespace()),
+            "the button {id} is {held:?}: nothing to see in its cells"
+        );
+    }
+    // The branch: a character stands before its name.
+    let branch = cells("status/branch");
+    let first = branch.trim_start();
+    assert!(
+        !first.is_empty() && !first.starts_with("main"),
+        "the branch of the status line is {branch:?}: its name has no icon before it"
+    );
 }

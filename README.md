@@ -310,6 +310,9 @@ Every command is in the palette (`Ctrl+K`, then `>`) whatever the keys; copy, cu
 in the editor's right-click menu. The text is the size the terminal draws its own: its own keys make it larger
 or smaller, and textpen has no zoom of its own: there is no text size in the settings, `⌘+` and the pinch do
 nothing, and a picture or a PDF stays as it fits the tab (a terminal that hosts pencere zooms them).
+A picture is drawn with the Kitty graphics protocol where the terminal has it and in half blocks where
+it has not, and a PDF only with the protocol. Upload Files and Download are not offered: their panels
+need a terminal that hosts pencere views (copy files in with the shell).
 
 ## How it works
 

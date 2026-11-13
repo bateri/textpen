@@ -70,19 +70,86 @@ pub fn pdf_of_pages(sizes: &[(f32, f32)]) -> Vec<u8> {
     out
 }
 
+/// A PNG of the size given, whose pixel at (x, y) is `pixel(x, y)` (RGB, 8 bits): the deflate stream is
+/// stored, not packed, which any reader reads.
+pub fn png_of(width: u32, height: u32, pixel: impl Fn(u32, u32) -> [u8; 3]) -> Vec<u8> {
+    fn crc(bytes: &[u8]) -> u32 {
+        let mut crc = u32::MAX;
+        for byte in bytes {
+            crc ^= u32::from(*byte);
+            for _ in 0..8 {
+                crc = if crc & 1 == 1 {
+                    0xEDB8_8320 ^ (crc >> 1)
+                } else {
+                    crc >> 1
+                };
+            }
+        }
+        !crc
+    }
+    fn chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
+        out.extend(
+            u32::try_from(data.len())
+                .expect("a short chunk")
+                .to_be_bytes(),
+        );
+        let mut body = kind.to_vec();
+        body.extend_from_slice(data);
+        out.extend_from_slice(&body);
+        out.extend(crc(&body).to_be_bytes());
+    }
+    let mut rows = Vec::new();
+    for y in 0..height {
+        rows.push(0);
+        for x in 0..width {
+            rows.extend(pixel(x, y));
+        }
+    }
+    let mut zlib = vec![0x78, 0x01];
+    let blocks: Vec<&[u8]> = rows.chunks(65535).collect();
+    for (at, block) in blocks.iter().enumerate() {
+        let length = u16::try_from(block.len()).expect("a block");
+        zlib.push(u8::from(at + 1 == blocks.len()));
+        zlib.extend(length.to_le_bytes());
+        zlib.extend((!length).to_le_bytes());
+        zlib.extend_from_slice(block);
+    }
+    let (mut low, mut high) = (1_u32, 0_u32);
+    for byte in &rows {
+        low = (low + u32::from(*byte)) % 65521;
+        high = (high + low) % 65521;
+    }
+    zlib.extend(((high << 16) | low).to_be_bytes());
+    let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
+    let mut header = Vec::new();
+    header.extend(width.to_be_bytes());
+    header.extend(height.to_be_bytes());
+    header.extend([8, 2, 0, 0, 0]);
+    chunk(&mut out, b"IHDR", &header);
+    chunk(&mut out, b"IDAT", &zlib);
+    chunk(&mut out, b"IEND", &[]);
+    out
+}
+
 /// A PDF of one page, 612 points wide and tall enough for them, with `lines` set one under the
 /// other in Helvetica 4: a page with more words than a message may carry.
 pub fn pdf_of_lines(lines: &[String]) -> Vec<u8> {
+    pdf_of_text(lines, 4)
+}
+
+/// A PDF of one page with `lines` set one under the other in Helvetica of `size` points.
+pub fn pdf_of_text(lines: &[String], size: usize) -> Vec<u8> {
     fn object(out: &mut Vec<u8>, offsets: &mut Vec<usize>, body: &str) {
         offsets.push(out.len());
         let number = offsets.len();
         out.extend(format!("{number} 0 obj\n{body}\nendobj\n").bytes());
     }
-    let height = lines.len() * 5 + 20;
+    let pitch = size + 1;
+    let height = lines.len() * pitch + 20;
     let mut content = String::new();
     for (at, line) in lines.iter().enumerate() {
-        let y = height - 10 - at * 5;
-        content.push_str(&format!("BT /F1 4 Tf 10 {y} Td ({line}) Tj ET\n"));
+        let y = height - 6 - size - at * pitch;
+        content.push_str(&format!("BT /F1 {size} Tf 10 {y} Td ({line}) Tj ET\n"));
     }
     let mut out = b"%PDF-1.4\n".to_vec();
     let mut offsets = Vec::new();

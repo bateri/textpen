@@ -524,7 +524,7 @@ function tree.menu(entry, at)
 		return
 	end
 	-- A folder, and the tree itself (the project's own folder), take the person's files.
-	if not entry or is_dir then
+	if (not entry or is_dir) and uploads.offered() then
 		items[#items + 1] = { "Upload Files", nil, function() uploads.choose(dir) end }
 	end
 	if entry then
@@ -538,7 +538,9 @@ function tree.menu(entry, at)
 					act.open_file(entry.path, { focus = true })
 				end
 			end }
-			items[#items + 1] = { "Download", nil, function() uploads.save_as(entry.path) end }
+			if uploads.offered() then
+				items[#items + 1] = { "Download", nil, function() uploads.save_as(entry.path) end }
+			end
 		end
 		items[#items + 1] = { "Rename", "r", function() act.rename(entry.path) end }
 		items[#items + 1] = { "Delete", "d", function() act.remove(entry.path, is_dir) end }

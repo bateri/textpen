@@ -22,7 +22,8 @@ change what the previous one did.
   The keys are those of a keyboard with no ⌘ (Ctrl is what ⌘ is, and a key a terminal cannot send is
   another: README, "In a terminal that hosts nothing"), the icons of buttons are characters where the
   terminal has no graphics protocol, and a PDF is drawn where it has one and is a sentence ("This
-  terminal does not show PDFs") where it has none.
+  terminal does not show PDFs") where it has none. Upload Files and Download are not offered there:
+  they need a terminal that hosts views.
 - **A feature `terminal`, on by default, for the screen of its own.** `cargo build
   --no-default-features` makes the file that does not draw a terminal that hosts nothing (it opens
   your `$EDITOR` there), without `pencere-tui` and so smaller. The screen has the interpreter
