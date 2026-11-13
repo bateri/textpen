@@ -19,9 +19,11 @@ use pencere_view::{Id, Paint, Rect};
 use super::{lantern_art, spec_pdf, with_changed_server, with_git};
 use crate::options;
 use crate::page_compare::drawn;
-use crate::page_pdf::pages_drawn;
+use crate::page_pdf::{Run, pages_drawn, pdf_of_runs_on};
 use crate::page_tests::{Page, limits, page_words, pictures_drawn, recording, shown, shows, wait};
 use crate::page_tests::{go_to, lantern};
+use crate::project::pdf::Document;
+use crate::project::search::Options as SearchOptions;
 
 const WITHIN: Duration = Duration::from_secs(20);
 
@@ -129,12 +131,25 @@ fn shoot(
     images: ImageMode,
     canvases: CanvasMode,
 ) -> Result<Frame, Error> {
+    shoot_with(page, name, size, theme, images, canvases, (12, 24))
+}
+
+/// As [`shoot`], for a terminal whose cells are `pixels` across and down.
+fn shoot_with(
+    page: &mut Page,
+    name: &str,
+    size: (u16, u16),
+    theme: &Theme,
+    images: ImageMode,
+    canvases: CanvasMode,
+    pixels: (u32, u32),
+) -> Result<Frame, Error> {
     let options = Options {
         col: cell_pt(),
         row: row_pt(),
         images,
         canvases,
-        pixels: (12, 24),
+        pixels,
     };
     let mut tries = 0;
     let mut frame = loop {
@@ -481,8 +496,13 @@ struct Seen {
 
 impl Seen {
     fn of(placement: &pencere_tui::Placement) -> Self {
+        Self::at(placement, (PX, PY))
+    }
+
+    /// As [`Seen::of`], for a terminal whose cells are `cell` pixels across and down.
+    fn at(placement: &pencere_tui::Placement, (px, py): (usize, usize)) -> Self {
         let (cols, rows) = (usize::from(placement.cols), usize::from(placement.rows));
-        let (width, height) = (cols * PX, rows * PY);
+        let (width, height) = (cols * px, rows * py);
         let source = placement.rgba();
         let (sw, sh) = (placement.width as usize, placement.height as usize);
         let mut pixels = Vec::with_capacity(width * height);
@@ -496,8 +516,8 @@ impl Seen {
         Self {
             z: placement.z,
             at: (
-                usize::from(placement.col) * PX,
-                usize::from(placement.row) * PY,
+                usize::from(placement.col) * px,
+                usize::from(placement.row) * py,
             ),
             size: (width, height),
             pixels,
@@ -513,10 +533,18 @@ impl Seen {
     /// The pixels of the terminal that the picture draws on (opaque at all), as the smallest box:
     /// left, top, right and bottom, the last two not included.
     fn bounds(&self) -> Option<(usize, usize, usize, usize)> {
+        self.bounds_where(|[_, _, _, alpha]| alpha > 0)
+    }
+
+    /// As [`Seen::bounds`], for the pixels (red, green, blue, opacity) that `drawn` says are drawn.
+    fn bounds_where(
+        &self,
+        drawn: impl Fn([u8; 4]) -> bool,
+    ) -> Option<(usize, usize, usize, usize)> {
         let mut bounds: Option<(usize, usize, usize, usize)> = None;
         for y in 0..self.size.1 {
             for x in 0..self.size.0 {
-                if self.pixels[y * self.size.0 + x][3] > 0 {
+                if drawn(self.pixels[y * self.size.0 + x]) {
                     let (x, y) = (x + self.at.0, y + self.at.1);
                     bounds = Some(match bounds {
                         None => (x, y, x + 1, y + 1),
@@ -692,6 +720,341 @@ fn the_chosen_find_stands_on_the_box_it_has_when_another_is_chosen() {
         }
     }
     assert!(moved.is_empty(), "{moved:#?}");
+}
+
+/// The characters in the cells of the element `id`, as the frame has them.
+fn cells_of(page: &Page, frame: &Frame, id: &str) -> String {
+    let rows: Vec<Vec<char>> = frame
+        .text()
+        .lines()
+        .map(|line| line.chars().collect())
+        .collect();
+    let rect = page
+        .bounds(id)
+        .unwrap_or_else(|| panic!("{id} is on the page"));
+    let (col, row) = ((rect.x / cell_pt()) as usize, (rect.y / row_pt()) as usize);
+    let width = ((rect.w / cell_pt()).ceil() as usize).max(1);
+    rows.get(row)
+        .map(|line| line.iter().skip(col).take(width).collect())
+        .unwrap_or_default()
+}
+
+/// Where the terminal draws no pictures, the icons of the page that has no file open (what to do first), of the
+/// palette's modes, and of a tab and a banner that say a file is read-only are characters too: a picture of
+/// 12 to 16 points in half blocks is nothing the eye finds, and each reads as a gap.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_icons_of_the_welcome_the_palette_and_a_read_only_file_are_characters_where_the_terminal_has_no_pictures()
+ {
+    let size = (160, 48);
+    let mut missing = Vec::new();
+    let mut check = |page: &Page, frame: &Frame, scene: &str, id: &str| {
+        let held = cells_of(page, frame, id);
+        if !held.chars().any(|c| !c.is_whitespace()) {
+            missing.push(format!("{scene}: {id} is {held:?}"));
+        }
+    };
+    let nopics = |page: &mut Page, name: &str| {
+        shoot(
+            page,
+            name,
+            size,
+            &Theme::dark(),
+            ImageMode::Blocks,
+            CanvasMode::Characters,
+        )
+        .expect("the frame")
+    };
+    // No file open: the first things to do, each with its icon.
+    let project = lantern();
+    let session = project.session(&[]);
+    let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
+    let mut page = open_tui_with(program, size, &[], false).expect("the page opens");
+    page.advance(1.0).expect("the page settles");
+    let frame = nopics(&mut page, "welcome-icons");
+    for id in [
+        "welcome-icon:files",
+        "welcome-icon:commands",
+        "welcome-icon:help",
+    ] {
+        check(&page, &frame, "welcome", id);
+    }
+    // The palette: its two modes that have an icon of the four.
+    page.press("f1").expect("the palette");
+    page.advance(0.5).expect("the palette opens");
+    let frame = nopics(&mut page, "palette-commands-icons");
+    check(&page, &frame, "palette of commands", "palette-icon");
+    page.press("escape").expect("the palette closes");
+    page.press("ctrl+k").expect("the files");
+    page.advance(0.5).expect("the palette opens");
+    let frame = nopics(&mut page, "palette-files-icons");
+    check(&page, &frame, "palette of files", "palette-icon");
+    drop(page);
+    // A file textpen cannot write: the lock on its tab and in its banner.
+    let project = lantern();
+    let file = project.root().join("README.md");
+    let mut permissions = std::fs::metadata(&file).expect("the file").permissions();
+    permissions.set_readonly(true);
+    std::fs::set_permissions(&file, permissions).expect("the file is read-only");
+    let session = project.session(&["README.md"]);
+    let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
+    let mut page = open_tui_with(program, size, &[], false).expect("the page opens");
+    wait(&mut page, |page| shown(page).is_some()).expect("a tab");
+    page.advance(1.5).expect("the page settles");
+    let frame = nopics(&mut page, "readonly-icons");
+    check(&page, &frame, "a read-only file", "tab-lock:README.md");
+    check(&page, &frame, "a read-only file", "banner-icon:lock");
+    assert!(missing.is_empty(), "{missing:#?}");
+}
+
+// --- The marks of a PDF against the words the PDF has -----------------------------------------------
+
+/// A page of 612 × 792 points with "needle" set in three places of it: near the top left, as far right as
+/// a word of it can be, and near the bottom.
+fn needles_pdf() -> Vec<u8> {
+    let run = |x: f32, y: f32| Run {
+        font: 1,
+        size: 18.0,
+        x,
+        y,
+        text: "needle".to_owned(),
+    };
+    pdf_of_runs_on(
+        &[(
+            612.0,
+            792.0,
+            vec![run(40.0, 740.0), run(530.0, 400.0), run(250.0, 50.0)],
+        )],
+        Some(NEEDLES_GROUND),
+    )
+}
+
+/// What the page of [`needles_pdf`] is painted: a colour that nothing around the picture of the page is, so
+/// that the pixels the picture is drawn on are told from the cells' own.
+const NEEDLES_GROUND: [f32; 3] = [0.9, 0.85, 0.5];
+
+/// Whether a pixel of the page's picture is the ground of [`needles_pdf`] or the ink on it (not a cell's
+/// own ground: dark, or white).
+fn is_the_pages(pixel: [u8; 4]) -> bool {
+    let [r, g, b, a] = pixel;
+    let near = |value: u8, share: f32| (f32::from(value) - share * 255.0).abs() <= 3.0;
+    a == 255
+        && near(r, NEEDLES_GROUND[0])
+        && near(g, NEEDLES_GROUND[1])
+        && near(b, NEEDLES_GROUND[2])
+}
+
+/// The page above open, "needle" looked for and the `next`th of the finds chosen (the first is 0), drawn for
+/// a terminal whose cells are `pixels` across and down, with the pictures it puts on the terminal's
+/// pixels. (The terminal draws the pages fitted to the tab, so that a page is taller than the view: the
+/// first find leaves its top in view and the last its bottom.)
+fn found_needles(size: (u16, u16), pixels: (u32, u32), next: usize) -> Result<Vec<Seen>, Error> {
+    let (_project, mut page) = open_pdf(&needles_pdf(), size)?;
+    page.press("ctrl+f")?;
+    page.type_text("needle")?;
+    wait(&mut page, |page| shows(page, " of "))?;
+    for _ in 0..next {
+        page.press("enter")?;
+    }
+    page.advance(1.0)?;
+    let frame = shoot_with(
+        &mut page,
+        "pdf-needles",
+        size,
+        &Theme::dark(),
+        ImageMode::Kitty,
+        CanvasMode::Characters,
+        pixels,
+    )?;
+    let cell = (pixels.0 as usize, pixels.1 as usize);
+    Ok(frame
+        .placements
+        .iter()
+        .map(|placement| Seen::at(placement, cell))
+        .collect())
+}
+
+/// Every mark of a found word that is in view stands on the word the PDF says is there: its box on the
+/// terminal's pixels is the word's rectangle (points on the page, from the PDF's own text) at the scale
+/// the page's picture is drawn at, to two pixels on each side. The page is anchored at the edge of its
+/// picture that is in view (the top, or the bottom where the last find is chosen).
+fn marks_stand_on_the_words(pixels: (u32, u32), next: usize, from_top: bool) -> Vec<String> {
+    let bytes = needles_pdf();
+    let document = Document::open(Arc::from(bytes.as_slice())).expect("the PDF opens");
+    let words = document
+        .find(
+            &SearchOptions {
+                query: "needle".to_owned(),
+                regex: false,
+                case_sensitive: false,
+                whole_word: false,
+            },
+            &|| false,
+        )
+        .expect("a search")
+        .matches;
+    assert_eq!(words.len(), 3, "{words:?}");
+    let (width, height) = document.sizes().first().copied().expect("a page");
+    let seen = found_needles((160, 48), pixels, next).expect("the page opens");
+    let page = seen
+        .iter()
+        .filter(|seen| seen.z < -1_000_000_000)
+        .max_by_key(|seen| seen.size.0 * seen.size.1)
+        .expect("the picture of the page is drawn");
+    let (left, top, right, bottom) = page
+        .bounds_where(is_the_pages)
+        .expect("the page has pixels");
+    // The picture is as wide as the page and as tall as its proportions make it.
+    let across = (right - left) as f64;
+    let down = across * height / width;
+    let top = if from_top {
+        top as f64
+    } else {
+        bottom as f64 - down
+    };
+    // The marks are the pictures over the page's, under the text.
+    let marks: Vec<(usize, usize, usize, usize)> = seen
+        .iter()
+        .filter(|seen| seen.z == -1)
+        .filter(|seen| {
+            seen.at.0 >= page.at.0
+                && seen.at.1 >= page.at.1
+                && seen.at.0 + seen.size.0 <= page.at.0 + page.size.0
+                && seen.at.1 + seen.size.1 <= page.at.1 + page.size.1
+        })
+        .filter_map(Seen::bounds)
+        .collect();
+    let mut wrong = Vec::new();
+    let mut in_view = 0;
+    for word in &words {
+        let expected = (
+            left as f64 + word.x / width * across,
+            top + word.y / height * down,
+            left as f64 + (word.x + word.w) / width * across,
+            top + (word.y + word.h) / height * down,
+        );
+        // A word whose rectangle is not wholly over the picture in view is not asked about.
+        if expected.1 < page.at.1 as f64
+            || expected.3 > (page.at.1 + page.size.1) as f64
+            || expected.1 < top
+            || expected.3 > top + down
+        {
+            continue;
+        }
+        in_view += 1;
+        let centre = (
+            (expected.0 + expected.2) / 2.0,
+            (expected.1 + expected.3) / 2.0,
+        );
+        let far = |m: &(usize, usize, usize, usize)| {
+            let (x, y) = ((m.0 + m.2) as f64 / 2.0, (m.1 + m.3) as f64 / 2.0);
+            (x - centre.0).hypot(y - centre.1)
+        };
+        let Some(nearest) = marks.iter().min_by(|a, b| far(a).total_cmp(&far(b))) else {
+            wrong.push(format!("the word at {expected:?} has no mark"));
+            continue;
+        };
+        let off = [
+            nearest.0 as f64 - expected.0,
+            nearest.1 as f64 - expected.1,
+            nearest.2 as f64 - expected.2,
+            nearest.3 as f64 - expected.3,
+        ];
+        if off.iter().any(|edge| edge.abs() > 2.0) {
+            wrong.push(format!(
+                "the word at {:.0},{:.0} to {:.0},{:.0} has its mark at {nearest:?}: {:+.1}, {:+.1}, {:+.1}, {:+.1} pixels (left, top, right, bottom) from it",
+                expected.0, expected.1, expected.2, expected.3, off[0], off[1], off[2], off[3]
+            ));
+        }
+    }
+    assert!(in_view >= 2, "{in_view} words are in view");
+    assert_eq!(
+        marks.len(),
+        in_view,
+        "a mark for each word in view: {marks:?}"
+    );
+    wrong
+        .into_iter()
+        .map(|said| format!("{pixels:?} pixels to a cell, find {next}: {said}"))
+        .collect()
+}
+
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_marks_of_found_words_stand_on_the_words_of_the_pdf_in_the_pixels_of_a_terminal() {
+    let mut wrong = Vec::new();
+    for pixels in [(12, 24), (9, 20)] {
+        wrong.extend(marks_stand_on_the_words(pixels, 0, true));
+        wrong.extend(marks_stand_on_the_words(pixels, 2, false));
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+// --- A picture keeps its proportions on the terminal's pixels -----------------------------------------------
+
+/// A picture of 240 by 240 pixels open in its tab, drawn for a terminal whose cells are `pixels` across and
+/// down: the pictures it puts on the terminal's pixels.
+fn square_picture(size: (u16, u16), pixels: (u32, u32)) -> Result<Vec<Seen>, Error> {
+    let bytes = crate::page_tests::png(240, 240, |x, y| {
+        [
+            u8::try_from(x).unwrap_or(0),
+            u8::try_from(y).unwrap_or(0),
+            128,
+        ]
+    });
+    let project = lantern();
+    project.write_bytes("docs/square.png", &bytes);
+    with_git(&project);
+    let session = project.session(&["docs/square.png", "README.md"]);
+    recording(&session);
+    let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
+    let mut page = open_tui(program, size, &[&bytes])?;
+    wait(&mut page, |page| !pictures_drawn(page).is_empty())?;
+    page.advance(1.5)?;
+    let frame = shoot_with(
+        &mut page,
+        "picture-square",
+        size,
+        &Theme::dark(),
+        ImageMode::Kitty,
+        CanvasMode::Characters,
+        pixels,
+    )?;
+    let cell = (pixels.0 as usize, pixels.1 as usize);
+    Ok(frame
+        .placements
+        .iter()
+        .map(|placement| Seen::at(placement, cell))
+        .collect())
+}
+
+/// A square picture is square where it is drawn, in the pixels of the terminal, to two pixels: a picture
+/// that is stretched over whole cells is a few per cent wider than it is tall, or the other way about.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn a_square_picture_is_a_square_on_the_pixels_of_a_terminal() {
+    let mut wrong = Vec::new();
+    for size in [(160, 48), (80, 24)] {
+        for pixels in [(12, 24), (9, 20), (10, 21), (7, 15)] {
+            let seen = square_picture(size, pixels).expect("the page opens");
+            let picture = seen
+                .iter()
+                .filter(|seen| seen.z < -1_000_000_000)
+                .max_by_key(|seen| seen.size.0 * seen.size.1)
+                .expect("the picture is drawn");
+            // Its blue is 128 everywhere; the cells' ground around it is not that.
+            let (left, top, right, bottom) = picture
+                .bounds_where(|[_, _, blue, alpha]| alpha == 255 && blue == 128)
+                .expect("the picture has pixels");
+            let (across, down) = (right - left, bottom - top);
+            if across.abs_diff(down) > 2 {
+                wrong.push(format!(
+                    "{size:?} cells of {pixels:?} pixels: the square is {across} by {down} pixels"
+                ));
+            }
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
 }
 
 // --- The line over the open tab --------------------------------------------------------------------

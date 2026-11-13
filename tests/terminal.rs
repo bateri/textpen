@@ -380,3 +380,159 @@ fn the_streams_of_a_pdf_and_a_picture_opened() {
         }
     }
 }
+
+/// A tmux server of its own, on a socket of its own, which is killed when this goes. Only the one this
+/// started is ever spoken to.
+struct Tmux {
+    socket: String,
+}
+
+impl Tmux {
+    fn start(dir: &std::path::Path) -> Option<Self> {
+        let socket = format!("textpen-test-{}", std::process::id());
+        let tmux = Self { socket };
+        let started = tmux
+            .run(&[
+                "-f",
+                "/dev/null",
+                "new-session",
+                "-d",
+                "-x",
+                "120",
+                "-y",
+                "40",
+                "-s",
+                "t",
+                "-c",
+                &dir.to_string_lossy(),
+                "/bin/sh",
+            ])
+            .is_some();
+        started.then_some(tmux)
+    }
+
+    fn run(&self, args: &[&str]) -> Option<String> {
+        let out = std::process::Command::new("tmux")
+            .arg("-L")
+            .arg(&self.socket)
+            .args(args)
+            .output()
+            .ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    }
+
+    fn title(&self) -> String {
+        self.run(&["display-message", "-p", "-t", "t", "#{pane_title}"])
+            .unwrap_or_default()
+            .trim_end()
+            .to_owned()
+    }
+
+    fn screen(&self) -> String {
+        self.run(&["capture-pane", "-p", "-t", "t"])
+            .unwrap_or_default()
+    }
+
+    fn send(&self, keys: &[&str]) {
+        let mut args = vec!["send-keys", "-t", "t"];
+        args.extend_from_slice(keys);
+        self.run(&args);
+    }
+
+    fn until(&self, what: &str) -> bool {
+        let end = Instant::now() + LIMIT;
+        while Instant::now() < end {
+            if self.screen().contains(what) {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        false
+    }
+}
+
+impl Drop for Tmux {
+    fn drop(&mut self) {
+        // The server leaves its socket file behind when it is killed: it is taken away with it.
+        let socket = self
+            .run(&["display-message", "-p", "#{socket_path}"])
+            .map(|path| path.trim_end().to_owned());
+        self.run(&["kill-server"]);
+        if let Some(socket) = socket.filter(|path| path.contains(&self.socket)) {
+            std::fs::remove_file(socket).ok();
+        }
+    }
+}
+
+/// What the person sees of the title of a tmux pane while textpen is open in it and after it ends: the
+/// one it had before. tmux keeps the string of the Kitty graphics query (an APC) as the title, so a
+/// pane of textpen was titled `Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA`, and stayed so when textpen ended.
+/// `environment` is what the program is run with besides. With the variables of tmux taken away (as an
+/// `ssh` into a machine leaves them) and its name for the terminal as well, the terminal is asked what it
+/// is and says so, and the question of pictures is not sent; but the program's first question, whether a
+/// host is there, is, and tmux keeps that for the title (`whole` false: only the picture question is
+/// looked for in the title).
+fn assert_the_title_of_a_tmux_pane_is_left_alone(environment: &str, whole: bool) {
+    let pane = Pane::new();
+    pane.write("a.txt", "hello\n");
+    let Some(tmux) = Tmux::start(pane.dir.path()) else {
+        eprintln!("tmux is not installed here: nothing was asked of it");
+        return;
+    };
+    let before = tmux.title();
+    assert!(!before.is_empty(), "the pane has a title to begin with");
+    // A binary other than the one built here, to see the sequence of a build that sends the query.
+    let program = std::env::var("TEXTPEN_TEST_BIN").unwrap_or_else(|_| program().to_owned());
+    let home = pane.dir.path().to_string_lossy().into_owned();
+    tmux.send(&[
+        &format!(
+            "{environment} HOME={home} XDG_STATE_HOME={home}/state XDG_CONFIG_HOME={home}/config \
+             SHELL=/usr/bin/true {program} a.txt; echo ended:$?"
+        ),
+        "Enter",
+    ]);
+    assert!(
+        tmux.until("a.txt"),
+        "the editor is up: {}",
+        squeezed(&tmux.screen())
+    );
+    // The probe is over a moment after the editor draws.
+    std::thread::sleep(Duration::from_millis(1500));
+    let unmoved = |title: String, when: &str| {
+        if whole {
+            assert_eq!(title, before, "the title {when}");
+        } else {
+            assert!(
+                !title.contains("a=q"),
+                "the title {when} is the question of pictures: {title}"
+            );
+        }
+    };
+    unmoved(tmux.title(), "while textpen is open");
+    tmux.send(&["C-c"]);
+    assert!(
+        tmux.until("ended:130"),
+        "textpen ended: {}",
+        squeezed(&tmux.screen())
+    );
+    unmoved(tmux.title(), "after textpen ended");
+}
+
+#[test]
+fn the_title_of_a_tmux_pane_is_left_alone_by_a_textpen_that_opens_and_ends_in_it() {
+    // As the pane has it (TMUX, TERM=tmux-256color); with the page forced on, the way the other
+    // guards start it; with the variables tmux sets taken away and its name for the terminal kept, as
+    // an ssh leaves it; and with that taken away too, so that only the terminal's answer says.
+    assert_the_title_of_a_tmux_pane_is_left_alone("env -u PENCERE_TUI", true);
+    assert_the_title_of_a_tmux_pane_is_left_alone("env PENCERE_TUI=1", true);
+    assert_the_title_of_a_tmux_pane_is_left_alone(
+        "env -u PENCERE_TUI -u TMUX -u TMUX_PANE -u TERM_PROGRAM",
+        true,
+    );
+    assert_the_title_of_a_tmux_pane_is_left_alone(
+        "env -u PENCERE_TUI -u TMUX -u TMUX_PANE -u TERM_PROGRAM TERM=xterm-256color",
+        false,
+    );
+}

@@ -54,7 +54,7 @@ test:
 # clock's: a runner under load takes many times what one at rest does, and a test of what the page
 # does should not fail for that. check-timing is the strict one (below).
 test-page:
-	cargo test --locked --bin textpen -- page_tests:: page_uploads:: page_changes:: page_compare:: page_pdf:: page_shots::tui::nothing_stands_past page_shots::tui::the_marks_and_lines page_shots::tui::the_chosen_find page_shots::tui::the_icons_of_the_sidebar page_shots::tui::the_line_over_the_open_tab page_shots::terminal:: --ignored --test-threads=2
+	cargo test --locked --bin textpen -- page_tests:: page_uploads:: page_changes:: page_compare:: page_pdf:: page_shots::tui::nothing_stands_past page_shots::tui::the_marks_and_lines page_shots::tui::the_marks_of_found_words page_shots::tui::the_chosen_find page_shots::tui::the_icons_of_the_sidebar page_shots::tui::the_icons_of_the_welcome page_shots::tui::a_square_picture page_shots::tui::the_line_over_the_open_tab page_shots::terminal:: --ignored --test-threads=2
 
 # check-timing runs the page's tests with every call of the page held to the kit's 250 ms
 # (CALL_MS=125 for half of it), as a terminal holds it. Not part of the gate: it measures the

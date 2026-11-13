@@ -785,6 +785,12 @@ pub(crate) struct Run {
 /// A PDF whose pages are `(width, height, runs)`, each run set in one of the four standard fonts
 /// (which the file does not carry): words to select, to search and to see.
 pub(crate) fn pdf_of_runs(pages: &[(f32, f32, Vec<Run>)]) -> Vec<u8> {
+    pdf_of_runs_on(pages, None)
+}
+
+/// As [`pdf_of_runs`], with the pages painted `ground` (red, green and blue, `0.0..=1.0`) first, so that
+/// where the page's picture is drawn is told from what is around it.
+pub(crate) fn pdf_of_runs_on(pages: &[(f32, f32, Vec<Run>)], ground: Option<[f32; 3]>) -> Vec<u8> {
     fn object(out: &mut Vec<u8>, offsets: &mut Vec<usize>, body: &str) {
         offsets.push(out.len());
         let number = offsets.len();
@@ -825,6 +831,11 @@ pub(crate) fn pdf_of_runs(pages: &[(f32, f32, Vec<Run>)]) -> Vec<u8> {
             ),
         );
         let mut content = String::new();
+        if let Some([red, green, blue]) = ground {
+            content.push_str(&format!(
+                "{red} {green} {blue} rg 0 0 {width} {height} re f\n0 g\n"
+            ));
+        }
         for run in runs {
             let text = run
                 .text

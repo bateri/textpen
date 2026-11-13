@@ -39,6 +39,9 @@ none of the three, and a picture and a PDF stay as they fit.
 - **The size of a picture is in the status line.** It was a line under the picture.
 - On the cells of a terminal the page has no rule rows between its bars and its panels, the palette's
   query is on the row of its scope, and the busy mark turns (braille, a tenth of a second a step).
+- **In a terminal that hosts nothing:** the marks of a found word in a PDF stand on the word, a square
+  picture is square, the pane's title in tmux is left alone, and the lock, search, command and keyboard
+  icons are characters where the terminal has no pictures.
 
 ## [0.7.0] - 2026-11-11
 

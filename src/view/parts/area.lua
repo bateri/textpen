@@ -107,7 +107,7 @@ local function banner(tone, icon_name, words, buttons)
 		:min_h(34)
 		:no_shrink()
 		:bg(b.alpha(color, 0.1))
-		:child(kit.icon(icon_name, 15, color))
+		:child(kit.icon(icon_name, 15, color):id("banner-icon:" .. icon_name))
 		:child(b.rich(words):wrap():grow(1):min_w(0))
 	for _, button in buttons or {} do
 		row:child(button)

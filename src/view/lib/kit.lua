@@ -220,7 +220,8 @@ end
 
 -- The characters that say what the icons of the buttons do, where a picture is coarse (each is in the
 -- fonts a terminal has by default, Menlo and SF Mono, but the few Menlo alone has, which SF Mono falls
--- back from). The icons of a file's kind and of a language are not here: a row is as clear without one.
+-- back from). The icons of a file's kind and of a language are not here: a row is as clear without one
+-- (`lock` is, for a file that is read-only, and so is the lock of a lock file's row).
 local CHARACTERS = {
 	x = "×",
 	check = "✓",
@@ -246,6 +247,10 @@ local CHARACTERS = {
 	["git-branch"] = "ψ",
 	["alert-triangle"] = "!",
 	["file-alert"] = "!",
+	lock = "⊘",
+	["file-search"] = "▤",
+	command = "⌘",
+	keyboard = "⌨",
 }
 
 -- One of the pictures of src/assets/icons (Tabler's, MIT), `size` points, in a colour of the theme; or,

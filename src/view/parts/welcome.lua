@@ -67,7 +67,7 @@ function act.welcome_view(size)
 				:rounded(6)
 				:bg(over and b.alpha("foreground", 0.06) or nil)
 				:role("button")
-				:child(kit.icon(entry[2], 16, over and "foreground" or "dim"))
+				:child(kit.icon(entry[2], 16, over and "foreground" or "dim"):id("welcome-icon:" .. entry[1]))
 				:child(b.text(command.title):grow(1))
 			if command.keys then
 				row:child(b.text(kit.keys_of(command.keys)):color("quiet"))

@@ -102,7 +102,7 @@ local function tab_view(tab, hint)
 	}):truncate():min_w(0)
 	element:child(name)
 	if info and info.readonly then
-		element:child(kit.icon("lock", 12, "quiet"))
+		element:child(kit.icon("lock", 12, "quiet"):id("tab-lock:" .. path))
 	end
 	if info and info.conflict then
 		element:child(b.text("!"):weight(800):color("error"))
