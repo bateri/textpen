@@ -17,7 +17,7 @@ use pencere_tui::compose::{Image, Terminal};
 use pencere_tui::{
     CanvasMode, Cells, Depth, Frame, ImageMode, Options, Rgb, Screen, Theme, render, show_texts,
 };
-use pencere_view::{Id, Paint, Rect};
+use pencere_view::{Id, Paint, Rect, Role};
 
 use super::{lantern_art, spec_pdf, with_changed_server, with_git};
 use crate::options;
@@ -1718,15 +1718,19 @@ fn scrolling_a_pdf_sends_its_pixels_once_and_only_moves_them_with_a_find_open_or
 // --- The line over the open tab --------------------------------------------------------------------
 
 /// The lines over the tabs of the page: boxes thinner than half a row, wider than three columns, in the
-/// first two rows.
+/// first two rows. The strip's own line (the border's, along the bottom of the strip's row) is not one
+/// of them: the guards of the strip hold it.
 fn tab_lines(page: &Page) -> Vec<Rect> {
     let (n, row) = (cell_pt(), row_pt());
+    let border = pencere_view::Color::from(Role::Border);
     page.list()
         .items
         .iter()
         .filter_map(|item| match item {
             Paint::Quad(quad)
                 if quad.fill.is_some()
+                    && !(quad.fill == Some(border)
+                        && (quad.rect.y + quad.rect.h - row).abs() < 0.5)
                     && quad.rect.h < row / 2.0
                     && quad.rect.w >= 3.0 * n
                     && quad.rect.y < 2.0 * row =>
@@ -1887,4 +1891,344 @@ fn the_icons_of_the_sidebar_and_of_the_branch_are_characters_where_the_terminal_
         !first.is_empty() && !first.starts_with("main"),
         "the branch of the status line is {branch:?}: its name has no icon before it"
     );
+}
+
+// --- The strip of the tabs, to the pixel -------------------------------------------------------------
+
+/// The page at the editor of the documentation's pictures: four tabs, the first open.
+fn editor_page(size: (u16, u16), pictures: bool) -> (crate::page_tests::Project, Page) {
+    let project = lantern();
+    with_git(&project);
+    let session = project.session(&[
+        "src/server.ts",
+        "src/lib/format.ts",
+        "README.md",
+        "worker/mailer.py",
+    ]);
+    let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
+    let mut page = open_tui_with(program, size, &[], pictures).expect("the page opens");
+    wait(&mut page, |page| shown(page).is_some()).expect("an editor");
+    page.advance(1.5).expect("time");
+    go_to(&mut page, "src/server.ts:19:5").expect("the line");
+    page.advance(1.5).expect("time");
+    (project, page)
+}
+
+/// What a terminal whose cells are `cell` pixels shows of the page, and the frame it was sent.
+fn shown_on(
+    page: &mut Page,
+    size: (u16, u16),
+    pictures: bool,
+    cell: (u32, u32),
+    name: &str,
+) -> (Frame, Image) {
+    // A picture the sandbox has not made at its size yet is shown by a smaller one that stands in, which
+    // is not a wait: the frame is taken again, until the terminal shows the same twice.
+    let mut before: Option<Image> = None;
+    let mut tries = 0;
+    let (frame, image) = loop {
+        let frame = shoot_with(
+            page,
+            name,
+            size,
+            &Theme::dark(),
+            if pictures {
+                ImageMode::Kitty
+            } else {
+                ImageMode::Blocks
+            },
+            CanvasMode::Characters,
+            cell,
+        )
+        .expect("the frame");
+        let image = terminal_shows(
+            &mut Screen::new(Depth::True),
+            &mut Terminal::new(cell, SENTINEL),
+            &frame,
+        );
+        tries += 1;
+        if before.as_ref() == Some(&image) || tries >= 30 {
+            break (frame, image);
+        }
+        before = Some(image);
+        std::thread::sleep(Duration::from_millis(100));
+        page.advance(0.1).expect("time");
+    };
+    keep(
+        &image,
+        &format!(
+            "{}{name}",
+            std::env::var("TUI_TAG").map_or(String::new(), |tag| format!("{tag}-"))
+        ),
+    );
+    (frame, image)
+}
+
+/// The column the page's edge `x` (points) is at on the grid: the nearest, halves away from nothing.
+fn column_of(x: f32) -> u32 {
+    (x / cell_pt()).round() as u32
+}
+
+/// The pixel columns of `image`'s row `y`, from `from` up to `to`, that are `color`.
+fn columns_of(image: &Image, y: u32, from: u32, to: u32, color: Rgb) -> Vec<u32> {
+    (from..to.min(image.width))
+        .filter(|x| image.at(*x, y) == color)
+        .collect()
+}
+
+fn border() -> Rgb {
+    Theme::dark().role(Role::Border)
+}
+
+/// The right line of a tab (the page's rule at its edge) stands where the ground of the tab ends, and
+/// the tab's ground and the tone it takes under the pointer do not go past it, on terminals whose
+/// cells are not alike, with pictures or none.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_right_line_of_a_tab_stands_at_the_edge_of_its_ground_and_its_tone_stops_there() {
+    let size = (160, 49);
+    let mut wrong = Vec::new();
+    for cell in [(13, 29), (12, 24)] {
+        for pictures in [true, false] {
+            for hover in [
+                None,
+                Some("tab:src/lib/format.ts"),
+                Some("tab-close:src/server.ts"),
+            ] {
+                let (_project, mut page) = editor_page(size, pictures);
+                if let Some(id) = hover {
+                    page.hover(id).expect("the pointer");
+                    page.advance(0.5).expect("time");
+                }
+                let name = format!(
+                    "tabline-{}x{}-{}-{}",
+                    cell.0,
+                    cell.1,
+                    if pictures { "kitty" } else { "tmux" },
+                    match hover {
+                        None => "rest",
+                        Some(id) if id.starts_with("tab-close") => "hover-close",
+                        Some(_) => "hover",
+                    }
+                );
+                let (_, image) = shown_on(&mut page, size, pictures, cell, &name);
+                let y = cell.1 / 2;
+                for id in ["tab:src/server.ts", "tab:src/lib/format.ts"] {
+                    let rect = page.bounds(id).expect("the tab");
+                    let edge = column_of(rect.x + rect.w) * cell.0;
+                    let line = columns_of(&image, y, edge - cell.0, edge + cell.0, border());
+                    let note = format!("{cell:?} pictures {pictures} hover {hover:?} {id}");
+                    match line.last() {
+                        None => wrong.push(format!("{note}: no line near the edge, pixel {edge}")),
+                        Some(last) if last + 1 != edge => wrong.push(format!(
+                            "{note}: the line ends at pixel {} and the tab at {edge}",
+                            last + 1
+                        )),
+                        _ => {}
+                    }
+                    // Past the edge there is the next tab's ground: not the open tab's, nor the tone.
+                    // (A tab that is not the open one and is not under the pointer has no ground.)
+                    let has_ground = id == "tab:src/server.ts" || hover == Some(id);
+                    let past = image.at(edge + cell.0 / 2, y);
+                    let own = image.at(edge - cell.0 - cell.0 / 2, y);
+                    if has_ground && (past == own || past == Theme::dark().background) {
+                        wrong.push(format!(
+                            "{note}: the ground of the tab, {past:?}, goes on past its edge"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+/// The open tab's blue line runs to the tab's right line: neither is short of the other.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_blue_line_of_the_open_tab_runs_to_its_right_line() {
+    let size = (160, 49);
+    let mut wrong = Vec::new();
+    for cell in [(13, 29), (12, 24)] {
+        let (_project, mut page) = editor_page(size, true);
+        let (_, image) = shown_on(
+            &mut page,
+            size,
+            true,
+            cell,
+            &format!("tabblue-{}x{}", cell.0, cell.1),
+        );
+        let rect = page.bounds("tab:src/server.ts").expect("the tab");
+        let edge = column_of(rect.x + rect.w) * cell.0;
+        let blue = Theme::dark().role(Role::Accent);
+        let across = columns_of(&image, 0, edge - 3 * cell.0, edge + cell.0, blue);
+        let line = columns_of(&image, cell.1 / 2, edge - cell.0, edge + cell.0, border());
+        let (Some(blue_end), Some(line_end)) =
+            (across.last().map(|x| x + 1), line.last().map(|x| x + 1))
+        else {
+            wrong.push(format!("{cell:?}: blue {across:?} line {line:?}"));
+            continue;
+        };
+        if blue_end.abs_diff(line_end) > 1 {
+            wrong.push(format!(
+                "{cell:?}: the blue line ends at pixel {blue_end}, the right line at {line_end}"
+            ));
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+/// The strip of the tabs has its line under it, the page's own, where the terminal has pictures; where
+/// it has none the strip's line is not drawn in pieces.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_strip_of_the_tabs_has_its_line_under_it_where_the_terminal_has_pictures_and_not_in_pieces_where_it_has_none()
+ {
+    let size = (160, 49);
+    let mut wrong = Vec::new();
+    for cell in [(13, 29), (12, 24)] {
+        let (_project, mut page) = editor_page(size, true);
+        let (_, image) = shown_on(
+            &mut page,
+            size,
+            true,
+            cell,
+            &format!("stripline-{}x{}", cell.0, cell.1),
+        );
+        let strip = page.bounds("tabs").expect("the strip");
+        let (from, to) = (
+            column_of(strip.x) * cell.0,
+            column_of(strip.x + strip.w) * cell.0,
+        );
+        let bottom = cell.1 - 1;
+        // The line is in the last pixels of the strip's row, across the strip: there are tabs' pixels
+        // under it in none of them.
+        let line = columns_of(&image, bottom, from + 2 * cell.0, to - 2 * cell.0, border());
+        let wanted = (to - from - 4 * cell.0) as usize;
+        if line.len() < wanted {
+            wrong.push(format!(
+                "{cell:?}: {} of {wanted} pixels of the strip's last pixel row are the line",
+                line.len()
+            ));
+        }
+        let (_project, mut page) = editor_page(size, false);
+        let (frame, _) = shown_on(
+            &mut page,
+            size,
+            false,
+            cell,
+            &format!("stripline-{}x{}-tmux", cell.0, cell.1),
+        );
+        let text = frame.text();
+        let first: String = text
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .chars()
+            .filter(|c| matches!(c, '\u{2581}'))
+            .collect();
+        if !first.is_empty() {
+            wrong.push(format!(
+                "{cell:?} with no pictures: {} parts of the line stand in the strip's row",
+                first.chars().count()
+            ));
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+/// An icon of the page (a tab's file, its close mark) is drawn the size the page wrote, in the middle
+/// of its place, and not the size of the cells that hold it.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_icons_of_the_tabs_are_the_size_the_page_wrote_in_the_middle_of_their_cells() {
+    let size = (160, 49);
+    let mut wrong = Vec::new();
+    for cell in [(13_usize, 29_usize), (12, 24)] {
+        let (_project, mut page) = editor_page(size, true);
+        let (frame, _) = shown_on(
+            &mut page,
+            size,
+            true,
+            (cell.0 as u32, cell.1 as u32),
+            &format!("tabicons-{}x{}", cell.0, cell.1),
+        );
+        let (n, row) = (cell_pt(), row_pt());
+        // One point on the terminal: the smaller of its two scales, as a picture keeps its proportions.
+        let point = (cell.0 as f32 / n).min(cell.1 as f32 / row);
+        let seen: Vec<Seen> = frame
+            .placements
+            .iter()
+            .filter(|p| p.row == 0)
+            .map(|p| Seen::at(p, cell))
+            .collect();
+        // The kind icon of the first tab (14 points) is in the 2 columns from 256 points; the close mark
+        // (13 points) in those from 368.
+        for (name, from, written) in [
+            ("file icon", 256.0_f32, 14.0_f32),
+            ("close mark", 368.0, 13.0),
+        ] {
+            let (left, right) = (
+                (from / n) as usize * cell.0,
+                ((from + 16.0) / n) as usize * cell.0,
+            );
+            let Some(icon) = seen.iter().find(|s| {
+                s.at.0 + s.size.0 > left && s.at.0 < right && s.z > 0
+                    || s.at.0 + s.size.0 > left && s.at.0 < right && s.size.0 < 40
+            }) else {
+                wrong.push(format!(
+                    "{cell:?}: no {name} between pixels {left} and {right}"
+                ));
+                continue;
+            };
+            let wanted = (written * point).round() as usize;
+            if icon.size.0.abs_diff(wanted) > 2 || icon.size.1.abs_diff(wanted) > 2 {
+                wrong.push(format!("{cell:?}: the {name} is {} by {} pixels, written {written} points, {wanted} pixels", icon.size.0, icon.size.1));
+            }
+            let (middle, cells_middle) = (icon.at.0 + icon.size.0 / 2, (left + right) / 2);
+            if middle.abs_diff(cells_middle) > 2 {
+                wrong.push(format!(
+                    "{cell:?}: the {name} is centred at pixel {middle}, its cells at {cells_middle}"
+                ));
+            }
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
+}
+
+/// A space inside the selection shows as a dot (`·`), in the cell of the space, where the terminal has
+/// pictures and where it has none: not as a block.
+#[test]
+#[ignore = "opens the kit's interpreter: make test-page"]
+fn the_spaces_of_a_selection_are_dots_in_their_cells_with_pictures_or_none() {
+    let size = (160, 49);
+    let mut wrong = Vec::new();
+    for pictures in [true, false] {
+        let (_project, mut page) = editor_page(size, pictures);
+        let editor = shown(&page).expect("an editor");
+        let line_end = "import { createServer } from \"node:http\";"
+            .chars()
+            .count();
+        page.select(&editor, 0, line_end).expect("a selection");
+        page.advance(0.5).expect("time");
+        let name = format!("selection-{}", if pictures { "kitty" } else { "tmux" });
+        let (frame, _) = shown_on(&mut page, size, pictures, (13, 29), &name);
+        let text = frame.text();
+        let line = text
+            .lines()
+            .find(|line| line.contains("import"))
+            .unwrap_or_default()
+            .to_owned();
+        // (The sidebar's heading has a dot of its own before the editor's cells.)
+        let line = line
+            .get(line.find("import").unwrap_or(0)..)
+            .unwrap_or_default()
+            .to_owned();
+        let dots = line.chars().filter(|c| *c == '\u{b7}').count();
+        // `import { createServer } from "node:http";` has five spaces.
+        if dots != 5 {
+            wrong.push(format!("pictures {pictures}: {dots} dots in {line:?}"));
+        }
+    }
+    assert!(wrong.is_empty(), "{wrong:#?}");
 }

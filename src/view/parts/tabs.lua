@@ -156,6 +156,12 @@ function tabs.view(docked)
 		right:child(kit.icon_button("open-tabs", "chevron-down", "Open files", { keys = "mod+e" }))
 	end
 	bar:child(right)
+	if kit.cells() then
+		-- The line under the strip is no row of its own on the cells of a terminal (`kit.rule_x` is
+		-- nothing there: a page of 24 rows has none to spare); it lies along the bottom of the strip's
+		-- row, over the tabs' words where the terminal has pictures to draw it with.
+		bar:child(b.div():absolute():inset(nil, 0, 0, 0):h(1):bg("border"))
+	end
 	return b.div():col():no_shrink():child(bar):child(kit.rule_x())
 end
 
