@@ -95,7 +95,7 @@ local function tab_view(tab, hint)
 	end
 	element:child(b.div():absolute():inset(0, 0, nil, 0):h(2):bg(active and "accent" or (target and b.alpha("accent", 0.6) or nil)))
 	element:child(b.div():absolute():inset(0, 0, 0, nil):w(1):bg("border"))
-	element:child(kit.kind_icon(kind.icon, 14, kind.color))
+	element:child(kit.icon(kind.icon, 14, kind.color))
 	local name = b.rich({
 		b.span(text.basename(path)):color(name_color),
 		hint and b.span(" " .. hint):color("quiet") or nil,
@@ -156,12 +156,6 @@ function tabs.view(docked)
 		right:child(kit.icon_button("open-tabs", "chevron-down", "Open files", { keys = "mod+e" }))
 	end
 	bar:child(right)
-	if kit.cells() then
-		-- The line under the strip is no row of its own on the cells of a terminal (`kit.rule_x` is
-		-- nothing there: a page of 24 rows has none to spare); it lies along the bottom of the strip's
-		-- row, over the tabs' words where the terminal has pictures to draw it with.
-		bar:child(b.div():absolute():inset(nil, 0, 0, 0):h(1):bg("border"))
-	end
 	return b.div():col():no_shrink():child(bar):child(kit.rule_x())
 end
 

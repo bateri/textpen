@@ -54,7 +54,7 @@ test:
 # clock's: a runner under load takes many times what one at rest does, and a test of what the page
 # does should not fail for that. check-timing is the strict one (below).
 test-page:
-	cargo test --locked --bin textpen -- page_tests:: page_uploads:: page_changes:: page_compare:: page_pdf:: page_shots::tui::nothing_stands_past page_shots::tui::the_marks_and_lines page_shots::tui::the_marks_of_found_words page_shots::tui::the_chosen_find page_shots::tui::the_icons_of_the_sidebar page_shots::tui::the_icons_of_the_tree page_shots::tui::the_icons_of_the_welcome page_shots::tui::a_square_picture page_shots::tui::scrolling_a_pdf page_shots::tui::the_pages_of_a_pdf page_shots::tui::a_pdf_under_the_palette page_shots::tui::a_pdf_on_a_wide_screen page_shots::tui::the_status_line_of_the_cells page_shots::tui::the_line_over_the_open_tab page_shots::tui::the_right_line_of_a_tab page_shots::tui::the_blue_line_of_the_open_tab page_shots::tui::the_strip_of_the_tabs page_shots::tui::the_icons_of_the_tabs page_shots::tui::the_spaces_of_a_selection page_shots::terminal:: --ignored --test-threads=2
+	cargo test --locked --bin textpen -- page_tests:: page_uploads:: page_changes:: page_compare:: page_pdf:: page_shots::terminal:: --ignored --test-threads=2
 
 # check-timing runs the page's tests with every call of the page held to the kit's 250 ms
 # (CALL_MS=125 for half of it), as a terminal holds it. Not part of the gate: it measures the
@@ -77,8 +77,10 @@ shots:
 test-features:
 	cargo clippy --locked --no-default-features --all-targets -- -D warnings
 	cargo test --locked --no-default-features --bin textpen
-	@! cargo tree --locked -p textpen -e normal | grep -q 'cranelift-codegen' || { echo "test-features: the code generator (cranelift-codegen) is in the tree of textpen"; exit 1; }
-	@! cargo tree --locked -p textpen -e normal --no-default-features | grep -q 'cranelift-codegen\|pencere-tui v' || { echo "test-features: the build without the screen has the code generator or pencere-tui in its tree"; exit 1; }
+	@tree="$$(cargo tree --locked -p textpen -e normal)" || exit 1; \
+	if printf '%s\n' "$$tree" | grep -q 'cranelift-codegen'; then echo "test-features: the code generator (cranelift-codegen) is in the tree of textpen"; exit 1; fi
+	@tree="$$(cargo tree --locked -p textpen -e normal --no-default-features)" || exit 1; \
+	if printf '%s\n' "$$tree" | grep -q 'cranelift-codegen\|pencere-tui v'; then echo "test-features: the build without the screen has the code generator or pencere-tui in its tree"; exit 1; fi
 
 # check is the gate: the pin of pencere, formatting, lints, the program's tests, the page's tests.
 check: pin lint test test-page test-features test-tools

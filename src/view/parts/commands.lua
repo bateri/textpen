@@ -317,7 +317,7 @@ add({ id = "hide-ignored", title = "Toggle Ignored Files in the Tree", category 
 	run = function() act.change_settings({ hideIgnored = not S.settings.hideIgnored }) end })
 add({ id = "indentation", title = "Indentation", category = "View", run = function() act.open_palette("indent") end })
 add({ id = "settings", title = "Settings", category = "textpen", keys = "mod+,", run = function() act.open_settings() end })
-add({ id = "help", title = "Keyboard Shortcuts", category = "textpen", keys = "mod+shift+/", run = function() act.open_help() end })
+add({ id = "help", title = "Keyboard Shortcuts", category = "textpen", keys = { "mod+shift+/", "mod+?" }, run = function() act.open_help() end })
 add({ id = "shell", title = "Open a Shell Here", category = "textpen", keys = chords.shell,
 	when = function() return S.boot ~= nil and S.boot.handoff == true end, run = function() act.shell() end })
 add({ id = "quit", title = "Quit textpen", category = "textpen", keys = "ctrl+q", run = function() act.quit() end })
@@ -407,23 +407,17 @@ local function finding_in_pdf()
 	return S.find.open and S.find.pdf ~= nil and S.find.pdf == pdf.shown() and S.find.count > 0
 end
 
--- The zoom keys of a PDF: a terminal that draws the page in its cells leaves the pages fitted.
-local function in_pdf_zoom()
-	return kit.zooms() and in_pdf()
-end
-
-add({ id = "pdf-zoom-in", title = "Zoom In", category = "PDF", keys = { "mod++", "mod+=" }, when = in_pdf_zoom,
+add({ id = "pdf-zoom-in", title = "Zoom In", category = "PDF", keys = { "mod++", "mod+=" }, when = in_pdf,
 	run = function() pdf.zoom(pdf.shown(), 1) end })
-add({ id = "pdf-zoom-out", title = "Zoom Out", category = "PDF", keys = "mod+-", when = in_pdf_zoom,
+add({ id = "pdf-zoom-out", title = "Zoom Out", category = "PDF", keys = "mod+-", when = in_pdf,
 	run = function() pdf.zoom(pdf.shown(), -1) end })
-add({ id = "pdf-fit-width", title = "Fit Width", category = "PDF", keys = "mod+0", when = in_pdf_zoom,
+add({ id = "pdf-fit-width", title = "Fit Width", category = "PDF", keys = "mod+0", when = in_pdf,
 	run = function() pdf.zoom(pdf.shown(), 0) end })
 -- --- The size of the text --------------------------------------------------------------------------------------
 
--- Where a picture or a PDF is in front the keys zoom it; anywhere else they are the page's text size. A
--- terminal that draws the page in its cells has neither: its text is the size its cells are.
+-- Where a picture or a PDF is in front the keys zoom it; anywhere else they are the page's text size.
 local function in_text()
-	return kit.zooms() and not (pdf.shown() or pictures.shown())
+	return not (pdf.shown() or pictures.shown())
 end
 
 add({ id = "text-bigger", title = "Bigger Text", category = "View", keys = { "mod++", "mod+=" }, when = in_text,
@@ -436,7 +430,7 @@ add({ id = "text-actual", title = "Actual Text Size", category = "View", keys = 
 -- --- A picture --------------------------------------------------------------------------------------------
 
 local function in_picture()
-	return kit.zooms() and pictures.shown() ~= nil
+	return pictures.shown() ~= nil
 end
 
 add({ id = "picture-zoom-in", title = "Zoom In", category = "Picture", keys = { "mod++", "mod+=" }, when = in_picture,

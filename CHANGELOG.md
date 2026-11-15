@@ -16,39 +16,21 @@ change what the previous one did.
   settings sets it too.
 - **Drag a file out of textpen.** Drag a file from the tree, or a tab, onto a terminal pane and its
   path is typed there. Drop it on another app to give it the path.
-- **A terminal that speaks Kitty graphics is drawn on, as bateri does.** textpen shows the editor
-  as pixels there, with its own faces, icons, pictures and PDFs, the mouse and the keys, where it used
-  to open your own `$EDITOR`. A terminal with no Kitty graphics, and a multiplexer, still opens the
-  `$EDITOR`; `PENCERE_TUI=0` keeps it, `PENCERE_TUI=1` draws on a terminal that does host views too.
-  The keys are those of a keyboard with no ⌘: Ctrl is what ⌘ is (Ctrl+/ comments a line), and the
-  page says so in its menus and hints. Upload Files and Download are not offered there: they need a
-  terminal that hosts views.
-- **A feature `terminal`, on by default, for the screen of its own.** `cargo build
-  --no-default-features` makes the file that does not draw a terminal that hosts nothing (it opens
-  your `$EDITOR` there), without `pencere-tui` and so smaller. The screen has the interpreter
-  compiled by the build and the PDF reader, so no code generator is in the file. A profile `dist`
-  (LTO, one code generation unit, stripped) is the file that is shipped.
 
-The zoom, the text size and the drag out need a terminal that supports them, such as the next bateri.
-Elsewhere textpen works as before; where it draws the editor in a terminal there is none of the
-three, and a picture and a PDF stay as they fit.
+These need a terminal that supports them, such as the next bateri. Elsewhere textpen works as before.
+
+- **textpen draws the editor in a terminal that speaks Kitty graphics,** as bateri does: the same editor
+  as pictures, with the mouse and the keys, where it used to open your own `$EDITOR`. Ctrl is what ⌘ is
+  there (Ctrl+/ comments a line). A terminal with no Kitty graphics, and a multiplexer, still open the
+  `$EDITOR`; `PENCERE_TUI=0` keeps it everywhere.
+- **A build without the drawing.** `cargo build --no-default-features` makes a smaller file that opens
+  your `$EDITOR` where no terminal hosts textpen.
 
 ### Changed
 
 - **The size of a picture is in the status line.** It was a line under the picture.
 - **The hint of the button that fits a picture to its tab names its key.** It says Ctrl+0 where there is
   no ⌘ key (it said Super+0), and ⌘0 on a Mac as before.
-- **In a terminal that hosts nothing, a PDF and a picture have no zoom:** the status line has no
-  zoom button and the PDF's keys have no zoom hint, as a cell is the size it is. The pages of a PDF
-  stand on the same pixel columns, and a PDF under the palette is as dim as the text.
-- On the cells of a terminal the page has no rule rows between its bars and its panels, the palette's
-  query is on the row of its scope, and the busy mark turns (braille, a tenth of a second a step).
-- **In a terminal that hosts nothing:** the marks of a found word in a PDF stand on the word, a square
-  picture is square, the pane's title in tmux is left alone, and the lock, search, command and keyboard
-  icons are characters where the terminal has no pictures.
-- **In a terminal that hosts nothing, folders and the other icons are characters too:** a closed folder
-  is ▸ and an open one ▾, the lock-file mark is gone, and the history, trash, `#` and stack icons are
-  ← ⌫ # □. A PDF page scrolls without being sent again.
 
 ## [0.7.0] - 2026-11-11
 

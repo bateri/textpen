@@ -202,7 +202,7 @@ local function upload_view(row, ctx)
 		:no_shrink()
 		:clip()
 	local kind = files.kind(path)
-	line:child(kit.kind_icon(kind.icon, 15, kind.color, true):opacity(fade))
+	line:child(kit.icon(kind.icon, 15, kind.color):opacity(fade))
 	-- The name gives way first, with its last 22 points faded where it is cut; what is said at the end
 	-- keeps the room it needs but for a little of the name.
 	local ground = over and b.mix("raised1", "foreground", 0.045) or "raised1"
@@ -310,13 +310,12 @@ local function row_view(row, index, ctx)
 		:pr(10)
 		:min_w(ctx.width)
 		:no_shrink()
-	-- A folder says whether it is open by its icon alone: no arrow beside it (where pictures are coarse the
-	-- icon is the arrow).
+	-- A folder says whether it is open by its icon alone: no arrow beside it.
 	if is_dir then
 		line:child(kit.icon(row.open and "folder-open" or "folder", 15, "accent"))
 	else
 		local kind = files.kind(path)
-		line:child(kit.kind_icon(kind.icon, 15, kind.color, true))
+		line:child(kit.icon(kind.icon, 15, kind.color))
 	end
 	-- The name is whole: a tree narrower than its names scrolls across.
 	local name = entry.name .. (entry.link and " ↗" or "")
@@ -525,7 +524,7 @@ function tree.menu(entry, at)
 		return
 	end
 	-- A folder, and the tree itself (the project's own folder), take the person's files.
-	if (not entry or is_dir) and uploads.offered() then
+	if not entry or is_dir then
 		items[#items + 1] = { "Upload Files", nil, function() uploads.choose(dir) end }
 	end
 	if entry then
@@ -539,9 +538,7 @@ function tree.menu(entry, at)
 					act.open_file(entry.path, { focus = true })
 				end
 			end }
-			if uploads.offered() then
-				items[#items + 1] = { "Download", nil, function() uploads.save_as(entry.path) end }
-			end
+			items[#items + 1] = { "Download", nil, function() uploads.save_as(entry.path) end }
 		end
 		items[#items + 1] = { "Rename", "r", function() act.rename(entry.path) end }
 		items[#items + 1] = { "Delete", "d", function() act.remove(entry.path, is_dir) end }

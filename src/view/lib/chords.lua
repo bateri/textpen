@@ -31,9 +31,10 @@ chords.select_line = pick("mod+i", "alt+l")
 chords.join_lines = pick("ctrl+j", "alt+j")
 chords.redo = pick("mod+shift+z", "mod+y")
 chords.comment = "mod+/"
--- Folding: the editor's keys on a Mac; elsewhere the page binds them in the editor (`area.lua`).
-chords.fold = pick("mod+alt+[", "mod+shift+[")
-chords.unfold = pick("mod+alt+]", "mod+shift+]")
+-- Folding: the editor's keys on a Mac; elsewhere the page binds them in the editor (`area.lua`), as the
+-- terminal sends them: Shift with a sign is the character it makes (`{`), where it says so.
+chords.fold = pick("mod+alt+[", { "mod+shift+[", "mod+{" })
+chords.unfold = pick("mod+alt+]", { "mod+shift+]", "mod+}" })
 chords.fold_all = pick("ctrl+alt+[", "mod+alt+[")
 chords.unfold_all = pick("ctrl+alt+]", "mod+alt+]")
 

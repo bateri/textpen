@@ -1220,15 +1220,11 @@ function pdf.hints(tab)
 			{ "escape", "clear", "hint:pdf-clear" },
 		}
 	end
-	local keys = {
+	return {
 		{ "mod+f", "find", "hint:find" },
 		{ chords.go_to_page, "go to page", "hint:pdf-page" },
+		{ "mod++", "zoom", "hint:pdf-zoom" },
 	}
-	-- Where the page is drawn in the cells of a terminal there is no zoom to hint at.
-	if kit.zooms() then
-		keys[#keys + 1] = { "mod++", "zoom", "hint:pdf-zoom" }
-	end
-	return keys
 end
 
 -- A key of the status line, by its name.

@@ -266,7 +266,7 @@ local function file_view(row, index, chosen)
 		:bg(index == chosen and (focused and b.alpha("accent", 0.2) or b.alpha("foreground", 0.07)) or (kit.hovered(id) and b.alpha("foreground", 0.045) or nil))
 		:expanded(not row.folded)
 		:child(kit.icon(row.folded and "chevron-right" or "chevron-down", 13, "quiet"))
-		:child(kit.kind_icon(kind.icon, 15, kind.color))
+		:child(kit.icon(kind.icon, 15, kind.color))
 		:child(b.rich({
 			b.span(text.basename(row.path)):bold(),
 			b.span(" " .. text.dirname(row.path)):color("quiet"),

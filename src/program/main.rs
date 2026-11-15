@@ -1,7 +1,8 @@
 //! textpen: a code editor in the terminal pane. In a terminal that shows pencere views the editor
-//! opens in the pane; in one that does not, the program draws the same page with the characters of the
-//! terminal (`pencere-tui`, the `terminal` feature, on by default); where it cannot (`PENCERE_TUI=0`, a
-//! terminal it cannot take, a build without the feature), the person's own `$EDITOR` does.
+//! opens in the pane; in one that speaks the Kitty graphics protocol and does not, the program draws the
+//! same page as pictures in the terminal (`pencere-tui`, the `terminal` feature, on by default); where it
+//! cannot (`PENCERE_TUI=0`, a terminal it cannot take, a build without the feature), the person's own
+//! `$EDITOR` does.
 //!
 //! The program holds the project and the open files; the page (`src/view/`, in pencere's kit) is the
 //! editor, drawn by the terminal, and asks the program for what it needs with the calls of

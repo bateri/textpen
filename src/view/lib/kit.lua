@@ -181,6 +181,7 @@ local function hovered(id)
 	return ui.hover == id
 end
 
+-- One of the pictures of src/assets/icons (Tabler's, MIT), `size` points, in a colour of the theme.
 -- What a language's colouring is told, in a file's own editor as on the left of a comparison. A call
 -- reads and colours what can be done between two frames, and goes on at the next, so that a turn of
 -- the wheel costs a frame no more than that; and the lines around those in view are a number of lines, as a
@@ -197,86 +198,9 @@ local function syntax_options()
 	}
 end
 
--- Whether the page is drawn in the character cells of a terminal (`pencere.draws()`): a picture of a
--- few points, what is not a whole row, is a row more or none there. Asked the first time it is needed,
--- not when the file is read: the terminal says what it draws a moment after the page starts.
-local cells = nil
-local function in_cells()
-	if cells == nil then
-		cells = pencere.draws().cells == true
-	end
-	return cells
-end
-
--- Whether a picture is drawn in too few pixels to read a small one by (a terminal with no graphics
--- protocol draws it in half blocks): an icon of a button is a character there, which is drawn exactly.
-local coarse = nil
-local function coarse_pictures()
-	if coarse == nil then
-		coarse = pencere.draws().coarse_images == true
-	end
-	return coarse
-end
-
--- The characters that say what the icons of the buttons do, where a picture is coarse (each is in the
--- fonts a terminal has by default, Menlo and SF Mono, but the few Menlo alone has, which SF Mono falls
--- back from). The icons of a file's kind and of a language are not here (`kind_icon`: a row is as clear
--- without one); `lock` is, for a file that is read-only, and `folder` says whether it is open by an arrow.
-local CHARACTERS = {
-	x = "×",
-	check = "✓",
-	["arrow-up"] = "↑",
-	["arrow-down"] = "↓",
-	["chevron-down"] = "▾",
-	["chevron-right"] = "▸",
-	["arrows-vertical"] = "+",
-	fold = "−",
-	["select-all"] = "≡",
-	["file-diff"] = "±",
-	["terminal-2"] = "$",
-	["help-circle"] = "?",
-	["file-plus"] = "+",
-	["folder-plus"] = "⊕",
-	["list-tree"] = "≣",
-	["layout-sidebar-left-collapse"] = "«",
-	["layout-sidebar"] = "»",
-	["menu-2"] = "≡",
-	["loader-2"] = "…",
-	search = "⌕",
-	files = "▤",
-	["git-branch"] = "ψ",
-	["alert-triangle"] = "!",
-	["file-alert"] = "!",
-	lock = "⊘",
-	["file-search"] = "▤",
-	command = "⌘",
-	keyboard = "⌨",
-	folder = "▸",
-	["folder-open"] = "▾",
-	history = "←",
-	trash = "⌫",
-	hash = "#",
-	["stack-2"] = "□",
-}
-
--- One of the pictures of src/assets/icons (Tabler's, MIT), `size` points, in a colour of the theme; or,
--- where a picture is coarse and a character says it, the character in that colour.
 local function icon(name, size, color)
-	if CHARACTERS[name] ~= nil and coarse_pictures() then
-		return b.text(CHARACTERS[name]):color(color or "dim"):no_shrink()
-	end
 	size = size or 15
 	return b.image("assets/icons/" .. name .. ".svg"):size(size, size):tint(color or "dim"):no_shrink()
-end
-
--- The icon of what a file is: the picture of its kind or of its language. Where a picture is coarse there is
--- none (a row is as clear without one, and a lock file's row is not a read-only file's): nil, or, with `keep`,
--- the one cell it would have been in a column of rows whose names stand under one another.
-local function kind_icon(name, size, color, keep)
-	if coarse_pictures() then
-		return keep and b.text(" "):no_shrink() or nil
-	end
-	return icon(name, size, color)
 end
 
 -- The keys of a command as the host's keyboard writes them (`@pencere/keys`: "cmd+shift+k" is
@@ -331,28 +255,8 @@ local function kbd(spec, quiet)
 	return row
 end
 
--- A picture turning round, for what is being waited for: the host turns it, a frame at a time. Where the
--- page is drawn in cells there is no turning of a picture (it would stand still and look stuck): the busy
--- mark is a character that is another every tenth of a second, which a timer asks the page to draw for
--- as long as it is drawn.
--- The frames of the busy mark where the page is drawn in cells, one braille character each.
-local TURNING = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
-local turn = { step = 0, seen = 0, timer = nil }
+-- A picture turning round, for what is being waited for: the host turns it, a frame at a time.
 local function spinner(size, color)
-	if in_cells() then
-		turn.seen = S.now
-		if turn.timer == nil or not turn.timer:active() then
-			turn.timer = pencere.time.every(0.1, function()
-				turn.step += 1
-				if S.now - turn.seen > 0.5 then
-					turn.timer:cancel()
-					return nil
-				end
-				return true
-			end)
-		end
-		return b.text(TURNING[turn.step % #TURNING + 1]):color(color or "dim"):no_shrink()
-	end
 	return icon("loader-2", size, color):motion({ spin = 1 })
 end
 
@@ -474,16 +378,9 @@ end
 
 -- A box that zooms, on a terminal whose kit has them (pencere 40b074f and after). On one of an older kit
 -- there is no `zoom`, `layout.zoom_of` or `layout.zoom_to`: the box only scrolls, a picture and a PDF stay
--- at their fit and the zoom keys do nothing, and the page goes on as it was. So it does where the page is
--- drawn in the cells of a terminal (a terminal that hosts nothing has no fingers to pinch with and a cell
--- is the size it is): there the box only scrolls, and `zooms` says the keys and the settings have nothing to
--- do.
-local function zooms()
-	return b.layout.zoom_to ~= nil and not in_cells()
-end
-
+-- at their fit and the zoom keys do nothing, and the page goes on as it was.
 local function zoom(element, rule)
-	if element.zoom ~= nil and not in_cells() then
+	if element.zoom ~= nil then
 		element:zoom(rule)
 	end
 	return element
@@ -491,7 +388,7 @@ end
 
 -- The scale the terminal zoomed the box `id` to, or nil where it has not (or cannot).
 local function zoom_of(id)
-	if b.layout.zoom_of == nil or in_cells() then
+	if b.layout.zoom_of == nil then
 		return nil
 	end
 	return b.layout.zoom_of(id)
@@ -499,18 +396,13 @@ end
 
 -- Asks the terminal to zoom the box `id` to `scale`, where its kit can.
 local function zoom_to(id, scale, to)
-	if b.layout.zoom_to ~= nil and not in_cells() then
+	if b.layout.zoom_to ~= nil then
 		b.layout.zoom_to(id, scale, to)
 	end
 end
 
 -- A line across or down, in the theme's colour of rules.
 local function rule_x(color)
-	if in_cells() then
-		-- A line a point thick is a row of its own on the cells of a terminal, a row a page of 24 has not
-		-- to spare: what it parts is told apart by its grounds and its words.
-		return b.div():h(0):no_shrink()
-	end
 	return b.div():h(1):w_full():no_shrink():bg(color or "border")
 end
 
@@ -553,12 +445,9 @@ return {
 	syntaxes = syntaxes,
 	hovered = hovered,
 	icon = icon,
-	kind_icon = kind_icon,
 	syntax_options = syntax_options,
 	keys_of = keys_of,
 	keys_all = keys_all,
-	cells = in_cells,
-	coarse = coarse_pictures,
 	spinner = spinner,
 	kbd = kbd,
 	icon_button = icon_button,
@@ -566,7 +455,6 @@ return {
 	INDENT = INDENT,
 	indent_guides = indent_guides,
 	carries = carries,
-	zooms = zooms,
 	zoom = zoom,
 	zoom_of = zoom_of,
 	zoom_to = zoom_to,

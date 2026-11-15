@@ -233,18 +233,14 @@ function status.view()
 		end
 		local current, count = pdf.page_of(pages)
 		row:child(item("status-page", string.format("Page %d of %d", current, count), "Go to page " .. kit.keys_of(chords.go_to_page)))
-		if kit.zooms() then
-			row:child(item("status-zoom", pdf.zoom_words(pages), "Fit to the width " .. kit.keys_of("mod+0")))
-		end
+		row:child(item("status-zoom", pdf.zoom_words(pages), "Fit to the width " .. kit.keys_of("mod+0")))
 		if S.layout ~= "narrow" then
 			row:child(item(nil, text.bytes_fine(pages.picture.size)))
 		end
 		row:child(item(nil, "PDF"))
 	end
 	if shot then
-		if kit.zooms() then
-			row:child(item("status-zoom", pictures.zoom_words(shot), "Fit to the tab " .. kit.keys_of("mod+0")))
-		end
+		row:child(item("status-zoom", pictures.zoom_words(shot), "Fit to the tab " .. kit.keys_of("mod+0")))
 		row:child(item(nil, pictures.caption(shot)))
 		row:child(item(nil, pictures.kind(shot)))
 	end

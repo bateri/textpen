@@ -1,71 +1,32 @@
-//! The page as `pencere-tui` runs it where no terminal hosts it: in the cells of a plain terminal, on a
-//! keyboard that is not a Mac's (Ctrl is the main modifier, there is no ⌘) and, where the terminal has
-//! no graphics protocol, with pictures in half blocks. What the keys of a Mac do, the keys of Linux
-//! do; what a terminal cannot send is not a key of the page; and a PDF is drawn where the terminal
-//! draws pictures and is a sentence where it does not.
+//! The page as `pencere-tui` runs it where no terminal hosts it: drawn in pixels for a terminal that speaks
+//! the Kitty graphics protocol, on a keyboard that is not a Mac's (Ctrl is the main modifier, there is no
+//! ⌘). What the keys of a Mac do, the keys of Linux do, and what a terminal cannot send is not a key of
+//! the page.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use pencere_drive::headless::{Error, Headless, InProcess};
-use pencere_tui::Cells;
 use pencere_view::{Drawing, Key, KeyConvention, Shortcut};
 
 use super::{spec_pdf, with_changed_server, with_git};
 use crate::options;
 use crate::page_pdf::pages_drawn;
 use crate::page_tests::{
-    Page, Project, go_to, lantern, limits, page_words, pictures_drawn, recording, shown, shows,
-    text, wait,
+    Page, Project, go_to, lantern, limits, page_words, pictures_drawn, recording, shown, text, wait,
 };
 
 const WITHIN: Duration = Duration::from_secs(20);
 
-/// A column of the cells the page is laid out on, points, and a row.
-const COLUMN: f32 = 8.0;
-const ROW: f32 = 18.0;
+/// The windows a terminal of 80 by 24 cells and one of 160 by 48 give the page, points.
+const SIZES: [(f32, f32); 2] = [(640.0, 432.0), (1280.0, 864.0)];
 
-/// The page of a terminal of `cols` by `rows` that hosts nothing, on a Linux keyboard: with the
-/// graphics protocol (`kitty`) or without it (the page told so, as the screen tells it).
-fn open_on(
-    program: InProcess,
-    (cols, rows): (u16, u16),
-    kitty: bool,
-    files: &[&[u8]],
-) -> Result<Page, Error> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0.0, |since| since.as_secs_f64());
-    let mut opening = Headless::app(env!("CARGO_MANIFEST_DIR"))
-        .size(f32::from(cols) * COLUMN, f32::from(rows) * ROW)
-        .measure(Cells::new(COLUMN, ROW))
-        .keyboard(KeyConvention::Linux)
-        .draws(if kitty {
-            vec![Drawing::Cells]
-        } else {
-            vec![Drawing::Cells, Drawing::CoarseImages]
-        })
-        .wall_clock(now, 0)
-        .limits(limits(None));
-    for bytes in files {
-        opening = opening.attached(bytes);
-    }
-    let mut page = opening.peer(program).open()?;
-    page.wait_for(WITHIN, |page| {
-        shown(page).is_some()
-            || shows(page, "Go to File")
-            || shows(page, "This terminal does not show PDFs")
-            || !pages_drawn(page).is_empty()
-    })?;
-    page.advance(0.5)?;
-    Ok(page)
-}
-
-fn open(project: &Project, tabs: &[&str], size: (u16, u16)) -> Result<Page, Error> {
+/// The page of a terminal of the wider size, with the files it was given to attach.
+fn open(project: &Project, tabs: &[&str]) -> Result<Page, Error> {
     let session = project.session(tabs);
     let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
-    let mut page = open_on(program, size, true, &[])?;
+    let mut page = open_in_pixels(program, SIZES[1], KeyConvention::Linux, &[])?;
     wait(&mut page, |page| shown(page).is_some() || tabs.is_empty())?;
     page.advance(1.0)?;
     Ok(page)
@@ -184,10 +145,8 @@ fn the_hint_of_the_fit_button_names_the_key_the_keyboard_has() -> Result<(), Err
     Ok(())
 }
 
-const SIZES: [(u16, u16); 2] = [(80, 24), (160, 48)];
-
 /// A file is typed into, saved, undone, found in and gone between by the keys of a Linux keyboard
-/// (Ctrl is what ⌘ is on a Mac, ⌥ with a number is a Mac's ⌃ with one), at 80×24 and wide.
+/// (Ctrl is what ⌘ is on a Mac, ⌥ with a number is a Mac's ⌃ with one), in a small window and a wide one.
 #[test]
 #[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
 fn a_linux_keyboard_edits_saves_goes_to_files_finds_and_changes_tabs_with_ctrl() -> Result<(), Error>
@@ -196,7 +155,7 @@ fn a_linux_keyboard_edits_saves_goes_to_files_finds_and_changes_tabs_with_ctrl()
         let project = lantern();
         let session = project.session(&["src/server.ts", "README.md"]);
         let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
-        let mut page = open_on(program, size, true, &[])?;
+        let mut page = open_in_pixels(program, size, KeyConvention::Linux, &[])?;
         wait(&mut page, |page| shown(page).is_some())?;
         let before = text(&page);
         let editor = shown(&page).expect("an editor");
@@ -260,20 +219,25 @@ fn a_linux_keyboard_edits_saves_goes_to_files_finds_and_changes_tabs_with_ctrl()
         page.press("ctrl+_")?;
         page.advance(0.5)?;
         assert_eq!(text(&page), before, "{size:?}");
-        // Settings and the sheet of keys name the keys as a Linux keyboard writes them.
-        page.press("ctrl+shift+/")?;
-        page.advance(0.5)?;
-        let words = page_words(&page);
-        assert!(
-            words.iter().any(|word| word.contains("Ctrl+")),
-            "{size:?}: {words:?}"
-        );
-        assert!(
-            words
-                .iter()
-                .all(|word| !word.contains('⌘') && !word.contains('⌥') && !word.contains('⇧')),
-            "{size:?}: {words:?}"
-        );
+        // The sheet of keys names the keys as a Linux keyboard writes them, and it is Ctrl+Shift+/ where the
+        // terminal sends the key so, and Ctrl+? where it says the character the keys make (a US keyboard).
+        for help in ["ctrl+shift+/", "ctrl+?"] {
+            page.press(help)?;
+            page.advance(0.5)?;
+            let words = page_words(&page);
+            assert!(
+                words.iter().any(|word| word.contains("Ctrl+")),
+                "{size:?} {help}: {words:?}"
+            );
+            assert!(
+                words
+                    .iter()
+                    .all(|word| !word.contains('⌘') && !word.contains('⌥') && !word.contains('⇧')),
+                "{size:?} {help}: {words:?}"
+            );
+            page.press("escape")?;
+            page.advance(0.3)?;
+        }
     }
     Ok(())
 }
@@ -294,13 +258,12 @@ fn the_keys_of_the_commands_are_one_for_each_and_none_a_terminal_cannot_send_on_
     let mut page = open(
         &project,
         &["src/server.ts", "src/lib/format.ts", "README.md"],
-        (160, 48),
     )?;
     go_to(&mut page, "src/server.ts:19:5")?;
     states.push(("the editor".to_owned(), page));
     let project_two = lantern();
     with_git(&project_two);
-    let mut page = open(&project_two, &["src/server.ts", "README.md"], (160, 48))?;
+    let mut page = open(&project_two, &["src/server.ts", "README.md"])?;
     page.press("ctrl+f")?;
     page.type_text("order")?;
     page.advance(0.4)?;
@@ -309,7 +272,7 @@ fn the_keys_of_the_commands_are_one_for_each_and_none_a_terminal_cannot_send_on_
     states.push(("the find bar with the replacement".to_owned(), page));
     let project_three = lantern();
     with_changed_server(&project_three);
-    let mut page = open(&project_three, &["src/server.ts"], (160, 48))?;
+    let mut page = open(&project_three, &["src/server.ts"])?;
     page.press("ctrl+shift+d")?;
     page.advance(1.5)?;
     states.push(("the comparison".to_owned(), page));
@@ -318,7 +281,7 @@ fn the_keys_of_the_commands_are_one_for_each_and_none_a_terminal_cannot_send_on_
     let session = project_four.session(&["docs/spec.pdf", "README.md"]);
     recording(&session);
     let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
-    let mut page = open_on(program, (160, 48), true, &[&spec_pdf()])?;
+    let mut page = open_in_pixels(program, SIZES[1], KeyConvention::Linux, &[&spec_pdf()])?;
     wait(&mut page, |page| !pages_drawn(page).is_empty())?;
     page.press("ctrl+f")?;
     page.type_text("attach")?;
@@ -384,149 +347,5 @@ fn the_keys_of_the_commands_are_one_for_each_and_none_a_terminal_cannot_send_on_
         "only {commands_seen} commands were looked at"
     );
     assert!(found.is_empty(), "{found:#?}");
-    Ok(())
-}
-
-/// A PDF is drawn page by page where the terminal has a graphics protocol, and where it has none the tab
-/// says it shows no PDFs, in the words it always has, and the file is not asked for.
-#[test]
-#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
-fn a_pdf_is_drawn_where_the_terminal_has_graphics_and_is_a_sentence_where_it_has_none()
--> Result<(), Error> {
-    for size in SIZES {
-        let bytes = spec_pdf();
-        let project = lantern();
-        project.write_bytes("docs/spec.pdf", &bytes);
-        let session = project.session(&["docs/spec.pdf", "README.md"]);
-        let recorder = recording(&session);
-        let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
-        let mut page = open_on(program, size, true, &[&bytes])?;
-        wait(&mut page, |page| !pages_drawn(page).is_empty())?;
-        assert!(
-            !shows(&page, "This terminal does not show PDFs"),
-            "{size:?}"
-        );
-        assert!(!recorder.attached().is_empty(), "{size:?}");
-        drop(page);
-
-        let project = lantern();
-        project.write_bytes("docs/spec.pdf", &bytes);
-        let session = project.session(&["docs/spec.pdf", "README.md"]);
-        let recorder = recording(&session);
-        let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
-        let mut page = open_on(program, size, false, &[&bytes])?;
-        wait(&mut page, |page| {
-            shows(page, "This terminal does not show PDFs")
-        })?;
-        assert!(pages_drawn(&page).is_empty(), "{size:?}");
-        assert!(recorder.attached().is_empty(), "{size:?}");
-    }
-    Ok(())
-}
-
-/// Where a picture is drawn in half blocks the buttons that are pictures are characters: the arrows of
-/// the find bar, its close button, and the marks of the tabs and the tree's folders are signs a person
-/// can read, and the busy mark is the three dots, not a picture that stands still.
-#[test]
-#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
-fn where_pictures_are_coarse_the_buttons_say_what_they_do_in_characters() -> Result<(), Error> {
-    let project = lantern();
-    let session = project.session(&["src/server.ts"]);
-    let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
-    let mut page = open_on(program, (160, 48), false, &[])?;
-    wait(&mut page, |page| shown(page).is_some())?;
-    page.press("ctrl+f")?;
-    page.type_text("order")?;
-    page.advance(0.5)?;
-    let words = page_words(&page);
-    for sign in ["↑", "↓", "×"] {
-        assert!(words.iter().any(|word| word == sign), "{sign} in {words:?}");
-    }
-    Ok(())
-}
-
-/// The editor's right-click menu names the keys of a keyboard that has no ⌘: not one of its lines
-/// says Super (the logo key, which a terminal never sends), and Cut, Copy and Paste say none rather than
-/// say another's.
-#[test]
-#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
-fn the_editors_menu_names_no_key_a_terminal_cannot_send_on_a_linux_keyboard() -> Result<(), Error> {
-    let project = lantern();
-    let session = project.session(&["src/server.ts"]);
-    let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
-    let mut page = open_on(program, (160, 48), true, &[])?;
-    wait(&mut page, |page| shown(page).is_some())?;
-    let editor = shown(&page).expect("an editor");
-    page.caret_to(&editor, 2)?;
-    page.press("shift+f10")?;
-    let menu = page.menu().expect("a menu at the caret");
-    let mut seen = 0;
-    for entry in &menu.entries {
-        if let pencere_view::MenuEntry::Item {
-            title,
-            keys: Some(keys),
-            ..
-        } = entry
-        {
-            seen += 1;
-            assert!(
-                !keys.mods.command,
-                "{title:?} says {keys:?}, a key with the logo key in it"
-            );
-        }
-    }
-    assert!(seen > 0, "{:?}", menu.entries);
-    Ok(())
-}
-
-/// The Open and Save panels of a terminal that hosts nothing take a path of the machine the program is on,
-/// and the program has no way to read what they name or to write where they say: the page does not
-/// offer to upload to the project or to download from it (the menu of a row, the palette).
-#[test]
-#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
-fn the_persons_files_are_not_offered_in_the_cells_of_a_terminal_that_hosts_nothing()
--> Result<(), Error> {
-    let project = lantern();
-    let mut page = open(&project, &[], (160, 48))?;
-    wait(&mut page, |page| page.bounds("row:src").is_some())?;
-    let titles = |page: &Page| -> Vec<String> {
-        page.menu()
-            .map(|menu| {
-                menu.entries
-                    .iter()
-                    .filter_map(|entry| match entry {
-                        pencere_view::MenuEntry::Item { title, .. } => Some(title.clone()),
-                        _ => None,
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
-    };
-    // A folder's menu has its own entries, and not the person's files'.
-    page.right_click("row:src")?;
-    let folder = titles(&page);
-    assert!(folder.iter().any(|title| title == "New File"), "{folder:?}");
-    assert!(
-        folder.iter().all(|title| !title.contains("Upload")),
-        "{folder:?}"
-    );
-    page.press("escape")?;
-    // A file's, the same.
-    page.click("row:src")?;
-    wait(&mut page, |page| page.bounds("row:src/server.ts").is_some())?;
-    page.right_click("row:src/server.ts")?;
-    let file = titles(&page);
-    assert!(file.iter().any(|title| title == "Rename"), "{file:?}");
-    assert!(
-        file.iter().all(|title| !title.contains("Download")),
-        "{file:?}"
-    );
-    page.press("escape")?;
-    // And the palette lists a command of the page (it is there to be found) but neither of these.
-    page.press("f1")?;
-    page.type_text("Upload")?;
-    page.advance(0.5)?;
-    assert!(!shows(&page, "Upload Files"), "{:?}", page_words(&page));
-    page.type_text("")?;
     Ok(())
 }

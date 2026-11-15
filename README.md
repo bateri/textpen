@@ -16,10 +16,10 @@ curl -fsSL https://raw.githubusercontent.com/bateri/textpen/main/install.sh | sh
 ```
 
 A terminal that hosts pencere views ([bateri](https://github.com/bateri/bateri), from its 0.23) shows the
-editor in its pane. In any other terminal textpen draws the same editor with the characters of the
-terminal (256 colours at least; pictures where the terminal has Kitty's graphics, and a PDF only
-there), on a keyboard where Ctrl is what ⌘ is on a Mac (see "In a terminal that hosts nothing"
-below). `PENCERE_TUI=1` asks for that in any terminal, `PENCERE_TUI=0` for your own `$EDITOR`.
+editor in its pane. A terminal that speaks Kitty's graphics protocol (Ghostty, kitty) is drawn on:
+textpen shows the same editor there as pictures, on a keyboard where Ctrl is what ⌘ is on a Mac (see "In a
+terminal that hosts nothing" below). In any other terminal textpen opens your own `$EDITOR`.
+`PENCERE_TUI=1` asks for the drawing in any terminal, `PENCERE_TUI=0` for your own `$EDITOR`.
 
 The installer takes the newest release (or `TEXTPEN_VERSION=0.2.0`), checks it against the
 release's `SHA256SUMS`, and puts it in `~/.local/bin` (`TEXTPEN_INSTALL=<dir>` puts it elsewhere).
@@ -157,8 +157,7 @@ a word, a triple click a line, `⌘A` all of them) and copied with `⌘C`; `⌘F
 as words, whole words or patterns, and `Enter` and `⇧Enter` (or `⌘G`) go from match to match. A PDF
 with no words in it (a scan) is shown and says it has none to select or find. The program reads the
 pages and runs nothing the PDF holds; a file past 8 MiB or 10,000 pages is not opened, and says so.
-A terminal older than the kit that draws a page of a PDF, or one with no graphics protocol, says it
-does not show PDFs.
+A terminal older than the kit that draws a page of a PDF says it does not show PDFs.
 
 **Drop a file on the tree** to put it in the project: dragged over a folder (or a file, which is
 its folder, or the room under the rows, which is the project) the place is marked and named, and
@@ -302,17 +301,14 @@ send Shift or Alt with Ctrl without the Kitty keyboard protocol) is another, or 
 | `⌥⌘C`, `⌥⌘W`, `⌥⌘R`, `⌘⏎`     | `Alt+C`, `Alt+W`, `Alt+R` (case, words, pattern), `Alt+⏎`  |
 | `⌘J`                          | `Ctrl+Alt+T`, a shell in the project                        |
 
-The keys with Shift or Alt beside Ctrl (`Ctrl+Shift+C`, `Ctrl+Shift+[`) arrive only from a terminal with the
-Kitty keyboard protocol (Ghostty, kitty, WezTerm, foot); from another, `Ctrl+Shift+C` is `Ctrl+C` and ends
-textpen, so copy with the menu there.
+The keys with Shift or Alt beside Ctrl (`Ctrl+Shift+C`) arrive only from a terminal with the Kitty keyboard
+protocol (Ghostty, kitty); from another, `Ctrl+Shift+C` is `Ctrl+C` and ends textpen, so copy
+with the menu there. A sign that Shift makes is the character the terminal says it makes: the keyboard
+shortcuts are `Ctrl+?` where a keyboard has `?` on Shift and `/`, and the comment is `Ctrl+/` (on a Turkish
+Q keyboard that is `Ctrl+Shift+7`).
 
-Every command is in the palette (`Ctrl+K`, then `>`) whatever the keys; copy, cut and paste are also
-in the editor's right-click menu. The text is the size the terminal draws its own: its own keys make it larger
-or smaller, and textpen has no zoom of its own: there is no text size in the settings, `⌘+` and the pinch do
-nothing, and a picture or a PDF stays as it fits the tab (a terminal that hosts pencere zooms them).
-A picture is drawn with the Kitty graphics protocol where the terminal has it and in half blocks where
-it has not, and a PDF only with the protocol. Upload Files and Download are not offered: their panels
-need a terminal that hosts pencere views (copy files in with the shell).
+Every command is in the palette (`Ctrl+K`, then `>`) whatever the keys; copy, cut and paste are also in the
+editor's right-click menu. The text is drawn in the faces of the machine.
 
 ## How it works
 

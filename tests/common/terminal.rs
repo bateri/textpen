@@ -199,31 +199,6 @@ impl Terminal {
         plain(&self.raw)
     }
 
-    /// Waits for `what` to be on the screen (in what was written since `from`, a length of `raw`).
-    pub fn until_since(&mut self, from: usize, what: &str, limit: Duration) -> bool {
-        self.until_with(from, limit, |text| text.contains(what))
-    }
-
-    /// Waits for what was written since `from` (a length of `raw`), as text, to be what `wanted` says.
-    pub fn until_with(
-        &mut self,
-        from: usize,
-        limit: Duration,
-        wanted: impl Fn(&str) -> bool,
-    ) -> bool {
-        let end = Instant::now() + limit;
-        loop {
-            self.pump();
-            if wanted(&plain(&self.raw[from.min(self.raw.len())..])) {
-                return true;
-            }
-            if self.ended_now() || Instant::now() >= end {
-                return false;
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        }
-    }
-
     /// Reads what the program writes for `wait`, and does nothing else with it.
     pub fn settle(&mut self, wait: Duration) {
         let end = Instant::now() + wait;
@@ -234,11 +209,6 @@ impl Terminal {
             }
             std::thread::sleep(Duration::from_millis(25));
         }
-    }
-
-    /// Waits for `what` to be written.
-    pub fn until(&mut self, what: &str, limit: Duration) -> bool {
-        self.until_since(0, what, limit)
     }
 
     /// Whether the program has ended (and how, once).
@@ -292,12 +262,6 @@ impl Drop for Terminal {
             libc::close(self.master);
         }
     }
-}
-
-fn contains(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack
-        .windows(needle.len())
-        .any(|window| window == needle)
 }
 
 /// How many times `needle` is in `haystack`.
@@ -432,13 +396,6 @@ pub fn pixels_that(raw: &[u8], is: impl Fn(u8, u8, u8) -> bool) -> usize {
         .flat_map(|picture| picture.as_chunks::<4>().0.iter())
         .filter(|pixel| is(pixel[0], pixel[1], pixel[2]))
         .count()
-}
-
-/// `text` with its runs of white space made one space, as much of it as a failure's message can say.
-pub fn squeezed(text: &str) -> String {
-    let words: Vec<&str> = text.split_whitespace().collect();
-    let line = words.join(" ");
-    line.chars().take(700).collect()
 }
 
 /// `raw` as the text a screen would hold, the escape sequences (CSI, OSC and the pictures' APC) taken out.

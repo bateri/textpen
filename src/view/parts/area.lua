@@ -17,11 +17,9 @@ local b, S, act = kit.b, kit.S, kit.act
 
 local area = {}
 
--- The editor's keys where the keyboard is not a Mac's. The comment is `mod+/` there as everywhere (`chords.comment`: Ctrl+/, which
--- a menu says and a terminal sends: the logo key is the one that is not, and ⌃⇧/ is the page's own for its help);
--- and where the page is drawn in the cells of a terminal the editor has Ctrl+Z, Ctrl+Y and Ctrl+A of its own, and
--- the page gives it the fold (`lib/chords.lua`) and takes from it the keys of the logo key (Super), which is not
--- what the terminal sends and which a menu would write for Cut, Copy and Paste.
+-- The editor's keys where the keyboard is not a Mac's. The comment is `mod+/` there as everywhere (`chords.comment`:
+-- Ctrl+/, which a menu says and a terminal sends: the logo key is the one that is not), and the page gives
+-- the editor the fold (`lib/chords.lua`) that a terminal can send.
 local function keymap()
 	if chords.mac then
 		return nil
@@ -33,14 +31,10 @@ local function keymap()
 		["ctrl+_"] = "toggle_comment",
 		["cmd+/"] = false,
 	}
-	if kit.cells() then
-		keys[chords.fold] = "fold"
-		keys[chords.unfold] = "unfold"
-		keys["cmd+alt+["] = false
-		keys["cmd+alt+]"] = false
-		keys["cmd+c"] = false
-		keys["cmd+x"] = false
-		keys["cmd+v"] = false
+	for command, words in { fold = chords.fold, unfold = chords.unfold } do
+		for _, key in type(words) == "table" and words or { words } do
+			keys[key] = command
+		end
 	end
 	return keys
 end
