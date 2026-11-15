@@ -243,7 +243,7 @@ function status.view()
 	end
 	if shot then
 		if kit.zooms() then
-			row:child(item("status-zoom", pictures.zoom_words(shot), "Fit to the tab " .. kit.keys_of("cmd+0")))
+			row:child(item("status-zoom", pictures.zoom_words(shot), "Fit to the tab " .. kit.keys_of("mod+0")))
 		end
 		row:child(item(nil, pictures.caption(shot)))
 		row:child(item(nil, pictures.kind(shot)))

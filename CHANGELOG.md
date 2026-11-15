@@ -16,14 +16,13 @@ change what the previous one did.
   settings sets it too.
 - **Drag a file out of textpen.** Drag a file from the tree, or a tab, onto a terminal pane and its
   path is typed there. Drop it on another app to give it the path.
-- **A terminal that hosts no views is drawn on.** textpen shows the editor with the characters of
-  the terminal, with the mouse and the keys, where it used to open your own `$EDITOR`.
-  `PENCERE_TUI=0` keeps the `$EDITOR`; `PENCERE_TUI=1` draws on a terminal that does host views too.
-  The keys are those of a keyboard with no ⌘ (Ctrl is what ⌘ is, and a key a terminal cannot send is
-  another: README, "In a terminal that hosts nothing"), the icons of buttons are characters where the
-  terminal has no graphics protocol, and a PDF is drawn where it has one and is a sentence ("This
-  terminal does not show PDFs") where it has none. Upload Files and Download are not offered there:
-  they need a terminal that hosts views.
+- **A terminal that speaks Kitty graphics is drawn on, as bateri does.** textpen shows the editor
+  as pixels there, with its own faces, icons, pictures and PDFs, the mouse and the keys, where it used
+  to open your own `$EDITOR`. A terminal with no Kitty graphics, and a multiplexer, still opens the
+  `$EDITOR`; `PENCERE_TUI=0` keeps it, `PENCERE_TUI=1` draws on a terminal that does host views too.
+  The keys are those of a keyboard with no ⌘: Ctrl is what ⌘ is (Ctrl+/ comments a line), and the
+  page says so in its menus and hints. Upload Files and Download are not offered there: they need a
+  terminal that hosts views.
 - **A feature `terminal`, on by default, for the screen of its own.** `cargo build
   --no-default-features` makes the file that does not draw a terminal that hosts nothing (it opens
   your `$EDITOR` there), without `pencere-tui` and so smaller. The screen has the interpreter
@@ -31,12 +30,14 @@ change what the previous one did.
   (LTO, one code generation unit, stripped) is the file that is shipped.
 
 The zoom, the text size and the drag out need a terminal that supports them, such as the next bateri.
-Elsewhere textpen works as before; where it draws the editor with the characters of a terminal there is
-none of the three, and a picture and a PDF stay as they fit.
+Elsewhere textpen works as before; where it draws the editor in a terminal there is none of the
+three, and a picture and a PDF stay as they fit.
 
 ### Changed
 
 - **The size of a picture is in the status line.** It was a line under the picture.
+- **The hint of the button that fits a picture to its tab names its key.** It says Ctrl+0 where there is
+  no ⌘ key (it said Super+0), and ⌘0 on a Mac as before.
 - **In a terminal that hosts nothing, a PDF and a picture have no zoom:** the status line has no
   zoom button and the PDF's keys have no zoom hint, as a cell is the size it is. The pages of a PDF
   stand on the same pixel columns, and a PDF under the palette is as dim as the text.

@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 /// What a terminal that has the Kitty keyboard protocol and a dark ground answers to the questions the
 /// program asks when it starts: the text colour and ground, the sixteen of the palette, the keyboard, and,
 /// where it draws pictures, the picture it was asked to take; the device attributes last.
-fn answer(graphics: bool) -> Vec<u8> {
+fn answer(graphics: bool, then: &[u8]) -> Vec<u8> {
     let mut out = String::from("\x1b]10;rgb:cccc/cccc/cccc\x1b\\\x1b]11;rgb:1e1e/1e1e/2e2e\x1b\\");
     for index in 0..16 {
         out.push_str(&format!("\x1b]4;{index};rgb:8080/8080/8080\x1b\\"));
@@ -20,8 +20,37 @@ fn answer(graphics: bool) -> Vec<u8> {
     if graphics {
         out.push_str("\x1b_Gi=31;OK\x1b\\");
     }
-    out.push_str("\x1b[?62;4c");
-    out.into_bytes()
+    let mut out = out.into_bytes();
+    out.extend_from_slice(then);
+    out.extend_from_slice(b"\x1b[?62;4c");
+    out
+}
+
+/// What a terminal that draws pictures in pixels answers in the round of questions after the first, each
+/// asked once as it is seen in what the program wrote: how many pixels a cell is (10 by 20) and a window
+/// (a cell each way times the size of the pty), that it has the pointer in pixels, and that it edits a part
+/// of a picture and copies a part of it onto another. Not that it takes packed pixels: they come as they are.
+fn pixel_answers(raw: &[u8], size: (u16, u16), answered: &mut [usize; 5]) -> Vec<u8> {
+    let (columns, rows) = (u32::from(size.0), u32::from(size.1));
+    let questions: [(&[u8], String); 5] = [
+        (b"\x1b[16t", "\x1b[6;20;10t".to_owned()),
+        (
+            b"\x1b[14t",
+            format!("\x1b[4;{};{}t", rows * 20, columns * 10),
+        ),
+        (b"\x1b[?1016$p", "\x1b[?1016;2$y".to_owned()),
+        (b"\x1b_Ga=f,i=33,", "\x1b_Gi=33;OK\x1b\\".to_owned()),
+        (b"\x1b_Ga=c,i=34,", "\x1b_Gi=34;OK\x1b\\".to_owned()),
+    ];
+    let mut out = Vec::new();
+    for (at, (question, answer)) in questions.iter().enumerate() {
+        let asked = count(raw, question);
+        for _ in answered[at]..asked {
+            out.extend_from_slice(answer.as_bytes());
+        }
+        answered[at] = asked;
+    }
+    out
 }
 
 /// The program, running on a pty.
@@ -29,7 +58,15 @@ pub struct Terminal {
     master: RawFd,
     child: libc::pid_t,
     graphics: bool,
-    asked: bool,
+    size: (u16, u16),
+    /// How many questions of the pixels the terminal has answered (`pixel_answers`), and how many rounds of
+    /// questions it has closed (the device attributes, which end each).
+    pixels_answered: [usize; 5],
+    fenced: usize,
+    /// How much of `raw` has been looked through for the end of a round (a long run is not read again).
+    looked: usize,
+    /// How many ends of a round are in what was looked through.
+    fences_seen: usize,
     /// Everything the program wrote, as it wrote it.
     pub raw: Vec<u8>,
     status: Option<i32>,
@@ -105,7 +142,11 @@ impl Terminal {
             master,
             child,
             graphics: start.graphics,
-            asked: false,
+            size: start.size,
+            pixels_answered: [0; 5],
+            fenced: 0,
+            looked: 0,
+            fences_seen: 0,
             raw: Vec::new(),
             status: None,
         }
@@ -128,9 +169,21 @@ impl Terminal {
                 std::thread::sleep(Duration::from_millis(1));
             }
         }
-        if !self.asked && contains(&self.raw, b"\x1b[c") {
-            self.asked = true;
-            self.type_bytes(&answer(self.graphics));
+        // Each round of questions ends with the one for the device attributes, which a terminal answers last:
+        // what was asked in the round is answered before it (the program asks again in each round it starts,
+        // and what a terminal that draws pictures has besides in the later ones).
+        let from = self.looked.saturating_sub(2);
+        self.looked = self.raw.len();
+        let fences = self.fences_seen + count(&self.raw[from..], b"\x1b[c");
+        self.fences_seen = fences;
+        while self.fenced < fences {
+            self.fenced += 1;
+            let more = if self.graphics {
+                pixel_answers(&self.raw, self.size, &mut self.pixels_answered)
+            } else {
+                Vec::new()
+            };
+            self.type_bytes(&answer(self.graphics, &more));
         }
     }
 
@@ -166,6 +219,18 @@ impl Terminal {
             }
             if self.ended_now() || Instant::now() >= end {
                 return false;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+
+    /// Reads what the program writes for `wait`, and does nothing else with it.
+    pub fn settle(&mut self, wait: Duration) {
+        let end = Instant::now() + wait;
+        loop {
+            self.pump();
+            if Instant::now() >= end {
+                return;
             }
             std::thread::sleep(Duration::from_millis(25));
         }
@@ -286,6 +351,87 @@ pub fn sent(raw: &[u8]) -> Vec<Sent> {
         at = end + 2;
     }
     found
+}
+
+/// What `text` says, written in base 64 (the standard alphabet; what is not of it is skipped).
+fn unbase64(text: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let (mut bits, mut have) = (0_u32, 0_u32);
+    for &c in text {
+        let value = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => continue,
+        };
+        bits = bits << 6 | u32::from(value);
+        have += 6;
+        if have >= 8 {
+            have -= 8;
+            out.push(u8::try_from(bits >> have).unwrap_or(0));
+            bits &= (1 << have) - 1;
+        }
+    }
+    out
+}
+
+/// The pixels the program sent, picture by picture and edit by edit: each a row after row of RGBA (`f=32`;
+/// a terminal that says it takes no packed pixels is sent them as they are), whole or in the chunks a large
+/// one comes in.
+pub fn pixels(raw: &[u8]) -> Vec<Vec<u8>> {
+    let mut found = Vec::new();
+    let mut open: Option<Vec<u8>> = None;
+    let mut at = 0;
+    while at + 3 <= raw.len() {
+        if &raw[at..at + 3] != b"\x1b_G" {
+            at += 1;
+            continue;
+        }
+        let from = at + 3;
+        let mut end = from;
+        while end < raw.len() && !(raw[end] == 0x1b && raw.get(end + 1) == Some(&b'\\')) {
+            end += 1;
+        }
+        let command = &raw[from..end];
+        at = end + 2;
+        let (keys, data) = match command.iter().position(|byte| *byte == b';') {
+            Some(split) => (&command[..split], &command[split + 1..]),
+            None => (command, &command[..0]),
+        };
+        let keys = String::from_utf8_lossy(keys);
+        let has = |name: &str| keys.split(',').any(|pair| pair == name);
+        let starts = keys.split(',').any(|pair| pair.starts_with("a="));
+        let more = has("m=1");
+        if starts {
+            open = None;
+            if has("f=32") && !keys.split(',').any(|pair| pair.starts_with("o=")) {
+                if more {
+                    open = Some(data.to_vec());
+                } else {
+                    found.push(unbase64(data));
+                }
+            }
+        } else if let Some(mut so_far) = open.take() {
+            so_far.extend_from_slice(data);
+            if more {
+                open = Some(so_far);
+            } else {
+                found.push(unbase64(&so_far));
+            }
+        }
+    }
+    found
+}
+
+/// How many of the pixels the program sent (`pixels`) `is` says yes to, given as the three of colour.
+pub fn pixels_that(raw: &[u8], is: impl Fn(u8, u8, u8) -> bool) -> usize {
+    pixels(raw)
+        .iter()
+        .flat_map(|picture| picture.as_chunks::<4>().0.iter())
+        .filter(|pixel| is(pixel[0], pixel[1], pixel[2]))
+        .count()
 }
 
 /// `text` with its runs of white space made one space, as much of it as a failure's message can say.

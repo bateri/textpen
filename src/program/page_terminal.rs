@@ -16,7 +16,8 @@ use super::{spec_pdf, with_changed_server, with_git};
 use crate::options;
 use crate::page_pdf::pages_drawn;
 use crate::page_tests::{
-    Page, Project, go_to, lantern, limits, page_words, recording, shown, shows, text, wait,
+    Page, Project, go_to, lantern, limits, page_words, pictures_drawn, recording, shown, shows,
+    text, wait,
 };
 
 const WITHIN: Duration = Duration::from_secs(20);
@@ -68,6 +69,119 @@ fn open(project: &Project, tabs: &[&str], size: (u16, u16)) -> Result<Page, Erro
     wait(&mut page, |page| shown(page).is_some() || tabs.is_empty())?;
     page.advance(1.0)?;
     Ok(page)
+}
+
+/// The page of a window of `width` by `height` points on the keyboard `keyboard`, drawn in pixels: what
+/// a terminal that draws pictures tells it (no cells, and the keyboard of a Linux or a Mac).
+fn open_in_pixels(
+    program: InProcess,
+    (width, height): (f32, f32),
+    keyboard: KeyConvention,
+    files: &[&[u8]],
+) -> Result<Page, Error> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |since| since.as_secs_f64());
+    let mut opening = Headless::app(env!("CARGO_MANIFEST_DIR"))
+        .size(width, height)
+        .keyboard(keyboard)
+        .draws(vec![Drawing::Shadow])
+        .wall_clock(now, 0)
+        .limits(limits(None));
+    for bytes in files {
+        opening = opening.attached(bytes);
+    }
+    let mut page = opening.peer(program).open()?;
+    page.wait_for(WITHIN, |page| {
+        shown(page).is_some() || !pictures_drawn(page).is_empty()
+    })?;
+    page.advance(0.5)?;
+    Ok(page)
+}
+
+/// What the editor's menu at the caret says the keys of the line `title` are.
+fn editor_menu_keys(page: &mut Page, title: &str) -> Result<Option<Shortcut>, Error> {
+    let editor = shown(page).expect("an editor");
+    page.caret_to(&editor, 2)?;
+    page.press("shift+f10")?;
+    let keys = page.menu().and_then(|menu| {
+        menu.entries.iter().find_map(|entry| match entry {
+            pencere_view::MenuEntry::Item {
+                title: line, keys, ..
+            } if line == title => Some(*keys),
+            _ => None,
+        })
+    });
+    page.press("escape")?;
+    Ok(keys.flatten())
+}
+
+/// The comment is ⌘/ where the keyboard has a ⌘ and Ctrl+/ where it has none: the editor's menu names the
+/// key the keyboard has, and the key does it. A terminal that draws the page in pixels is the second (it
+/// sends ⌃⇧ and a character for ⌘ and a character, and ⌃⇧/ is the page's own for the help).
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_comment_is_ctrl_slash_on_a_keyboard_with_no_command_key_and_command_slash_on_a_mac()
+-> Result<(), Error> {
+    for (keyboard, menu, key) in [
+        (KeyConvention::Linux, "ctrl+/", "ctrl+/"),
+        (KeyConvention::Mac, "cmd+/", "cmd+/"),
+    ] {
+        let project = lantern();
+        let session = project.session(&["src/lib/format.ts"]);
+        let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
+        let mut page = open_in_pixels(program, (1200.0, 800.0), keyboard, &[])?;
+        let says = editor_menu_keys(&mut page, "Toggle Line Comment")?;
+        assert_eq!(
+            says,
+            Shortcut::parse(menu),
+            "{keyboard:?}: the menu's Toggle Line Comment"
+        );
+        let editor = shown(&page).expect("an editor");
+        page.caret_to(&editor, 0)?;
+        page.press(key)?;
+        page.advance(0.5)?;
+        assert!(
+            text(&page).starts_with("// const currency"),
+            "{keyboard:?}: {:?}",
+            text(&page)
+        );
+        page.press(key)?;
+        page.advance(0.5)?;
+        assert!(
+            text(&page).starts_with("const currency"),
+            "{keyboard:?}: {:?}",
+            text(&page)
+        );
+    }
+    Ok(())
+}
+
+/// The hint of the button that fits a picture to its tab names the key that does it on the keyboard the
+/// page is on: Ctrl+0 where there is no ⌘ (and the terminal's pixels are that), ⌘0 on a Mac. It was the
+/// ⌘ key written for every keyboard, which a Linux one has as "Super" and a terminal never sends.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_hint_of_the_fit_button_names_the_key_the_keyboard_has() -> Result<(), Error> {
+    let art = super::lantern_art();
+    for (keyboard, hint) in [
+        (KeyConvention::Linux, "Fit to the tab Ctrl+0"),
+        (KeyConvention::Mac, "Fit to the tab ⌘0"),
+    ] {
+        let project = lantern();
+        project.write_bytes("assets/lantern.png", &art);
+        let session = project.session(&["assets/lantern.png"]);
+        recording(&session);
+        let program = InProcess::new(options(&session, &[], &Arc::new(Mutex::new(None))));
+        let mut page = open_in_pixels(program, (1200.0, 800.0), keyboard, &[&art])?;
+        page.advance(1.5)?;
+        let tips: Vec<_> = page.outline().tips.iter().map(|tip| &tip.words).collect();
+        assert!(
+            tips.iter().any(|words| *words == hint),
+            "{keyboard:?}: {hint:?} in {tips:?}"
+        );
+    }
+    Ok(())
 }
 
 const SIZES: [(u16, u16); 2] = [(80, 24), (160, 48)];

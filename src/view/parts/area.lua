@@ -17,27 +17,32 @@ local b, S, act = kit.b, kit.S, kit.act
 
 local area = {}
 
--- The editor's keys where the page is drawn in the cells of a terminal and the keyboard is not a Mac's:
--- the editor has Ctrl+Z, Ctrl+Y and Ctrl+A of its own there, and the page gives it the comment and the
--- fold (`lib/chords.lua`) and takes from it the keys of the logo key (Super), which is not what the
--- terminal sends and which a menu would write for Cut, Copy and Paste.
+-- The editor's keys where the keyboard is not a Mac's. The comment is `mod+/` there as everywhere (`chords.comment`: Ctrl+/, which
+-- a menu says and a terminal sends: the logo key is the one that is not, and ⌃⇧/ is the page's own for its help);
+-- and where the page is drawn in the cells of a terminal the editor has Ctrl+Z, Ctrl+Y and Ctrl+A of its own, and
+-- the page gives it the fold (`lib/chords.lua`) and takes from it the keys of the logo key (Super), which is not
+-- what the terminal sends and which a menu would write for Cut, Copy and Paste.
 local function keymap()
-	if chords.mac or not kit.cells() then
+	if chords.mac then
 		return nil
 	end
-	return {
-		[chords.comment] = "toggle_comment",
-		-- What a terminal sends for Ctrl and `/`.
+	local keys = {
+		-- Ctrl+/ before Ctrl+_ in the order of the words (a menu says the first key of a command).
+		["ctrl+/"] = "toggle_comment",
+		-- What a terminal sends for Ctrl and `/` where it cannot say the key is a `/`.
 		["ctrl+_"] = "toggle_comment",
-		[chords.fold] = "fold",
-		[chords.unfold] = "unfold",
 		["cmd+/"] = false,
-		["cmd+alt+["] = false,
-		["cmd+alt+]"] = false,
-		["cmd+c"] = false,
-		["cmd+x"] = false,
-		["cmd+v"] = false,
 	}
+	if kit.cells() then
+		keys[chords.fold] = "fold"
+		keys[chords.unfold] = "unfold"
+		keys["cmd+alt+["] = false
+		keys["cmd+alt+]"] = false
+		keys["cmd+c"] = false
+		keys["cmd+x"] = false
+		keys["cmd+v"] = false
+	end
+	return keys
 end
 
 -- What the editor is told, from the settings and the file's language; its caret and its selection
