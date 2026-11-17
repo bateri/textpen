@@ -498,32 +498,53 @@ local function keys_list(keys)
 	return { keys }
 end
 
+-- What a command shows and the keys it may claim do not change, so they are written once: the page
+-- lists every command on each drawing.
+local label_of = {}
+local words_of = {}
+local claims_of = {}
+for _, command in list do
+	label_of[command] = command.category .. ": " .. command.title
+	local words = keys_list(command.keys)
+	local claims = {}
+	for index, one in words do
+		claims[index] = string.lower(one)
+	end
+	words_of[command] = words
+	claims_of[command] = claims
+end
+
 -- The page's outermost box with every command on it: the host lists them and runs them by their
 -- keys, whatever has the keyboard. The host gives a key to the first command that has it, whether
 -- that one can be done now or not, so a command that cannot be done leaves the keys that another
 -- command that can has: ⌃G is the next occurrence in a file and the page to go to in a PDF (⌘D and
--- ⌘G off a Mac).
+-- ⌘G off a Mac). Whether a command can be done is asked once a drawing.
 function commands.on(root)
+	local enabled = {}
 	local claimed = {}
-	for _, command in list do
-		if commands.enabled(command) then
-			for _, keys in keys_list(command.keys) do
-				claimed[string.lower(keys)] = true
+	for index, command in list do
+		local can = commands.enabled(command)
+		enabled[index] = can
+		if can then
+			for _, keys in claims_of[command] do
+				claimed[keys] = true
 			end
 		end
 	end
-	for _, command in list do
+	for index, command in list do
 		local keys = command.keys
-		if not commands.enabled(command) and keys ~= nil then
+		local can = enabled[index]
+		if not can and keys ~= nil then
 			local kept = {}
-			for _, one in keys_list(keys) do
-				if not claimed[string.lower(one)] then
+			local claims = claims_of[command]
+			for at, one in words_of[command] do
+				if not claimed[claims[at]] then
 					kept[#kept + 1] = one
 				end
 			end
 			keys = #kept > 0 and kept or nil
 		end
-		root:command(command.id, command.category .. ": " .. command.title, keys, commands.enabled(command))
+		root:command(command.id, label_of[command], keys, can)
 	end
 	return root
 end
