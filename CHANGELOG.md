@@ -7,6 +7,8 @@ change what the previous one did.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-18
+
 ### Added
 
 - **Zoom pictures and PDFs.** Pinch, double-tap with two fingers, or press `⌘+`, `⌘-` and `⌘0`.
