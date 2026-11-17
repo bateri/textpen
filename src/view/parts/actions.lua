@@ -570,10 +570,12 @@ function act.keep_ui(done)
 		if not err then
 			last_ui = said
 		end
+		-- Where the view is is not drawn: what asked to be told of it is the page's to show.
 		if done then
 			done()
+			return nil
 		end
-		return nil
+		return false
 	end)
 end
 

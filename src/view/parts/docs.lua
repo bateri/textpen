@@ -175,12 +175,55 @@ function docs.active()
 	return nil
 end
 
--- What the program says of a file now (`BufferInfo`), on its tab.
+-- What of a file's info the page draws is the same in `was` and `now`: nothing but its version and the
+-- time of its file (only whether it has one is drawn) differs. A field the info gains is drawn until
+-- someone says it is not.
+local function looks_the_same(was, now)
+	if was == nil or now == nil then
+		return was == now
+	end
+	for name, value in was do
+		if name == "version" then
+			continue
+		end
+		local other = now[name]
+		if name == "mtime" then
+			if (value ~= 0) ~= (other ~= 0) then
+				return false
+			end
+		elseif type(value) == "table" and type(other) == "table" then
+			for key, inner in value do
+				if other[key] ~= inner then
+					return false
+				end
+			end
+			for key in other do
+				if value[key] == nil then
+					return false
+				end
+			end
+		elseif value ~= other then
+			return false
+		end
+	end
+	for name in now do
+		if was[name] == nil then
+			return false
+		end
+	end
+	return true
+end
+
+-- What the program says of a file now (`BufferInfo`), on its tab; whether what the page draws of it
+-- is not what it was.
 function docs.update_info(info)
 	local tab = docs.tab_of(info.path)
-	if tab then
-		tab.info = info
+	if not tab then
+		return false
 	end
+	local before = tab.info
+	tab.info = info
+	return not looks_the_same(before, info)
 end
 
 -- --- One file's calls, one at a time ---------------------------------------------------------------
@@ -701,9 +744,15 @@ local function send_all(doc, edits, done)
 				return nil
 			end
 			doc.version = info.version
-			docs.update_info(info)
+			local drawn = docs.update_info(info)
 			send(index + 1)
-			return nil
+			-- Nothing the page draws changed by it (the program has what was typed, as the editor shows it):
+			-- the page is not made again for it. What did, and what the next of the file's calls or a caller
+			-- that waited for this one do (`finish`, below), asks for it.
+			if drawn then
+				return nil
+			end
+			return false
 		end)
 	end
 	send(1)
@@ -758,12 +807,20 @@ function docs.flush(doc, done)
 					6
 				)
 			end
+			-- What comes after this call (the file's next, a caller that waited for it) may show what it does
+			-- at once: the page is made again for it, as it is for any answer.
+			local after = done ~= nil or #doc.lane > 0
 			next()
 			if done then
 				done(err == nil)
 			end
 			if sent and not err then
 				text_is_new(doc)
+				local tab = docs.tab_of(doc.path)
+				after = after or (tab ~= nil and tab.compare ~= nil)
+			end
+			if after then
+				kit.gather(true)
 			end
 		end
 		if doc.broken then
@@ -842,10 +899,11 @@ local function edited(doc, event)
 	if doc.timer then
 		doc.timer:cancel()
 	end
+	-- What is sent is not drawn: the page is made again for what the answer shows (`send_all`).
 	doc.timer = kit.after(SEND_DELAY, function()
 		doc.timer = nil
 		docs.flush(doc)
-		return nil
+		return false
 	end)
 end
 

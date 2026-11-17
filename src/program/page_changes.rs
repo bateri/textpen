@@ -12,6 +12,7 @@ use std::process::Command;
 use pencere_drive::headless::Error;
 use pencere_view::edit::{GutterShape, Mark};
 use pencere_view::{Button, Role};
+use serde_json::Value;
 
 use crate::page_tests::{Page, Project, WIDE, lantern, page_words, shown, shows, text, wait};
 
@@ -94,6 +95,156 @@ fn at(page: &Page, needle: &str) -> usize {
 }
 
 const PORT_LINE: &str = "const PORT = Number(process.env.PORT ?? 8080);";
+
+/// How many pages the page's module has made.
+fn made(page: &Page) -> u64 {
+    page.page().module().renders()
+}
+
+/// The calls the page made, as the program read them: the id and the method of each.
+fn called(page: &Page) -> Vec<(u64, String)> {
+    page.sent()
+        .iter()
+        .filter_map(|said| serde_json::from_str::<Value>(said).ok())
+        .filter_map(|message| {
+            let call = &message["call"];
+            Some((call["id"].as_u64()?, call["method"].as_str()?.to_owned()))
+        })
+        .collect()
+}
+
+/// How many of the calls the page made the program has not answered yet.
+fn unanswered(page: &Page) -> usize {
+    let answered: Vec<u64> = page
+        .received()
+        .iter()
+        .filter_map(|said| serde_json::from_str::<Value>(said).ok())
+        .filter_map(|message| message["response"]["id"].as_u64())
+        .collect();
+    called(page)
+        .iter()
+        .filter(|(id, _)| !answered.contains(id))
+        .count()
+}
+
+/// What typing sets going runs to its end with no one touching the page: the edit is sent, git is
+/// asked and answers, the view is kept. The pages the page was made on the way. The program answers
+/// on its own time and the clock of the page's timers is the test's: each answer is taken before the
+/// clock goes on, and the clock goes past the view's keeping (every two seconds) too, so that none is
+/// left for after the count.
+fn pause(page: &mut Page) -> Result<u64, Error> {
+    let before = made(page);
+    let asked = |page: &Page| {
+        called(page)
+            .iter()
+            .filter(|(_, name)| name == "diff")
+            .count()
+    };
+    let diffs = asked(page);
+    page.advance(0.4)?;
+    wait(page, |page| asked(page) > diffs)?;
+    for _ in 0..14 {
+        wait(page, |page| unanswered(page) == 0)?;
+        page.advance(0.2)?;
+    }
+    wait(page, |page| unanswered(page) == 0)?;
+    Ok(made(page) - before)
+}
+
+/// A person who types and stops has the page made no more where nothing it shows changed: the edit
+/// the program took, what git says of a line that was changed already, and the view kept are not
+/// drawn; the mark that git's first answer brings is. What is on the page after is what a page made
+/// at once makes.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_person_who_types_and_stops_has_the_page_made_only_where_what_it_shows_changed()
+-> Result<(), Error> {
+    let project = lantern();
+    committed(&project);
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let editor = shown(&page).expect("an editor");
+    let place = at(&page, "8080") + 4;
+    page.caret_to(&editor, place)?;
+    // A line that was as it is committed, changed: git's answer marks it.
+    page.type_text("1")?;
+    let marked = pause(&mut page)?;
+    assert_eq!(marks(&page).len(), 1, "the line is marked");
+    assert!(marked >= 1, "the mark came by a page: {marked}");
+    // The same line, more of it: the program takes it, git says the same of it.
+    page.type_text("2")?;
+    page.type_text("3")?;
+    let quiet = pause(&mut page)?;
+    assert_eq!(marks(&page).len(), 1);
+    assert_eq!(
+        quiet, 0,
+        "nothing shown changed, and a page was made {quiet} times"
+    );
+    // What the page shows now is what a page made again shows: nothing was left out of date by
+    // the pages that were not made.
+    let (shown_now, marked_now, ruler_now) = (
+        page.page().root().cloned(),
+        marks(&page),
+        ruler_roles(&page),
+    );
+    page.refresh()?;
+    page.advance(0.2)?;
+    assert_eq!(page.page().root().cloned(), shown_now);
+    assert_eq!(marks(&page), marked_now);
+    assert_eq!(ruler_roles(&page), ruler_now);
+    // A change in another line is a mark that was not there.
+    let other = at(&page, "res.end(") + 8;
+    page.caret_to(&editor, other)?;
+    page.type_text(" ")?;
+    let more = pause(&mut page)?;
+    assert_eq!(marks(&page).len(), 2);
+    assert!(more >= 1, "the second mark came by a page: {more}");
+    Ok(())
+}
+
+/// What the page says of itself in words, for a person who does not see it: the label of each element.
+fn labels(page: &Page) -> Vec<String> {
+    page.page()
+        .root()
+        .map(|root| {
+            root.fold()
+                .into_iter()
+                .filter_map(|node| node.meta.label)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// A file that was changed and is changed no more (the person took the change back) is drawn as
+/// one that is not: the program says so after the page was made for the keys, and the page is made
+/// for what it says, though nothing of git's marks changes with it.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_file_taken_back_to_what_it_was_is_drawn_as_not_changed() -> Result<(), Error> {
+    let project = lantern();
+    committed(&project);
+    project.write("notes/new.txt", "one\ntwo\n");
+    let session = project.session(&["notes/new.txt"]);
+    let mut page = project.open(&session, WIDE)?;
+    let editor = shown(&page).expect("an editor");
+    let not_saved = |page: &Page| {
+        labels(page)
+            .iter()
+            .any(|label| label.ends_with(", not saved"))
+    };
+    page.caret_to(&editor, 0)?;
+    page.type_text("1")?;
+    pause(&mut page)?;
+    assert!(not_saved(&page), "{:?}", labels(&page));
+    page.press("backspace")?;
+    let made = pause(&mut page)?;
+    assert!(
+        made >= 1,
+        "the page was made for what the program said: {made}"
+    );
+    assert!(!not_saved(&page), "{:?}", labels(&page));
+    Ok(())
+}
 
 /// A file in a repository, as it is committed, has no marks, and the person's changes make them: a
 /// line added is green, one changed blue, lines taken away a red triangle, each on the ruler too.

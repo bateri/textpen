@@ -186,6 +186,22 @@ function changes.draw(doc)
 	end
 end
 
+-- What a list of hunks says, to know it again: none is not an empty list (the marks are not drawn).
+local function hunks_said(hunks)
+	if hunks == nil then
+		return "none"
+	end
+	return b.json.encode(hunks)
+end
+
+-- What the hunks `doc` has say: said once for as long as they are the same list.
+local function said_of(doc)
+	if doc.hunks_text == nil or doc.hunks_of ~= doc.hunks then
+		doc.hunks_of, doc.hunks_text = doc.hunks, hunks_said(doc.hunks)
+	end
+	return doc.hunks_text
+end
+
 -- Asks the program what differs in `doc`, and draws it.
 function changes.refresh(doc)
 	if doc.closed or not doc.loaded or comparing(doc) then
@@ -210,27 +226,47 @@ function changes.refresh(doc)
 		if doc.closed then
 			return nil
 		end
+		-- What the page draws of what differs: the marks, the commands that need a change, the peek.
+		local was, was_more = said_of(doc), doc.hunks_more
 		if err or result == nil then
 			doc.hunks = nil
 		elseif docs.unsent(doc) or result.version ~= doc.version then
 			-- The text moved on while git was asked: what it said is of an older one.
 			doc.diff_again = true
 		else
-			doc.hunks = result.hunks
+			-- The list there is stays where it says the same: what holds one (the menu of a change)
+			-- is of it still.
+			local now = hunks_said(result.hunks)
+			if now ~= was then
+				doc.hunks = result.hunks
+				doc.hunks_of, doc.hunks_text = result.hunks, now
+			end
 			doc.hunks_more = result.more == true
 		end
+		local drawn = said_of(doc) ~= was or doc.hunks_more ~= was_more
 		if S.peek and S.peek.path == doc.path and (doc.hunks == nil or doc.hunks[S.peek.index] == nil) then
 			S.peek = nil
+			drawn = true
 		end
 		sync(doc)
 		if doc.diff_again then
 			doc.diff_again = false
+			-- Asked again: what it says is what the page is made again for.
 			kit.after(0.15, function()
+				local was = doc.hunks
 				changes.refresh(doc)
-				return nil
+				-- It asks again (its answer is what draws); where it only takes the marks away, it is drawn.
+				if doc.hunks ~= was then
+					return nil
+				end
+				return false
 			end)
 		end
-		return nil
+		-- The same marks as the editor has: the page is not made again for it.
+		if drawn then
+			return nil
+		end
+		return false
 	end)
 end
 
