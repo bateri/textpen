@@ -13,7 +13,7 @@ mod common;
 
 use std::time::{Duration, Instant};
 
-use common::terminal::{Start, Terminal, count, pixels_that, plain, sent};
+use common::terminal::{Start, Terminal, count, pixels_that, plain, sent, shows_page};
 use common::{Pane, pdf_of_pages, pdf_of_text, png_of, program};
 
 const LIMIT: Duration = Duration::from_secs(60);
@@ -149,7 +149,14 @@ fn a_terminal_that_draws_pictures_gets_the_editor_drawn_as_a_picture_and_is_the_
     // The page's own parts have no PDF's paper and no photograph in them.
     assert!(paper(&terminal.raw) < FIELD && photograph(&terminal.raw) < FIELD);
 
-    // The file is read and the page is drawn with it a moment after the first picture.
+    // The first picture may be of the line that stands in for the page while its module starts, which
+    // a busy machine takes seconds over: what is typed on it reaches no page.
+    until_shown(&mut terminal, shows_page);
+    assert!(
+        shows_page(&terminal.raw),
+        "the page never came: the window has the line that stands in for it"
+    );
+    // The file is read and the page is drawn with it a moment after the page comes.
     settle(&mut terminal, 3000);
     // Typed text is in the file's text, and Ctrl+S saves it.
     terminal.type_bytes("héllo ".as_bytes());
