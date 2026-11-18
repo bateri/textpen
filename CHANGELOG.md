@@ -7,15 +7,17 @@ change what the previous one did.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-18
+
 ### Added
 
 - **textpen draws the editor in a terminal that speaks Kitty graphics,** as bateri does: the same editor
   as pictures, with the mouse and the keys, where it used to open your own `$EDITOR`. Ctrl is what ⌘ is
-  there (Ctrl+/ comments a line). A terminal with no Kitty graphics, and a multiplexer, still open the
-  `$EDITOR`; `PENCERE_TUI=0` keeps it everywhere.
+  there (Ctrl+/ comments a line).
 - **A build without the drawing.** `cargo build --no-default-features` makes a smaller file that opens
   your `$EDITOR` where no terminal hosts textpen.
-- **Each release has two files for a machine.** A small one, which bateri and kablo install, and one that draws in any terminal that speaks Kitty graphics, which `install.sh` installs.
+- **Each release has two files for a machine.** A small one, which bateri and kablo install, and one
+  that draws in any terminal that speaks Kitty graphics, which `install.sh` installs.
 
 ### Changed
 
