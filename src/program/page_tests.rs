@@ -3715,3 +3715,41 @@ fn a_row_of_the_tree_follows_the_keyboard_when_the_pointer_is_away() -> Result<(
     );
     Ok(())
 }
+
+/// The keys of the status line stand where they stood while the caret's place beside them is said in
+/// more words (a longer line and column, a count of what is selected), and come back where they stood
+/// when a pane that left them out is wide again.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_keys_of_the_status_line_stand_still_as_the_caret_s_place_is_said_in_more_words()
+-> Result<(), Error> {
+    let line = "word ".repeat(24);
+    let body: String = (0..30).map(|_| format!("{line}\n")).collect();
+    let project = Project::new(&[("words.txt", &body)]);
+    let session = project.session(&["words.txt"]);
+    let mut page = project.open(&session, WIDE)?;
+    wait(&mut page, |page| {
+        page.bounds("status/keys").is_some() && shows(page, "Ln 1, Col 1")
+    })?;
+    let before = page.bounds("status/keys").expect("the keys");
+    let editor = shown(&page).expect("an editor");
+    // Line 12, column 101, and two lines selected below it.
+    page.caret_to(&editor, 11 * (line.chars().count() + 1) + 100)?;
+    page.press("shift+down")?;
+    page.press("shift+down")?;
+    wait(&mut page, |page| shows(page, "selected"))?;
+    let after = page.bounds("status/keys").expect("the keys");
+    assert!(
+        (after.x - before.x).abs() < 0.5 && (after.w - before.w).abs() < 0.5,
+        "the keys moved: {before:?} → {after:?}, the line says {:?}",
+        page_words(&page)
+    );
+    // A pane too narrow for them leaves them out; wide again, they are back where they stood.
+    page.resize(900.0, WIDE.1)?;
+    wait(&mut page, |page| page.bounds("status/keys").is_none())?;
+    page.resize(WIDE.0, WIDE.1)?;
+    wait(&mut page, |page| page.bounds("status/keys").is_some())?;
+    let back = page.bounds("status/keys").expect("the keys");
+    assert!((back.x - before.x).abs() < 0.5, "{before:?} → {back:?}");
+    Ok(())
+}

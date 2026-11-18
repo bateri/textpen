@@ -20,6 +20,8 @@ change what the previous one did.
 
 - **The hint of the button that fits a picture to its tab names its key.** It says Ctrl+0 where there is
   no ⌘ key (it said Super+0), and ⌘0 on a Mac as before.
+- **The keys on the status line stay put.** They stand beside the branch, and no longer move when a
+  selection's count or "Saved" shows on the right.
 
 ## [0.8.0] - 2026-11-18
 

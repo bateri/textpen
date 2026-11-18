@@ -188,6 +188,22 @@ function status.view()
 	else
 		gone.branch = false
 	end
+	-- The keys stand at the start of the line, after the branch, and what comes and goes (the caret's
+	-- place, a count of what is selected, the word that a file was saved) is on the other side of the
+	-- room: between the two, the keys moved each time the words on the right grew or shrank.
+	if not wide then
+		gone.keys = false
+	elseif not gone.keys then
+		local keys = b.div():id("status/keys"):row():items_center():gap(6):no_shrink()
+		if git and git.branch and not gone.branch then
+			keys:ml(6)
+		end
+		for _, hint in hints(doc ~= nil, pages) do
+			keys:child(hint_view(hint))
+		end
+		row:child(keys)
+	end
+	row:child(b.spacer():id("status/room"))
 	if S.busy > 0 then
 		row:child(kit.spinner(12, "quiet"))
 	end
@@ -195,17 +211,6 @@ function status.view()
 	if saved and S.now - saved < SAVED_SHOWN then
 		row:child(b.div():row():items_center():gap(3):px(4)
 			:child(kit.icon("check", 12, "success")):child(b.text("Saved"):color("success")))
-	end
-	row:child(b.spacer():id("status/room"))
-	if not wide then
-		gone.keys = false
-	elseif not gone.keys then
-		local keys = b.div():id("status/keys"):row():items_center():gap(6):no_shrink()
-		for _, hint in hints(doc ~= nil, pages) do
-			keys:child(hint_view(hint))
-		end
-		row:child(keys)
-		row:child(b.spacer())
 	end
 	if doc and info then
 		local line, column, selected, carets, big = status.cursor(doc)
