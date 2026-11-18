@@ -1,6 +1,6 @@
 // The checks a release goes through (`tools/release-files.mjs`), run on a directory the test makes:
-// the three executables, SHA256SUMS, and an app.json signed with a key made for the test and
-// thrown away. Nothing here reaches the network, and nothing writes outside a temporary directory.
+// the six executables (two for each target), SHA256SUMS, and an app.json signed with a key made for
+// the test and thrown away. Nothing here reaches the network, and nothing writes outside a temporary directory.
 
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -9,7 +9,15 @@ import { join } from "node:path";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 
-import { BATERI_KEY, TARGETS, Refusal, fileOf, releaseFiles } from "../tools/release-files.mjs";
+import {
+  BATERI_KEY,
+  TARGETS,
+  Refusal,
+  fileOf,
+  noTerminalFileOf,
+  ownTarget,
+  releaseFiles,
+} from "../tools/release-files.mjs";
 
 const VERSION = "0.6.0";
 
@@ -33,8 +41,19 @@ const trusted = new Map();
 /** `releaseFiles`, trusting the key the test made for the directory (bateri's own if none). */
 const check = (dir, version) => releaseFiles(dir, version, trusted.get(dir));
 
-/** The files of a complete release in a new directory, and the means to make them wrong. */
-function release(version = VERSION) {
+/**
+ * A program of a release: a script that says its version, as the one this machine can run is
+ * asked to. The one with the drawing in it is the longer, as the file is.
+ */
+const program = (says, target, drawing) =>
+  `#!/bin/sh\necho ${says}\n# ${target}\n${drawing ? `# the drawing${".".repeat(300)}\n` : ""}`;
+
+/**
+ * The files of a complete release in a new directory, and the means to make them wrong. `bytes`
+ * says what a program is, for a target and a kind (`drawing`: the one with the drawing in it); the
+ * sums, SHA256SUMS and app.json are made from what it says.
+ */
+function release(version = VERSION, { bytes = (target, drawing) => program(version, target, drawing) } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "textpen-release-test-"));
   dirs.push(dir);
   const out = join(dir, "release");
@@ -43,12 +62,15 @@ function release(version = VERSION) {
   trusted.set(out, key.text);
   const sums = new Map();
   for (const target of TARGETS) {
-    const name = fileOf(version, target);
-    // A program that says its version, as the one this machine can run is asked to.
-    const bytes = `#!/bin/sh\necho ${version}\n# ${target}\n`;
-    writeFileSync(join(out, name), bytes);
-    chmodSync(join(out, name), 0o755);
-    sums.set(name, sha256(bytes));
+    for (const [name, drawing] of [
+      [fileOf(version, target), true],
+      [noTerminalFileOf(version, target), false],
+    ]) {
+      const made = bytes(target, drawing);
+      writeFileSync(join(out, name), made);
+      chmodSync(join(out, name), 0o755);
+      sums.set(name, sha256(made));
+    }
   }
   const manifest = {
     name: "textpen",
@@ -58,7 +80,8 @@ function release(version = VERSION) {
     key: key.text,
     files: Object.fromEntries(
       TARGETS.map((target) => {
-        const name = fileOf(version, target);
+        // The file a terminal that draws the page itself takes: the one without the drawing.
+        const name = noTerminalFileOf(version, target);
         return [
           target,
           { url: `https://github.com/bateri/textpen/releases/download/v${version}/${name}`, sha256: sums.get(name) },
@@ -89,14 +112,85 @@ const refusal = (what) => (error) => {
 };
 
 describe("the files of a release", () => {
-  it("are the three executables, SHA256SUMS, app.json and its signature", () => {
+  it("are the six executables, SHA256SUMS, app.json and its signature", () => {
     const { out } = release();
     assert.deepEqual(check(out, VERSION), [
-      ...TARGETS.map((target) => fileOf(VERSION, target)),
+      ...TARGETS.flatMap((target) => [fileOf(VERSION, target), noTerminalFileOf(VERSION, target)]),
       "SHA256SUMS",
       "app.json",
       "app.json.sig",
     ]);
+  });
+
+  it("are refused when an executable of either kind is missing", () => {
+    for (const name of [fileOf(VERSION, TARGETS[1]), noTerminalFileOf(VERSION, TARGETS[1])]) {
+      const { out } = release();
+      rmSync(join(out, name));
+      assert.throws(() => check(out, VERSION), refusal(`dist/release holds`));
+    }
+  });
+
+  it("are refused when SHA256SUMS names the executables of one kind only", () => {
+    for (const drawing of [true, false]) {
+      const { out, sums, write } = release();
+      const kind = (name) => name.startsWith("textpen-no-terminal-") !== drawing;
+      write.sums(new Map([...sums].filter(([name]) => kind(name))));
+      assert.throws(() => check(out, VERSION), refusal("does not name exactly the six executables"));
+    }
+  });
+
+  it("are refused when app.json names the executable with the drawing, not the one without", () => {
+    const { out, manifest, sums, write } = release();
+    const target = TARGETS[2];
+    const name = fileOf(VERSION, target);
+    write.manifest({
+      ...manifest,
+      files: {
+        ...manifest.files,
+        [target]: {
+          url: `https://github.com/bateri/textpen/releases/download/v${VERSION}/${name}`,
+          sha256: sums.get(name),
+        },
+      },
+    });
+    assert.throws(() => check(out, VERSION), refusal(`does not end in ${noTerminalFileOf(VERSION, target)}`));
+  });
+
+  it("are refused when the two executables of a target are one file, however they are listed and signed", () => {
+    const target = TARGETS[1];
+    const { out } = release(VERSION, {
+      bytes: (of, drawing) => program(VERSION, of, of === target ? true : drawing),
+    });
+    assert.throws(
+      () => check(out, VERSION),
+      refusal(`${noTerminalFileOf(VERSION, target)} is the same file as ${fileOf(VERSION, target)}`),
+    );
+  });
+
+  it("are refused when the executable without the drawing is not the smaller, however they are listed and signed", () => {
+    const target = TARGETS[0];
+    // The two builds the wrong way round: the copy of the first was taken after the second was made.
+    const { out } = release(VERSION, {
+      bytes: (of, drawing) => program(VERSION, of, of === target ? !drawing : drawing),
+    });
+    assert.throws(
+      () => check(out, VERSION),
+      refusal(`${noTerminalFileOf(VERSION, target)} is not smaller than ${fileOf(VERSION, target)}`),
+    );
+  });
+
+  it("take executables that say the version, and refuse either kind that says another", () => {
+    const own = ownTarget();
+    if (own === undefined) return;
+    for (const drawing of [true, false]) {
+      const says = (text) =>
+        release(VERSION, {
+          bytes: (target, of) => program(target === own && of === drawing ? text : VERSION, target, of),
+        });
+      assert.equal(check(says(VERSION).out, VERSION).length, 9);
+      const name = drawing ? fileOf(VERSION, own) : noTerminalFileOf(VERSION, own);
+      assert.throws(() => check(says("0.5.1").out, VERSION), refusal(`${name} says it is 0.5.1`));
+    }
   });
 
   it("are refused when app.json or its signature is missing", () => {
@@ -120,7 +214,7 @@ describe("the files of a release", () => {
       ...manifest,
       files: { ...manifest.files, [target]: { ...manifest.files[target], sha256: "0".repeat(64) } },
     });
-    assert.throws(() => check(out, VERSION), refusal(`another sum for ${fileOf(VERSION, target)}`));
+    assert.throws(() => check(out, VERSION), refusal(`another sum for ${noTerminalFileOf(VERSION, target)}`));
   });
 
   it("are refused when SHA256SUMS lists a sum the file does not have", () => {
@@ -184,7 +278,7 @@ describe("the files of a release", () => {
         [TARGETS[0]]: { ...made.manifest.files[TARGETS[0]], url: "https://example.com/elsewhere" },
       },
     });
-    assert.throws(() => check(made.out, VERSION), refusal(`does not end in ${fileOf(VERSION, TARGETS[0])}`));
+    assert.throws(() => check(made.out, VERSION), refusal(`does not end in ${noTerminalFileOf(VERSION, TARGETS[0])}`));
   });
 
   it("are refused when they are of another version than the one released", () => {

@@ -8,8 +8,8 @@ the mouse, on your machine or on a server over plain `ssh`.
 
 ## Install
 
-textpen is one file, with the editor inside it and nothing else to install, for macOS on Apple
-silicon and Linux on `arm64` and `x86_64`:
+textpen is one file for each system, with the editor inside it and nothing else to install, for
+macOS on Apple silicon and Linux on `arm64` and `x86_64`:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/bateri/textpen/main/install.sh | sh
@@ -24,6 +24,10 @@ terminal that hosts nothing" below). In any other terminal textpen opens your ow
 The installer takes the newest release (or `TEXTPEN_VERSION=0.2.0`), checks it against the
 release's `SHA256SUMS`, and puts it in `~/.local/bin` (`TEXTPEN_INSTALL=<dir>` puts it elsewhere).
 A file a browser downloads is quarantined by macOS; one curl downloads is not.
+
+A release has two files for each system, and the one to download by hand is
+`textpen-<version>-<target>`. The `textpen-no-terminal-<version>-<target>` one is smaller and is
+what bateri and kablo install; it does not draw in a terminal by itself.
 
 ## Use
 
@@ -50,7 +54,8 @@ are not shown: `⌘B` shows them for that run, and what you kept of them is the 
 cannot draw (`PENCERE_TUI=0`, a terminal it cannot take, the file built without its screen) it passes the
 file to `$VISUAL` or `$EDITOR` — skipping itself — or to `vi`.
 
-**Over ssh.** Copy the file for the server's system to it and run it there, in a pane of a
+**Over ssh.** Copy `textpen-<version>-<target>` for the server's system to it (not the
+`-no-terminal-` one, which does not draw in a terminal by itself) and run it there, in a pane of a
 terminal that hosts pencere: nothing listens on a port, the editor travels in the terminal's
 own stream, and it runs on your machine in a sandbox that reaches nothing but its program. Its
 files cross the stream once; after that the terminal keeps them.

@@ -73,17 +73,22 @@ const release = (tag, { draft = false, prerelease = false, files = [] } = {}) =>
   })),
 });
 
+/** The executable without the drawing, which a release carries beside the one that installs. */
+const withoutDrawing = (version, machine = target) => `textpen-no-terminal-${version}-${machine}`;
+
 /**
  * A stand-in for GitHub: `releases.json` lists `tags`, and each of `versions` has the stub
- * executable for the machine's target, whose output names its version, with its SHA256SUMS. A
- * tag given as a string lists that file among its release's files when its version is one of
- * `versions`.
+ * executable for the machine's target, whose output names its version, and the one without the
+ * drawing, whose output says so, with the SHA256SUMS that names both. A tag given as a string
+ * lists those files among its release's files when its version is one of `versions`. The one
+ * without the drawing comes first, in the listing and in SHA256SUMS: it is not what `install.sh`
+ * is after, and no other order may be what makes it find the one that is.
  */
 function github({ tags = [], versions = [], pretty = true, sums } = {}) {
   const base = scratch();
   const files = (tag) => {
     const version = tag.startsWith("v") ? tag.slice("v".length) : null;
-    return versions.includes(version) ? [`textpen-${version}-${target}`] : [];
+    return versions.includes(version) ? [withoutDrawing(version), `textpen-${version}-${target}`] : [];
   };
   const listing = tags.map((tag) =>
     typeof tag === "string" ? release(tag, { files: files(tag) }) : tag,
@@ -95,8 +100,10 @@ function github({ tags = [], versions = [], pretty = true, sums } = {}) {
     const file = `textpen-${version}-${target}`;
     const bytes = `#!/bin/sh\necho "textpen ${version}"\n`;
     writeFileSync(join(dir, file), bytes);
+    const small = `#!/bin/sh\necho "textpen ${version} without the drawing"\n`;
+    writeFileSync(join(dir, withoutDrawing(version)), small);
     const line = sums?.(file, bytes) ?? `${sha256(bytes)}  ${file}\n`;
-    writeFileSync(join(dir, "SHA256SUMS"), line);
+    writeFileSync(join(dir, "SHA256SUMS"), `${sha256(small)}  ${withoutDrawing(version)}\n${line}`);
   }
   return base;
 }
@@ -131,8 +138,10 @@ describe("install.sh", () => {
     expect(statSync(installed(done.into)).mode & 0o777).toBe(0o755);
     const ran = spawnSync(installed(done.into), { encoding: "utf8" });
     expect(ran.stdout).toBe("textpen 0.2.0\n");
-    // Nothing but the command was put there.
+    // Nothing but the command was put there, and it is the one that draws in a terminal, not the
+    // one without the drawing that the release carries beside it.
     expect(readFileSync(installed(done.into), "utf8")).toContain("textpen 0.2.0");
+    expect(readFileSync(installed(done.into), "utf8")).not.toContain("without the drawing");
   });
 
   it("hints at the PATH when the directory is not on it, and only then", () => {
@@ -266,6 +275,47 @@ describe("install.sh", () => {
     expect(done.err).toBe("");
     expect(done.status).toBe(0);
     expect(done.out).toContain("installed textpen 0.2.0");
+  });
+
+  it("takes the executable with the drawing of the newest release, and not the one without it", () => {
+    const base = github({ tags: ["v0.3.0", "v0.2.0"], versions: ["0.3.0", "0.2.0"] });
+    const done = install(base);
+    expect(done.status).toBe(0);
+    expect(done.out).toContain(`installed textpen 0.3.0 (${target})`);
+    expect(spawnSync(installed(done.into), { encoding: "utf8" }).stdout).toBe("textpen 0.3.0\n");
+    // Asked for by version, the one of that version, the same way.
+    const old = install(base, { TEXTPEN_VERSION: "0.2.0" });
+    expect(spawnSync(installed(old.into), { encoding: "utf8" }).stdout).toBe("textpen 0.2.0\n");
+  });
+
+  it("does not count a release that has only the executable without the drawing for the machine", () => {
+    // Nothing of it installs: the release is not one to take, and the newest that has the other is.
+    const base = github({
+      tags: [release("v0.3.0", { files: [withoutDrawing("0.3.0")] }), "v0.2.0"],
+      versions: ["0.2.0"],
+    });
+    const done = install(base);
+    expect(done.err).toBe("");
+    expect(done.status).toBe(0);
+    expect(done.out).toContain("installed textpen 0.2.0");
+    expect(spawnSync(installed(done.into), { encoding: "utf8" }).stdout).toBe("textpen 0.2.0\n");
+
+    const only = github({ tags: [release("v0.3.0", { files: [withoutDrawing("0.3.0")] })] });
+    const none = install(only);
+    expect(none.status).toBe(1);
+    expect(none.err).toContain(`has no release of textpen for ${target} yet`);
+  });
+
+  it("refuses SHA256SUMS that names only the one without the drawing", () => {
+    const base = github({
+      tags: ["v0.2.0"],
+      versions: ["0.2.0"],
+      sums: () => "",
+    });
+    const done = install(base);
+    expect(done.status).toBe(1);
+    expect(done.err).toContain("does not name");
+    expect(existsSync(installed(done.into))).toBe(false);
   });
 
   it("says what is missing when the release has no file for the machine", () => {

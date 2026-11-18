@@ -149,25 +149,34 @@ pencere-dir:
 dev: pencere
 	"$(PENCERE)" dev
 
-# dist makes the program for one target (TARGET, a Rust target triple) into dist/release, as
-# textpen-<version>-<target>: Apple silicon Macs and both Linux architectures, the Linux ones linked
-# statically with musl (bateri, the terminal that shows the editor, runs on Apple silicon only).
-# Each is built on a machine of its own target, with that target added to the toolchain; `make sums`
-# then names the three where they are together, and signs the app.json that says what they are.
+# dist makes the programs for one target (TARGET, a Rust target triple) into dist/release: Apple
+# silicon Macs and both Linux architectures, the Linux ones linked statically with musl (bateri, the
+# terminal that shows the editor, runs on Apple silicon only). Each target has two files, both built
+# with the profile of the file that is shipped (`--profile dist`, which `make build` is not): the
+# one with the drawing in it, textpen-<version>-<target>, which `install.sh` takes, and the smaller one
+# without it (`--no-default-features`), textpen-no-terminal-<version>-<target>, which bateri takes,
+# for it draws the editor itself. The two builds write the same target/<target>/dist/textpen, so each
+# is copied as soon as it is made. Each target is built on a machine of its own, with that target
+# added to the toolchain; `make sums` then names the six where they are together, and signs the
+# app.json that says what they are.
 TARGETS = aarch64-apple-darwin aarch64-unknown-linux-musl x86_64-unknown-linux-musl
 PACKAGE_VERSION = $(shell sed -n 's/^version = "\(.*\)"$$/\1/p' Cargo.toml | head -n 1)
 
 dist:
 	@test -n "$(TARGET)" || { echo "usage: make dist TARGET=<one of: $(TARGETS)>"; exit 2; }
-	cargo build --locked --release --target $(TARGET)
 	mkdir -p dist/release
-	cp target/$(TARGET)/release/textpen dist/release/textpen-$(PACKAGE_VERSION)-$(TARGET)
+	rm -f dist/release/textpen-$(PACKAGE_VERSION)-$(TARGET) dist/release/textpen-no-terminal-$(PACKAGE_VERSION)-$(TARGET)
+	cargo build --locked --profile dist --target $(TARGET)
+	cp target/$(TARGET)/dist/textpen dist/release/textpen-$(PACKAGE_VERSION)-$(TARGET)
+	cargo build --locked --profile dist --no-default-features --target $(TARGET)
+	cp target/$(TARGET)/dist/textpen dist/release/textpen-no-terminal-$(PACKAGE_VERSION)-$(TARGET)
 
-# sums writes the SHA256SUMS of the three files of dist/release, then the app.json that names them
-# and its signature (`pencere dist`, which signs with the key `pencere key` made: ~/.config/pencere/
-# signing.key, or the one PENCERE_SIGNING_KEY names). A terminal that follows textpen reads those
-# two. What the program needs of its terminal in app.json comes from the program itself, the file
-# of this machine's target, started once. DIST_FLAGS goes to `pencere dist`: --base, --previous.
+# sums has `pencere dist` write, from the six files of dist/release, their SHA256SUMS, the app.json
+# and its signature (it signs with the key `pencere key` made: ~/.config/pencere/signing.key, or the
+# one PENCERE_SIGNING_KEY names). A terminal that follows textpen reads those two: app.json names the
+# file without the drawing for each target, for it draws the editor itself. What the program needs
+# of its terminal in app.json comes from the program itself, that file of this machine's target,
+# started once. DIST_FLAGS goes to `pencere dist`: --base, --previous.
 #
 # On release day PENCERE must be a pencere that has `dist` and is the one Cargo.lock takes
 # (PENCERE_REF): `make pencere` builds it. A release made with another one has an app.json that
@@ -176,22 +185,22 @@ dist:
 # does not have the flag stops here, and the pin in Cargo.toml moves to one that has it first.
 DIST_FLAGS ?=
 sums:
-	cd dist/release && { sha256sum textpen-* 2>/dev/null || shasum -a 256 textpen-*; } > SHA256SUMS
-	@cat dist/release/SHA256SUMS
 	@test -x "$(PENCERE)" || { echo "sums: no pencere at $(PENCERE): make pencere, or PENCERE=<a pencere command that has dist>"; exit 1; }
 	"$(PENCERE)" dist --files dist/release --opens file,folder $(DIST_FLAGS) $(PACKAGE_VERSION)
+	@n=$$(grep -c . dist/release/SHA256SUMS); test "$$n" = 6 || { echo "sums: dist/release/SHA256SUMS names $$n files, not six: the pencere at $(PENCERE) does not take the -no-terminal- files; \`make pencere\` builds the one Cargo.lock takes"; exit 1; }
+	@cat dist/release/SHA256SUMS
 
 # release-prepare sets the version and dates the changelog's Unreleased section.
 release-prepare:
 	@test -n "$(VERSION)" || { echo "usage: make release-prepare VERSION=<x.y.z>"; exit 2; }
 	node tools/release.mjs prepare $(VERSION)
 
-# release runs the gate and the release checks (dist/release holds the three files of this
-# version and their SHA256SUMS, made after the release commit), then tags. Nothing is pushed.
+# release runs the gate and the release checks (dist/release holds the nine files of this
+# version, made after the release commit), then tags. Nothing is pushed.
 release: check
 	node tools/release.mjs tag
 
-# publish pushes main and the tag, then makes the GitHub release with the three files and
-# SHA256SUMS. Publishing: run on the maintainer's word.
+# publish pushes main and the tag, then makes the GitHub release with the nine files of
+# dist/release. Publishing: run on the maintainer's word.
 publish:
 	node tools/release.mjs publish
