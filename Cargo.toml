@@ -17,7 +17,7 @@ path = "src/program/main.rs"
 # pinch and hands what a page carries to the system's drag (the release on crates.io does not yet,
 # nor does it draw a PDF page as a picture): every pencere crate here is at this one `rev`, which
 # Cargo.lock holds and `make fake-host`, `make dev` and `make sums` build pencere from.
-pencere = { git = "https://github.com/bateri/pencere", rev = "52c57ed0455e14106dcb612a4a1a5ff3f56b1bf5" }
+pencere = { git = "https://github.com/bateri/pencere", rev = "aafde273ee048d85e4c6dcb255472709c518f9a2" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # The project search: patterns a person types, searched in time linear in the text (no
@@ -46,7 +46,7 @@ hayro-interpret = { version = "0.9", default-features = false, features = ["embe
 # it is started in, where that speaks the Kitty graphics protocol (the `terminal` feature). Built with the
 # interpreter compiled by the build (`precompile`) and the PDF reader (`pdf`); the code generator is not in
 # the file.
-pencere-tui = { git = "https://github.com/bateri/pencere", rev = "52c57ed0455e14106dcb612a4a1a5ff3f56b1bf5", optional = true, default-features = false, features = ["precompile", "pdf"] }
+pencere-tui = { git = "https://github.com/bateri/pencere", rev = "aafde273ee048d85e4c6dcb255472709c518f9a2", optional = true, default-features = false, features = ["precompile", "pdf"] }
 
 [features]
 # Two builds: with the screen (the default: a terminal that does not host pencere but speaks the Kitty
@@ -57,7 +57,7 @@ default = ["terminal"]
 terminal = ["dep:pencere-tui"]
 
 [build-dependencies]
-pencere = { git = "https://github.com/bateri/pencere", rev = "52c57ed0455e14106dcb612a4a1a5ff3f56b1bf5" }
+pencere = { git = "https://github.com/bateri/pencere", rev = "aafde273ee048d85e4c6dcb255472709c518f9a2" }
 
 [dev-dependencies]
 # Each test has a directory of its own as its home and its project.
@@ -65,12 +65,12 @@ tempfile = "3"
 # The page (src/view/) run as a terminal runs it, with no screen: the kit's interpreter and editors,
 # a clock the test moves, and the program's own handlers in this process (`program`); and pictures
 # of it for the eye, in the fonts of the machine (`shot`, `make shots`).
-pencere-drive = { git = "https://github.com/bateri/pencere", rev = "52c57ed0455e14106dcb612a4a1a5ff3f56b1bf5", features = ["program", "shot"] }
+pencere-drive = { git = "https://github.com/bateri/pencere", rev = "aafde273ee048d85e4c6dcb255472709c518f9a2", features = ["program", "shot"] }
 # The names of the page's elements (`Id`), to tell which of its editors is shown.
-pencere-view = { git = "https://github.com/bateri/pencere", rev = "52c57ed0455e14106dcb612a4a1a5ff3f56b1bf5" }
+pencere-view = { git = "https://github.com/bateri/pencere", rev = "aafde273ee048d85e4c6dcb255472709c518f9a2" }
 # The files of a page's bundle (`Assets`): a test's own script beside the page; and what a page's
 # calls are held to (`ModuleLimits`).
-pencere-sandbox = { git = "https://github.com/bateri/pencere", rev = "52c57ed0455e14106dcb612a4a1a5ff3f56b1bf5" }
+pencere-sandbox = { git = "https://github.com/bateri/pencere", rev = "aafde273ee048d85e4c6dcb255472709c518f9a2" }
 
 # The page tests compile the kit's interpreter to machine code, with wasmtime's code generator, when
 # the first page opens (nothing else is compiled for a page); built without optimization (a debug
