@@ -340,8 +340,8 @@ needs Node but the release tool (`tools/release.mjs`) and the one that draws the
 
 ```sh
 git clone https://github.com/bateri/textpen && cd textpen
-make fake-host      # pencere's stand-in terminal, of the pencere Cargo.lock takes, in .cache/pencere
-make check FAKE_HOST=.cache/pencere/target/debug/pencere-fake-host
+make fake-host      # pencere's stand-in terminal, of the pencere Cargo.lock takes, in ~/.cache/pencere-build
+make check FAKE_HOST="$(make -s pencere-dir)/target/debug/pencere-fake-host"
 make build          # target/release/textpen
 make dev            # textpen from its files, in a pane of a terminal that hosts pencere views
 ```
@@ -361,10 +361,11 @@ is the wall clock's and fails a slow or busy runner for nothing the page did: `m
 `make shots` draws the pictures of `docs/` from the page as it is, in the
 fonts of a Mac. CI runs `make check` on Linux and macOS.
 
-`make dev` builds the `pencere` command of the pencere `Cargo.lock` takes, in `.cache/pencere`,
-and runs `pencere dev`: textpen is built and run in the pane, the editor is shown again when a file
-of `src/view/` or `src/assets/` changes, and the program is built and run again when one of its own
-does. `make dev PENCERE_SRC=../pencere` uses a checkout you are changing instead. `demo/` is a
+`make dev` builds the `pencere` command of the pencere `Cargo.lock` takes, in
+`~/.cache/pencere-build/<commit>` (`make pencere-dir` says where; every pen and worktree on the same
+commit shares that checkout and build), and runs `pencere dev`: textpen is built and run in the
+pane, the editor is shown again when a file of `src/view/` or `src/assets/` changes, and the
+program is built and run again when one of its own does. `make dev PENCERE_SRC=../pencere` uses a checkout you are changing instead. `demo/` is a
 small shop to open textpen on (`textpen demo`).
 
 How a version is released is in [RELEASING.md](RELEASING.md), and what each one changed in

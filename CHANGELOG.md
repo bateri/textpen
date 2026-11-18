@@ -9,16 +9,6 @@ change what the previous one did.
 
 ### Added
 
-- **Zoom pictures and PDFs.** Pinch, or press `⌘+`, `⌘-` and `⌘0`. A double tap with two fingers
-  switches between fit and actual size. The status line shows the zoom; click it to fit again.
-- **Make the text larger.** `⌘+`, `⌘-`, `⌘0` or a pinch change the size of all of textpen's text,
-  and the terminal's own text stays as it is. The size is remembered, and **Text size** in the
-  settings sets it too.
-- **Drag a file out of textpen.** Drag a file from the tree, or a tab, onto a terminal pane and its
-  path is typed there. Drop it on another app to give it the path.
-
-These need a terminal that supports them, such as the next bateri. Elsewhere textpen works as before.
-
 - **textpen draws the editor in a terminal that speaks Kitty graphics,** as bateri does: the same editor
   as pictures, with the mouse and the keys, where it used to open your own `$EDITOR`. Ctrl is what ⌘ is
   there (Ctrl+/ comments a line). A terminal with no Kitty graphics, and a multiplexer, still open the
@@ -28,9 +18,26 @@ These need a terminal that supports them, such as the next bateri. Elsewhere tex
 
 ### Changed
 
-- **The size of a picture is in the status line.** It was a line under the picture.
 - **The hint of the button that fits a picture to its tab names its key.** It says Ctrl+0 where there is
   no ⌘ key (it said Super+0), and ⌘0 on a Mac as before.
+
+## [0.8.0] - 2026-11-18
+
+### Added
+
+- **Zoom pictures and PDFs.** Pinch, double-tap with two fingers, or press `⌘+`, `⌘-` and `⌘0`.
+  The status line shows the zoom; click it to fit the page again.
+- **Make the text larger.** Away from a picture or a PDF, the same keys and a pinch change the size
+  of textpen's text. The terminal's own text stays as it is, and **Text size** in the settings
+  sets it too.
+- **Drag a file out of textpen.** Drag a file from the tree, or a tab, onto a terminal pane to type
+  its path there, or onto another app.
+
+These need bateri 0.29 or later. In other terminals textpen works as before.
+
+### Changed
+
+- **A picture's size is now in the status line**, not under the picture.
 
 ## [0.7.0] - 2026-11-11
 
