@@ -13,7 +13,7 @@ mod common;
 
 use std::time::{Duration, Instant};
 
-use common::terminal::{Start, Terminal, count, pixels_that, plain, sent, shows_page};
+use common::terminal::{Start, Terminal, count, pixels_counted, plain, sends, sent, shows_page};
 use common::{Pane, pdf_of_pages, pdf_of_text, png_of, program};
 
 const LIMIT: Duration = Duration::from_secs(60);
@@ -73,8 +73,9 @@ fn file_becomes(pane: &Pane, name: &str, what: impl Fn(&str) -> bool) -> bool {
     false
 }
 
-/// Waits until what the program has written is as `shown` says.
-fn until_shown(terminal: &mut Terminal, shown: impl Fn(&[u8]) -> bool) {
+/// Waits until what the program has written is as `shown` says: it is asked again each time the program
+/// has written more, with the same stream grown.
+fn until_shown(terminal: &mut Terminal, mut shown: impl FnMut(&[u8]) -> bool) {
     let end = Instant::now() + LIMIT;
     while Instant::now() < end {
         terminal.settle(Duration::from_millis(200));
@@ -90,22 +91,21 @@ fn settle(terminal: &mut Terminal, millis: u64) {
 }
 
 /// Whether the program has sent a picture as large as a page or a photograph is (the tabs' icons are small).
-fn a_large_picture(raw: &[u8]) -> bool {
-    sent(raw)
-        .iter()
-        .any(|picture| picture.width >= 96 && picture.height >= 96)
+fn a_large_picture() -> impl FnMut(&[u8]) -> bool {
+    sends(|picture| picture.width >= 96 && picture.height >= 96)
 }
 
 /// How many pixels of what the program sent are the white of a PDF's paper, which the page has nowhere else
-/// in so large a field.
-fn paper(raw: &[u8]) -> usize {
-    pixels_that(raw, |r, g, b| (r, g, b) == (255, 255, 255))
+/// in so large a field: asked of the same stream each time it has grown.
+fn paper() -> impl FnMut(&[u8]) -> usize {
+    pixels_counted(|r, g, b| (r, g, b) == (255, 255, 255))
 }
 
 /// How many pixels of what the program sent are of the picture `a_picture` makes, whose blue is 128 in
-/// every one of its pixels (the page's own colours have no such blue in a field so large).
-fn photograph(raw: &[u8]) -> usize {
-    pixels_that(raw, |_, _, b| b == 128)
+/// every one of its pixels (the page's own colours have no such blue in a field so large): asked of the
+/// same stream each time it has grown.
+fn photograph() -> impl FnMut(&[u8]) -> usize {
+    pixels_counted(|_, _, b| b == 128)
 }
 
 /// Pixels that make a page of a PDF or a photograph: more than the page's own parts have of the colour.
@@ -131,7 +131,7 @@ fn a_terminal_that_draws_pictures_gets_the_editor_drawn_as_a_picture_and_is_the_
     // terminal what it draws, and draws the page as one picture of the window: the 100 by 30 cells of 10 by
     // 20 pixels, a cell more each way.
     let mut terminal = start(&pane, "a.txt", true, &[]);
-    until_shown(&mut terminal, a_large_picture);
+    until_shown(&mut terminal, a_large_picture());
     assert!(
         sent(&terminal.raw)
             .iter()
@@ -147,13 +147,14 @@ fn a_terminal_that_draws_pictures_gets_the_editor_drawn_as_a_picture_and_is_the_
         plain(&terminal.raw)
     );
     // The page's own parts have no PDF's paper and no photograph in them.
-    assert!(paper(&terminal.raw) < FIELD && photograph(&terminal.raw) < FIELD);
+    assert!(paper()(&terminal.raw) < FIELD && photograph()(&terminal.raw) < FIELD);
 
     // The first picture may be of the line that stands in for the page while its module starts, which
     // a busy machine takes seconds over: what is typed on it reaches no page.
-    until_shown(&mut terminal, shows_page);
+    let mut page = shows_page();
+    until_shown(&mut terminal, &mut page);
     assert!(
-        shows_page(&terminal.raw),
+        page(&terminal.raw),
         "the page never came: the window has the line that stands in for it"
     );
     // The file is read and the page is drawn with it a moment after the page comes.
@@ -241,9 +242,10 @@ fn a_pdf_opened_in_a_live_terminal_is_a_picture_of_its_page_where_the_terminal_d
     let pane = Pane::new();
     pane.write("doc.pdf", pdf_of_pages(&[(612.0, 792.0), (612.0, 792.0)]));
     let mut terminal = start(&pane, "doc.pdf", true, &[("PENCERE_TUI", "1")]);
-    until_shown(&mut terminal, |raw| paper(raw) >= FIELD);
+    let mut seen = paper();
+    until_shown(&mut terminal, |raw| seen(raw) >= FIELD);
     assert!(
-        paper(&terminal.raw) >= FIELD,
+        seen(&terminal.raw) >= FIELD,
         "no page of the PDF was sent, only {:?}",
         sent(&terminal.raw)
     );
@@ -257,9 +259,10 @@ fn a_png_opened_in_a_live_terminal_is_a_picture_where_the_terminal_draws_picture
     let pane = Pane::new();
     pane.write("red.png", a_picture());
     let mut terminal = start(&pane, "red.png", true, &[("PENCERE_TUI", "1")]);
-    until_shown(&mut terminal, |raw| photograph(raw) >= FIELD);
+    let mut seen = photograph();
+    until_shown(&mut terminal, |raw| seen(raw) >= FIELD);
     assert!(
-        photograph(&terminal.raw) >= FIELD,
+        seen(&terminal.raw) >= FIELD,
         "no picture was sent, only {:?}",
         sent(&terminal.raw)
     );
@@ -274,9 +277,11 @@ fn a_pdf_open_when_the_pane_is_given_to_a_shell_is_drawn_again_when_the_shell_en
     pane.write("doc.pdf", pdf_of_pages(&[(612.0, 792.0), (612.0, 792.0)]));
     // `SHELL` is `true`: the shell the pane is given to ends at once, and the view comes back.
     let mut terminal = start(&pane, "doc.pdf", true, &[("PENCERE_TUI", "1")]);
-    until_shown(&mut terminal, |raw| paper(raw) >= FIELD);
-    assert!(paper(&terminal.raw) >= FIELD, "{:?}", sent(&terminal.raw));
+    let mut seen = paper();
+    until_shown(&mut terminal, |raw| seen(raw) >= FIELD);
+    assert!(seen(&terminal.raw) >= FIELD, "{:?}", sent(&terminal.raw));
     let from = terminal.raw.len();
+    let mut later = paper();
     // Ctrl+Alt+T, the shell's chord where the keyboard is not a Mac's.
     terminal.type_bytes(b"\x1b\x14");
     let end = Instant::now() + LIMIT;
@@ -284,7 +289,7 @@ fn a_pdf_open_when_the_pane_is_given_to_a_shell_is_drawn_again_when_the_shell_en
         terminal.settle(Duration::from_millis(200));
         // The screen was given up and taken again, and the page is drawn: the PDF's page is sent anew.
         if count(&terminal.raw[from..], b"\x1b[?1049h") >= 1
-            && paper(&terminal.raw[from..]) >= FIELD
+            && later(&terminal.raw[from..]) >= FIELD
         {
             break;
         }
@@ -296,7 +301,7 @@ fn a_pdf_open_when_the_pane_is_given_to_a_shell_is_drawn_again_when_the_shell_en
         sent(after)
     );
     assert!(
-        paper(after) >= FIELD,
+        later(after) >= FIELD,
         "the PDF is not drawn again, only {:?}",
         sent(after)
     );
@@ -334,9 +339,11 @@ fn the_streams_of_a_pdf_and_a_picture_opened() {
             let mut terminal =
                 start_sized(&pane, file, true, &[("PENCERE_TUI", "1")], (cols, rows));
             if file == "doc.pdf" {
-                until_shown(&mut terminal, |raw| paper(raw) >= FIELD);
+                let mut seen = paper();
+                until_shown(&mut terminal, |raw| seen(raw) >= FIELD);
             } else {
-                until_shown(&mut terminal, |raw| photograph(raw) >= FIELD);
+                let mut seen = photograph();
+                until_shown(&mut terminal, |raw| seen(raw) >= FIELD);
             }
             // Let it draw the rest: the page's own parts come a moment after the picture.
             for _ in 0..8 {
