@@ -3523,3 +3523,195 @@ fn the_menus_own_lines_search_and_list_commands_and_the_keyboard_opens_it() -> R
     wait(&mut page, |page| shows(page, "Show Editor Menu"))?;
     Ok(())
 }
+
+/// The row of the tree named `path` and what is under it, as the page made it.
+fn tree_row(page: &Page, path: &str) -> Vec<pencere_view::wire::Node> {
+    let nodes = page.root().map(|root| root.fold()).unwrap_or_default();
+    let id = Id::named(&format!("row:{path}"));
+    let Some(at) = nodes.iter().position(|node| node.meta.id == Some(id)) else {
+        return Vec::new();
+    };
+    // A node is followed by its own children, each with its own.
+    let (mut owed, mut end) = (1_usize, at);
+    while owed > 0 && end < nodes.len() {
+        owed = owed - 1 + nodes[end].children as usize;
+        end += 1;
+    }
+    nodes[at..end].to_vec()
+}
+
+/// A row of the tree is made again only where something it shows has changed, and every such thing
+/// shows: the row that the pointer is over, the one that is chosen, the file in front, a folder that
+/// is open, a file with changes not saved. Where the thing goes, the row is what it was before it.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_row_of_the_tree_shows_what_is_so_of_it_now_and_not_what_was_so_when_it_was_made()
+-> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["src/server.ts", "README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    let plain = tree_row(&page, "README.md");
+    assert!(!plain.is_empty(), "{:?}", page_words(&page));
+    // The pointer over it, and away from it.
+    page.hover("row:README.md")?;
+    let over = tree_row(&page, "README.md");
+    assert_ne!(over, plain, "the row under the pointer has its ground");
+    page.leave()?;
+    assert_eq!(
+        tree_row(&page, "README.md"),
+        plain,
+        "away from it, as it was"
+    );
+    // The file in front, and another in front.
+    page.click("row:README.md")?;
+    let in_front = tree_row(&page, "README.md");
+    assert_ne!(in_front, plain, "the file in front, and chosen");
+    page.click("row:src/server.ts")?;
+    page.leave()?;
+    assert_eq!(
+        tree_row(&page, "README.md"),
+        plain,
+        "another is in front and chosen: it is as it was"
+    );
+    // A file with changes that are not saved has a mark; saved, it has not.
+    page.click("row:README.md")?;
+    page.leave()?;
+    let clean = tree_row(&page, "README.md");
+    let editor = shown(&page).expect("an editor");
+    page.caret_to(&editor, 0)?;
+    page.type_text("x")?;
+    page.advance(1.0)?;
+    let dirty = tree_row(&page, "README.md");
+    assert_ne!(dirty, clean, "a file with changes not saved has its mark");
+    page.press("cmd+s")?;
+    wait(&mut page, |_| project.read("README.md").starts_with('x'))?;
+    page.advance(1.0)?;
+    page.leave()?;
+    assert_eq!(tree_row(&page, "README.md"), clean, "saved: the mark goes");
+    // A folder opens and closes, and what it is says so.
+    let folder = tree_row(&page, "src");
+    page.click("row:src")?;
+    let toggled = tree_row(&page, "src");
+    assert_ne!(toggled, folder, "a folder opened or closed says so");
+    page.click("row:src")?;
+    page.click("row:README.md")?;
+    page.leave()?;
+    assert_eq!(
+        tree_row(&page, "src"),
+        folder,
+        "and as it was where it is as it was"
+    );
+    Ok(())
+}
+
+/// A row of the tree takes the mark git gives its file when the mark comes, and loses it when it goes
+/// (the mark is a fact a row is made of, as the pointer over it is).
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_row_of_the_tree_takes_the_mark_git_gives_it_and_loses_it_when_it_goes() -> Result<(), Error> {
+    use pencere_view::wire::Kind;
+    let project = lantern();
+    let root = project.root();
+    let git = |args: &[&str]| {
+        let status = std::process::Command::new("git")
+            .args(args)
+            .current_dir(&root)
+            .env("GIT_AUTHOR_NAME", "textpen")
+            .env("GIT_AUTHOR_EMAIL", "textpen@example.com")
+            .env("GIT_COMMITTER_NAME", "textpen")
+            .env("GIT_COMMITTER_EMAIL", "textpen@example.com")
+            .status()
+            .expect("git");
+        assert!(status.success(), "git {args:?}");
+    };
+    git(&["init", "-q", "-b", "lantern-branch"]);
+    git(&["add", "-A"]);
+    git(&["commit", "-q", "-m", "The shop"]);
+    project.write("README.md", "# Lantern, changed\n");
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let marked = |page: &Page, path: &str| {
+        tree_row(page, path)
+            .iter()
+            .any(|node| matches!(&node.kind, Kind::Text(words) if words == "M"))
+    };
+    wait(&mut page, |page| marked(page, "README.md"))?;
+    assert!(!marked(&page, "src/server.ts"), "only the file git says");
+    git(&["commit", "-q", "-am", "Changed"]);
+    wait(&mut page, |page| !marked(page, "README.md"))?;
+    Ok(())
+}
+
+/// The rows of a tree with a name wider than the sidebar are as wide as that name, the short ones
+/// too (their ground goes across wherever the tree is scrolled): the width is measured from what was
+/// laid out, and the rows made before it was are made again.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_rows_of_a_tree_are_as_wide_as_its_widest_name_once_it_is_measured() -> Result<(), Error> {
+    let long =
+        "a_name_that_is_longer_than_the_sidebar_is_wide_by_a_good_many_letters_over_and_over.txt";
+    let project = Project::new(&[("short.txt", ""), (long, "")]);
+    let session = project.session(&[]);
+    let mut page = project.open(&session, WIDE)?;
+    wait(&mut page, |page| {
+        page.bounds("row:short.txt")
+            .is_some_and(|row| row.w > 400.0)
+    })?;
+    Ok(())
+}
+
+/// With the pointer away, a row of the tree follows the keyboard: the focus coming to the tree, a
+/// folder opened or closed, the focus going from it, the chosen row moving to another, the file in
+/// front changing. Each of these changes one thing a row is made of and nothing else, so a row that
+/// was handed on instead of made again would show what was so before.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_row_of_the_tree_follows_the_keyboard_when_the_pointer_is_away() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["src/server.ts", "README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    page.leave()?;
+    let (file, folder) = ("src/server.ts", "src");
+    let before = tree_row(&page, file);
+    assert!(!before.is_empty() && !tree_row(&page, folder).is_empty());
+    // The keyboard comes to the tree, on the row of the file in front: it has the focus's ground.
+    page.press("cmd+shift+e")?;
+    let focused = tree_row(&page, file);
+    assert_ne!(focused, before, "the focus comes to the chosen row");
+    // Left of a file chooses the folder it is in.
+    page.press("left")?;
+    let chosen = tree_row(&page, folder);
+    assert_ne!(
+        tree_row(&page, file),
+        focused,
+        "the file is not the chosen row now"
+    );
+    // Left of an open folder closes it, and right opens it again.
+    page.press("left")?;
+    let closed = tree_row(&page, folder);
+    assert_ne!(closed, chosen, "a folder that closes says so");
+    page.press("right")?;
+    assert_eq!(
+        tree_row(&page, folder),
+        chosen,
+        "and says so when it opens again"
+    );
+    // The focus goes to the editor: the chosen row keeps its ground, but not the focus's.
+    page.press("ctrl+1")?;
+    let blurred = tree_row(&page, folder);
+    assert_ne!(blurred, chosen, "the focus goes from the chosen row");
+    // Another file in front: the chosen row moves to it, and the file that was in front is no longer.
+    let was_in_front = tree_row(&page, file);
+    go_to(&mut page, "format.ts")?;
+    assert_ne!(
+        tree_row(&page, folder),
+        blurred,
+        "the folder is not the chosen row any more"
+    );
+    assert_ne!(
+        tree_row(&page, file),
+        was_in_front,
+        "the file that was in front is not any more"
+    );
+    Ok(())
+}

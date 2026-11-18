@@ -252,30 +252,22 @@ local function upload_view(row, ctx)
 	return element
 end
 
-local function row_view(row, index, ctx)
-	if row.upload then
-		return upload_view(row, ctx)
-	end
-	local entry = row.entry
-	local path = entry.path
+-- The element of a file's or folder's row, from what it shows and nothing else (so that a row is made
+-- again only where one of these changed: see `row_view`).
+local function make_row(path, name, link, is_dir, depth, open, loading, quiet, branch, state, selected, focused, active, over, dropping, dirty, width)
 	local id = "row:" .. path
-	local is_dir = entry.kind == "dir"
-	local selected = S.tree_selection == path
-	local focused = selected and S.focus == "sidebar" and S.sidebar == "files"
-	local state = is_dir and ctx.dirs[path] or (ctx.git[path])
-	local over = kit.hovered(id)
 	local ground = nil
-	if is_dir and uploads.dropping(path) then
+	if dropping then
 		-- Files dragged over the page would go into this folder.
 		ground = b.alpha("accent", 0.32)
 	elseif focused then
 		ground = b.alpha("accent", 0.2)
-	elseif selected or path == S.active then
+	elseif selected or active then
 		ground = b.alpha("foreground", 0.07)
 	elseif over then
 		ground = b.alpha("foreground", 0.045)
 	end
-	local color = row.quiet and "quiet" or "foreground"
+	local color = quiet and "quiet" or "foreground"
 	if state and files.GIT_COLOR[state] then
 		color = files.GIT_COLOR[state]
 	end
@@ -291,43 +283,42 @@ local function row_view(row, index, ctx)
 		:no_shrink()
 		:bg(ground)
 		:role("button")
-		:label(entry.name)
-		:expanded(is_dir and row.open)
+		:label(name)
+		:expanded(is_dir and open)
 		:selected(selected)
 		:tip(path)
 	kit.carries(element, path)
-	if is_dir and uploads.dropping(path) then
+	if dropping then
 		element:border(1, "accent")
 	end
-	kit.indent_guides(element, row.depth)
+	kit.indent_guides(element, depth)
 	local line = b.div()
 		:id("rowline:" .. path)
 		:row()
 		:items_center()
 		:gap(6)
 		:h_full()
-		:pl(8 + row.depth * INDENT)
+		:pl(8 + depth * INDENT)
 		:pr(10)
-		:min_w(ctx.width)
+		:min_w(width)
 		:no_shrink()
 	-- A folder says whether it is open by its icon alone: no arrow beside it.
 	if is_dir then
-		line:child(kit.icon(row.open and "folder-open" or "folder", 15, "accent"))
+		line:child(kit.icon(open and "folder-open" or "folder", 15, "accent"))
 	else
 		local kind = files.kind(path)
 		line:child(kit.icon(kind.icon, 15, kind.color))
 	end
 	-- The name is whole: a tree narrower than its names scrolls across.
-	local name = entry.name .. (entry.link and " ↗" or "")
-	line:child(b.text(name):color(color):weight(path == S.active and 650 or 400):no_shrink())
-	if row.repo and row.repo.branch then
-		line:child(b.text(row.repo.branch):color("quiet"):text_size(11.5):no_shrink())
+	line:child(b.text(name .. (link and " ↗" or "")):color(color):weight(active and 650 or 400):no_shrink())
+	if branch then
+		line:child(b.text(branch):color("quiet"):text_size(11.5):no_shrink())
 	end
 	line:child(b.spacer())
-	if row.loading then
+	if loading then
 		line:child(kit.spinner(12, "quiet"))
 	end
-	if ctx.dirty[path] then
+	if dirty then
 		line:child(b.div():size(7, 7):rounded(4):bg("foreground"):no_shrink())
 	end
 	if state and not is_dir then
@@ -336,6 +327,81 @@ local function row_view(row, index, ctx)
 		line:child(b.div():size(6, 6):rounded(3):bg(files.GIT_COLOR[state] or "dim"):no_shrink())
 	end
 	element:child(line)
+	return element
+end
+
+-- The rows made at the frame before and at this one, by path, each with what it was made of. A page is
+-- made afresh at every frame and a row is the same in nearly all of them (a move of the pointer over
+-- the editor, a key, a tick of the clock change none of the tree): a row whose facts are those of the
+-- last frame's is that frame's element, and no element is changed once it is a child, so it is
+-- handed on as it is. What a row shows is in `make_row`'s arguments, in `tree.width` and in the root
+-- of the project (what `kit.carries` gives it). The arguments are what a row is kept by: a fact added
+-- to `make_row` goes into the three places in `row_view` that list them (the values read, the
+-- comparison and the table stored) and into the test that changes it; what `make_row` reads from the
+-- page's state instead of its arguments goes into `made_for`.
+local before, now = {}, {}
+-- What the rows of both are for: the root of the project (what a row carries out) and how wide the tree
+-- and its lines are made.
+local made_for = { root = false, width = false, line = false }
+
+-- A frame of the tree begins: the rows made at the frame before are those to be handed on, unless what
+-- every row is made for has changed.
+local function rows_begin(width)
+	local root = S.boot and S.boot.root
+	if made_for.root ~= root or made_for.width ~= tree.width or made_for.line ~= width then
+		made_for.root, made_for.width, made_for.line = root, tree.width, width
+		now = {}
+	end
+	before, now = now, {}
+end
+
+local function row_view(row, index, ctx)
+	if row.upload then
+		return upload_view(row, ctx)
+	end
+	local entry = row.entry
+	local path = entry.path
+	local is_dir = entry.kind == "dir"
+	local selected = S.tree_selection == path
+	local focused = selected and S.focus == "sidebar" and S.sidebar == "files"
+	local state = is_dir and ctx.dirs[path] or (ctx.git[path])
+	local over = kit.hovered("row:" .. path)
+	local dropping = is_dir and uploads.dropping(path) or false
+	local active = path == S.active
+	local name, link, depth, open, loading, quiet = entry.name, entry.link, row.depth, row.open, row.loading, row.quiet
+	local branch = row.repo and row.repo.branch or nil
+	local dirty = ctx.dirty[path] or false
+	local hit = before[path]
+	if
+		hit
+		and hit.name == name
+		and hit.link == link
+		and hit.is_dir == is_dir
+		and hit.depth == depth
+		and hit.open == open
+		and hit.loading == loading
+		and hit.quiet == quiet
+		and hit.branch == branch
+		and hit.state == state
+		and hit.selected == selected
+		and hit.focused == focused
+		and hit.active == active
+		and hit.over == over
+		and hit.dropping == dropping
+		and hit.dirty == dirty
+	then
+		now[path] = hit
+		return hit.element
+	end
+	local element = make_row(path, name, link, is_dir, depth, open, loading, quiet, branch, state, selected, focused, active, over, dropping, dirty, ctx.width)
+	-- A row that turns a picture round is made at every frame (a folder being read): it is not kept.
+	if not loading then
+		now[path] = {
+			name = name, link = link, is_dir = is_dir, depth = depth, open = open, loading = loading, quiet = quiet,
+			branch = branch, state = state, selected = selected, focused = focused, active = active, over = over,
+			dropping = dropping, dirty = dirty, element = element,
+		}
+	end
 	return element
 end
 
@@ -379,6 +445,7 @@ function tree.view(width)
 	end
 	shown_width = width
 	local ctx = { dirs = dir_states(), git = S.git and S.git.changes or {}, dirty = dirty_paths(), width = width }
+	rows_begin(width)
 	if S.resizing then
 		local box = rows_in_view(rows, ctx)
 		if box then
