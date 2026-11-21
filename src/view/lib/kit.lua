@@ -261,7 +261,10 @@ local function spinner(size, color)
 end
 
 -- A button that is an icon alone: its name (the tooltip and the screen reader's word) and the keys
--- that do the same.
+-- that do the same. `pressed` (true or false) is a button that stays down: filled when true, and a
+-- switch to a screen reader, on or off. Its words are a verb that turns over with it ("Hide preview"),
+-- which read beside "on" say the opposite of what is so, so `name` is what it is called to the
+-- screen reader, the same whichever way it is (the tooltip keeps the verb).
 local function icon_button(id, name, words, options)
 	options = options or {}
 	local on = options.pressed == true
@@ -281,6 +284,12 @@ local function icon_button(id, name, words, options)
 		:role("button")
 		:tip(words, options.keys and keys_of(options.keys) or nil)
 		:child(icon(name, options.icon or 15, on and "accent" or (over and "foreground" or "dim")))
+	if options.pressed ~= nil then
+		element:role("switch"):checked(on)
+		if options.name then
+			element:label(options.name)
+		end
+	end
 	if options.disabled then
 		element:disabled(true):opacity(0.4)
 	end

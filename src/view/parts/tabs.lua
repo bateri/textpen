@@ -145,12 +145,12 @@ function tabs.view(docked)
 	if active and (changed or compare.active(active)) then
 		local on = compare.active(active)
 		right:child(kit.icon_button("toggle-compare", "file-diff", on and "Close Comparison" or "Compare with Last Commit",
-			{ keys = "mod+shift+d", pressed = on }))
+			{ keys = "mod+shift+d", pressed = on, name = "Comparison with last commit" }))
 	end
 	if active and act.is_markdown(active) then
 		local on = text.index_of(S.preview, active) ~= nil
 		right:child(kit.icon_button("toggle-preview", on and "eye-off" or "eye", on and "Hide preview" or "Preview",
-			{ keys = "mod+shift+v", pressed = on }))
+			{ keys = "mod+shift+v", pressed = on, name = "Preview" }))
 	end
 	if #S.tabs > 1 then
 		right:child(kit.icon_button("open-tabs", "chevron-down", "Open files", { keys = "mod+e" }))

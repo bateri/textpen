@@ -53,9 +53,11 @@ local function close()
 	kit.gather(true)
 end
 
-local function sheet(width, size)
+-- `name` is what the sheet is called to a screen reader; the words inside it are read beside that.
+local function sheet(width, size, name)
 	return b.div()
 		:press("sheet")
+		:label(name)
 		:col()
 		:w(math.min(width, size.w - 24))
 		:max_h(size.h - 32)
@@ -68,9 +70,11 @@ local function sheet(width, size)
 		:id("sheet-box")
 end
 
-local function scrim(box, size)
+-- `closes` is what a press on the dimmed part does, said for a screen reader, which has no words in it.
+local function scrim(box, size, closes)
 	return b.div()
 		:press("sheet-scrim")
+		:label(closes)
 		:overlay()
 		:inset(0, 0, 0, 0)
 		:bg(b.alpha("shadow", 0.22))
@@ -130,7 +134,7 @@ local function help_view(size)
 		body:child(b.text(kit.keys_of("ctrl+c") .. " always reaches textpen and ends it; what is not saved is kept as a draft and offered the next "
 			.. "time. " .. keeps):color("dim"):wrap():text_size(12))
 	end
-	return scrim(sheet(760, size):child(head):child(kit.rule_x()):child(body), size)
+	return scrim(sheet(760, size, "Keyboard shortcuts"):child(head):child(kit.rule_x()):child(body), size, "Close keyboard shortcuts")
 end
 
 -- --- The settings' sheet ------------------------------------------------------------------------------------
@@ -250,6 +254,7 @@ local function settings_view(size)
 			:rounded(6)
 			:bg(chosen and b.alpha("accent", 0.16) or nil)
 			:role("button")
+			:selected(chosen)
 			:label(row.title .. ": " .. value)
 			:child(b.div():col():grow(1):min_w(0)
 				:child(b.text(row.title))
@@ -262,7 +267,7 @@ local function settings_view(size)
 		:child(b.text("↑ ↓ choose"))
 		:child(b.text("Space ← → change"))
 		:child(b.text("Esc close"))
-	return scrim(sheet(560, size):child(head):child(kit.rule_x()):child(body):child(kit.rule_x()):child(foot), size)
+	return scrim(sheet(560, size, "Settings"):child(head):child(kit.rule_x()):child(body):child(kit.rule_x()):child(foot), size, "Close settings")
 end
 
 -- --- The page's hooks --------------------------------------------------------------------------------------

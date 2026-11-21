@@ -1869,3 +1869,40 @@ fn the_key_of_the_panel_leaves_the_find_bar_its_previous_match() -> Result<(), E
     })?;
     Ok(())
 }
+
+/// The two buttons of the comparison and of the changes panel that stay down are switches to a screen
+/// reader, on or off, and called what they are whichever way they are.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_buttons_that_stay_down_say_whether_they_are_to_a_screen_reader() -> Result<(), Error> {
+    use crate::page_tests::told_of;
+    use pencere_view::AccessibleRole::Switch;
+    let project = changed_project();
+    let session = project.session(&["src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    wait(&mut page, |page| page.bounds("toggle-compare").is_some())?;
+    let off = told_of(&page, "toggle-compare");
+    assert_eq!((off.role, off.state.checked), (Switch, Some(false)));
+    assert_eq!(off.words, "Comparison with last commit");
+    page.press("cmd+shift+d")?;
+    wait(&mut page, drawn)?;
+    let on = told_of(&page, "toggle-compare");
+    assert_eq!((on.role, on.state.checked), (Switch, Some(true)));
+    assert_eq!(on.words, "Comparison with last commit");
+    drop(page);
+
+    let project = panel_project();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+shift+g")?;
+    wait(&mut page, |page| shows(page, "Unversioned Files"))?;
+    let list = told_of(&page, "changes-tree");
+    assert_eq!((list.role, list.state.checked), (Switch, Some(false)));
+    assert_eq!(list.words, "Changes as tree");
+    page.click("changes-tree")?;
+    page.advance(0.3)?;
+    let tree = told_of(&page, "changes-tree");
+    assert_eq!((tree.role, tree.state.checked), (Switch, Some(true)));
+    assert_eq!(tree.words, "Changes as tree");
+    Ok(())
+}

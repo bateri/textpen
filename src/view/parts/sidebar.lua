@@ -50,7 +50,7 @@ local function head(drawer)
 		row:child(kit.icon_button("sidebar-collapse", "list-tree", "Collapse folders"))
 	elseif S.sidebar == "changes" and S.git ~= nil then
 		row:child(kit.icon_button("changes-tree", "list-tree", S.changes_tree and "Show as list" or "Show as tree",
-			{ keys = "t", pressed = S.changes_tree }))
+			{ keys = "t", pressed = S.changes_tree == true, name = "Changes as tree" }))
 	end
 	row:child(kit.icon_button("sidebar-hide", "layout-sidebar-left-collapse", drawer and "Close" or "Hide sidebar", { keys = "mod+b" }))
 	return b.div():col():no_shrink():child(row):child(kit.rule_x())
@@ -118,7 +118,8 @@ function act.drawer_view(size)
 		:inset(0, 0, SIZE.status, 0)
 		:row()
 		:child(sidebar.view(width, true):shadow(8, 0, 24, b.alpha("shadow", 0.4)))
-		:child(b.div():press("drawer-scrim"):grow(1):h_full():bg(b.alpha("shadow", 0.25)))
+		-- The dimmed part is what a press closes the drawer by: it has no words of its own to be read by.
+		:child(b.div():press("drawer-scrim"):label("Close sidebar"):grow(1):h_full():bg(b.alpha("shadow", 0.25)))
 end
 
 -- --- The resizer's drag --------------------------------------------------------------------------------

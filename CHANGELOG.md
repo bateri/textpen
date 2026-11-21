@@ -7,6 +7,13 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Fixed
+
+- A screen reader, and an agent that reads the pane, are told what colour and fill alone showed: the
+  settings row and the search result that are chosen, whether the preview, the comparison and the
+  changes tree are on, and that the dimmed part beside the sidebar's drawer, and around a dialog, the
+  settings, the keyboard shortcuts and the palette, closes it. It was an unnamed button.
+
 ## [0.9.0] - 2026-11-18
 
 ### Added

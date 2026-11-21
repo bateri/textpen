@@ -3753,3 +3753,197 @@ fn the_keys_of_the_status_line_stand_still_as_the_caret_s_place_is_said_in_more_
     assert!((back.x - before.x).abs() < 0.5, "{before:?} → {back:?}");
     Ok(())
 }
+
+// --- What a screen reader is told ---------------------------------------------------------------------
+
+/// What a screen reader is told of the element the page named `id`: the kit's reading of the page, as
+/// the host gives it to a terminal's screen reader and to an agent.
+pub(crate) fn told_of(page: &Page, id: &str) -> pencere_view::Accessible {
+    let named = Id::named(id);
+    page.outline()
+        .accessible
+        .iter()
+        .find(|item| item.id == Some(named))
+        .cloned()
+        .unwrap_or_else(|| panic!("{id} is not read: {:?}", page.outline().accessible))
+}
+
+/// Which of the rows named `names` a screen reader is told are the one chosen, by name.
+fn chosen_of(page: &Page, names: &[String]) -> Vec<String> {
+    names
+        .iter()
+        .filter(|name| {
+            page.outline()
+                .accessible
+                .iter()
+                .any(|item| item.id == Some(Id::named(name)) && item.state.selected)
+        })
+        .cloned()
+        .collect()
+}
+
+/// The dimmed part beside the sidebar's drawer closes it at a press, and says so: it has neither a
+/// label, a kind nor words inside, so that it was a button with no name.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_dimmed_part_beside_the_drawer_is_a_button_that_closes_it() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session_on(&["README.md"]);
+    let mut page = project.open(&session, PANE)?;
+    page.press("cmd+b")?;
+    assert!(page.bounds("sidebar").is_some(), "the drawer comes over");
+    let scrim = told_of(&page, "drawer-scrim");
+    assert_eq!(scrim.role, pencere_view::AccessibleRole::Button);
+    assert_eq!(scrim.words, "Close sidebar");
+    page.click("drawer-scrim")?;
+    page.advance(0.3)?;
+    assert!(
+        page.bounds("sidebar").is_none(),
+        "and a press on it closes the drawer"
+    );
+    Ok(())
+}
+
+/// The preview's button stays down while the preview is shown: a switch, on or off, that is called
+/// what it is whichever way it is (its tooltip says what a press does).
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_previews_button_is_a_switch_that_says_whether_the_preview_is_shown() -> Result<(), Error> {
+    use pencere_view::AccessibleRole::Switch;
+    let project = lantern();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    let off = told_of(&page, "toggle-preview");
+    assert_eq!(off.role, Switch);
+    assert_eq!(off.state.checked, Some(false), "not shown to begin with");
+    assert_eq!(off.words, "Preview");
+    page.press("cmd+shift+v")?;
+    page.advance(0.3)?;
+    let on = told_of(&page, "toggle-preview");
+    assert_eq!(on.role, Switch);
+    assert_eq!(on.state.checked, Some(true), "shown after the keys");
+    assert_eq!(
+        on.words, "Preview",
+        "called the same, the state is what turned"
+    );
+    page.click("toggle-preview")?;
+    page.advance(0.3)?;
+    assert_eq!(told_of(&page, "toggle-preview").state.checked, Some(false));
+    Ok(())
+}
+
+/// What the page tells the host of the element named `id`, before the host reads the page for a
+/// screen reader: for what the sheet's scrim, which is a button of the whole page, holds inside it
+/// and does not let the reading come to (the kit's own work).
+fn meta_of(page: &Page, id: &str) -> pencere_view::wire::Meta {
+    let named = Id::named(id);
+    page.root()
+        .map(|root| root.fold())
+        .unwrap_or_default()
+        .into_iter()
+        .find(|node| node.meta.id == Some(named))
+        .unwrap_or_else(|| panic!("{id} is not on the page"))
+        .meta
+}
+
+/// The settings' row that is chosen is the one the page says is, as the arrow keys move it: its fill
+/// says it to the eye alone. (The reading of the sheet as a whole is the scrim's, a button that holds
+/// the sheet; the rows are told apart as the kit reads them out of it.)
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_settings_row_that_is_chosen_is_the_one_the_page_says_is() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+,")?;
+    page.advance(0.3)?;
+    assert!(shows(&page, "Settings"), "{:?}", page_words(&page));
+    let chosen = |page: &Page| -> Vec<usize> {
+        (1..=9)
+            .filter(|row| meta_of(page, &format!("setting:{row}")).state.selected)
+            .collect()
+    };
+    assert_eq!(chosen(&page), [1]);
+    assert_eq!(
+        meta_of(&page, "setting:1").role,
+        Some(pencere_view::AccessibleRole::Button)
+    );
+    page.press("down")?;
+    page.advance(0.3)?;
+    assert_eq!(chosen(&page), [2]);
+    page.press("up")?;
+    page.advance(0.3)?;
+    assert_eq!(chosen(&page), [1]);
+    Ok(())
+}
+
+/// In the project's search, the file's row and the match's row that are chosen are said to be, one at
+/// a time as the arrow keys move along, and the file's row says whether it is open as well.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_search_result_that_is_chosen_is_the_one_a_screen_reader_is_told_of() -> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    page.press("cmd+shift+f")?;
+    page.type_text("order")?;
+    page.advance(0.5)?;
+    wait(&mut page, |page| shows(page, "orders.ts"))?;
+    let mut rows: Vec<String> = Vec::new();
+    for file in 1..=6 {
+        rows.push(format!("match-file:{file}"));
+        rows.extend((1..=6).map(|at| format!("match:{file}:{at}")));
+    }
+    // The first match is chosen as the search ends.
+    assert_eq!(chosen_of(&page, &rows), ["match:1:1"]);
+    let (mut files, mut matches) = (0, 0);
+    for _ in 0..8 {
+        page.press("down")?;
+        let chosen = chosen_of(&page, &rows);
+        assert_eq!(chosen.len(), 1, "one row is chosen: {chosen:?}");
+        if chosen[0].starts_with("match-file:") {
+            files += 1;
+            assert_eq!(
+                told_of(&page, &chosen[0]).state.expanded,
+                Some(true),
+                "a file's row says it is open"
+            );
+        } else {
+            matches += 1;
+        }
+    }
+    assert!(files > 0 && matches > 0, "files {files}, matches {matches}");
+    Ok(())
+}
+
+/// The dimmed part around a dialog, the settings, the sheet of keys and the palette closes it at a
+/// press, and is labelled with what the press does: it has no words of its own to be read by.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn the_dimmed_part_around_a_sheet_a_dialog_and_the_palette_is_labelled_with_what_closes_it()
+-> Result<(), Error> {
+    let project = lantern();
+    let session = project.session(&["README.md", "src/server.ts"]);
+    let mut page = project.open(&session, WIDE)?;
+    let scenes: [(&str, &str, &str); 6] = [
+        ("cmd+,", "sheet-scrim", "Close settings"),
+        ("cmd+shift+/", "sheet-scrim", "Close keyboard shortcuts"),
+        ("cmd+alt+n", "dialog-scrim", "Close dialog"),
+        ("f1", "palette-scrim", "Close commands"),
+        ("cmd+k", "palette-scrim", "Close file search"),
+        ("cmd+e", "palette-scrim", "Close open files"),
+    ];
+    for (keys, scrim, words) in scenes {
+        page.press(keys)?;
+        page.advance(0.3)?;
+        assert_eq!(
+            meta_of(&page, scrim).label.as_deref(),
+            Some(words),
+            "{keys}"
+        );
+        page.press("escape")?;
+        page.advance(0.3)?;
+        assert!(page.bounds(scrim).is_none(), "{keys}: escape closes it");
+    }
+    Ok(())
+}

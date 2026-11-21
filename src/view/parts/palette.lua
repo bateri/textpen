@@ -36,6 +36,18 @@ local MODES = {
 	indent = { label = "Indent", icon = "command", hint = "Choose spaces or tabs, and the tab size" },
 }
 
+-- What a press on the dimmed part around the palette does, said for a screen reader, which has no words
+-- in it.
+local CLOSES = {
+	files = "Close file search",
+	commands = "Close commands",
+	line = "Close go to line",
+	page = "Close go to page",
+	tabs = "Close open files",
+	language = "Close language list",
+	indent = "Close indent list",
+}
+
 local recent_commands = {}
 
 -- --- The project's files ---------------------------------------------------------------------------
@@ -611,6 +623,7 @@ function palette.view(size)
 	end
 	local box = b.div()
 		:press("palette")
+		:label(mode.label)
 		:col()
 		:w(width)
 		:rounded(11)
@@ -640,6 +653,7 @@ function palette.view(size)
 	end
 	return b.div()
 		:press("palette-scrim")
+		:label(CLOSES[overlay.mode] or "Close palette")
 		:overlay()
 		:inset(0, 0, 0, 0)
 		:bg(b.alpha("shadow", 0.18))
