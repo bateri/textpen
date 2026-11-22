@@ -15,7 +15,7 @@ change what the previous one did.
   sidebar's drawer are read as dialogs, named, with the page behind them left out of what is read, and
   the dimmed part around them is not read (it was an unnamed button). The palette lists a way out,
   "Close", for a screen reader or an agent that has no key to press. Each file's editor is named by
-  the file. A pencere too old for this shows a screen that says to update bateri, instead of a page
+  the file. A file in the tree is no longer read as a closed folder. A pencere too old for this shows a screen that says to update bateri, instead of a page
   that does not run.
 
 ## [0.9.0] - 2026-11-18

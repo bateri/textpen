@@ -7,6 +7,20 @@ use std::sync::Arc;
 use super::page_tests::{PANE, Page, Project, WIDE, lantern, shown, shows, wait};
 use crate::state::session::Session;
 
+/// The line with how long a search took (`… files · 3 ms`) as `# ms`: the machine's time is not part of how the
+/// page is read.
+fn without_the_time(line: &str) -> String {
+    let words = line.trim_end();
+    if let Some(before) = words.strip_suffix(" ms\"")
+        && let Some((head, number)) = before.rsplit_once(" · ")
+        && !number.is_empty()
+        && number.chars().all(|c| c.is_ascii_digit())
+    {
+        return format!("{head} · # ms\"\n");
+    }
+    line.to_owned()
+}
+
 /// Sets what the page reads now against the golden `name` (`src/program/reading/<name>.txt`), and holds the
 /// page to the reading audit: a control with no name, an item said twice, a modal's page read behind it.
 /// `PENCERE_BLESS=1` writes the goldens (read the diff: it is how an agent reads the page); `READING_OUT`
@@ -22,7 +36,7 @@ fn check(name: &str, page: &mut Page) {
                 let indent = &line[..line.len() - line.trim_start().len()];
                 format!("{indent}text \"<project>/lantern\"\n")
             }
-            _ => line.to_owned(),
+            _ => without_the_time(line),
         })
         .collect();
     if let Some(dir) = std::env::var_os("READING_OUT") {
@@ -62,7 +76,7 @@ fn check(name: &str, page: &mut Page) {
 
 /// What the audit finds that is not this page's to mend, by the state it is found in: a task's box in a
 /// markdown preview is the kit's (`@pencere/markdown`): a checkbox that shows a state and no name or id
-/// (a gap of the kit, carried in set 037's plan).
+/// (a gap of the kit's `@pencere/markdown`).
 const WAIVED: &[(&str, &str)] = &[("preview", "checkbox \"\"")];
 
 /// The lantern project with `tabs` open, and its page at `size`.

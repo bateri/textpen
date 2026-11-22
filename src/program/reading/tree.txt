@@ -11,14 +11,14 @@ cztmwk  button "Hide sidebar" [keys "⌘B"]
 zft7rv  button "notes" [collapsed]
 rsn98y  button "src" [expanded]
 d71eqd  button "lib" [selected, expanded, description "src/lib"]
-8kkv2x  button "format.ts" [collapsed, description "src/lib/format.ts"]
-hfpvpj  button "orders.ts" [collapsed, description "src/lib/orders.ts"]
+8kkv2x  button "format.ts" [description "src/lib/format.ts"]
+hfpvpj  button "orders.ts" [description "src/lib/orders.ts"]
 35k0na  button "routes" [collapsed, description "src/routes"]
-bpppyh  button "server.ts" [collapsed, description "src/server.ts"]
+bpppyh  button "server.ts" [description "src/server.ts"]
 s7f967  button "worker" [collapsed]
-e5ss1r  button "config.yaml" [collapsed]
-1bgzrc  button "Dockerfile" [collapsed]
-kzrk3h  button "README.md" [collapsed]
+e5ss1r  button "config.yaml"
+1bgzrc  button "Dockerfile"
+kzrk3h  button "README.md"
 fv5k3d  button "Sidebar width"
         text "lantern"
         text "<project>/lantern"

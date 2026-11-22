@@ -12,11 +12,11 @@ zft7rv  button "notes" [collapsed]
 rsn98y  button "src" [expanded]
 d71eqd  button "lib" [collapsed, description "src/lib"]
 35k0na  button "routes" [collapsed, description "src/routes"]
-bpppyh  button "server.ts" [selected, collapsed, description "src/server.ts"]
+bpppyh  button "server.ts" [selected, description "src/server.ts"]
 s7f967  button "worker" [collapsed]
-e5ss1r  button "config.yaml" [collapsed]
-1bgzrc  button "Dockerfile" [collapsed]
-kzrk3h  button "README.md" [collapsed]
+e5ss1r  button "config.yaml"
+1bgzrc  button "Dockerfile"
+kzrk3h  button "README.md"
 fv5k3d  button "Sidebar width"
 vaynce  tab "server.ts" [selected, description "src/server.ts"]
 b3y1kx    button "Close server.ts" [description "Close", keys "⌃W"]

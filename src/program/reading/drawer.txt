@@ -13,9 +13,9 @@ cztmwk    button "Close" [keys "⌘B"]
 zft7rv    button "notes" [collapsed]
 rsn98y    button "src" [collapsed]
 s7f967    button "worker" [collapsed]
-e5ss1r    button "config.yaml" [collapsed]
-1bgzrc    button "Dockerfile" [collapsed]
-kzrk3h    button "README.md" [selected, collapsed]
+e5ss1r    button "config.yaml"
+1bgzrc    button "Dockerfile"
+kzrk3h    button "README.md" [selected]
 commands:
   "Go: Go to File" [cmd+k]
   "Go: Show All Commands" [f1]

@@ -284,9 +284,12 @@ local function make_row(path, name, link, is_dir, depth, open, loading, quiet, b
 		:bg(ground)
 		:role("button")
 		:label(name)
-		:expanded(is_dir and open)
 		:selected(selected)
 		:tip(path)
+	-- A folder is open or closed; a file is neither (and is not read as closed).
+	if is_dir then
+		element:expanded(open)
+	end
 	kit.carries(element, path)
 	if dropping then
 		element:border(1, "accent")

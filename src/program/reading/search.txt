@@ -7,7 +7,7 @@ cztmwk  button "Hide sidebar" [keys "⌘B"]
 h4ttcf  checkbox "Match case" [unchecked]
 mpjny1  checkbox "Whole words" [unchecked]
 wnbktv  checkbox "Regular expression" [unchecked]
-        text "9 results in 4 files · 1 ms"
+        text "9 results in 4 files · # ms"
 hxm9bh  button "README.md  1" [expanded]
 hh6a08  button "20 - [x] orders" [selected, description "Line 20"]
 bga65c  button "orders.ts src/lib 4" [expanded]
