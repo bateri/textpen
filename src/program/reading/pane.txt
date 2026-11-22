@@ -1,0 +1,136 @@
+focus: editor 8rwmcm
+items:
+ceh20j  button "Files" [keys "⌘B"]
+zhzzfm  tab "README.md" [selected]
+be9v4p    button "Close README.md" [description "Close", keys "⌃W"]
+0h1kx4  switch "Preview" [unchecked, keys "⇧⌘V"]
+4hfbwx  button "Ln 1, Col 1" [description "Go to line ⌘L"]
+8cqrc5  button "Markdown" [description "Change language"]
+fdwjaj  button "Keyboard shortcuts" [keys "⇧⌘/"]
+editors:
+8rwmcm  editor "README.md" lines 1-14 of 24, caret 1:1 (keyboard)
+   1| # Lantern
+   2| 
+   3| A small shop API and the worker that sends its mail.
+   4| 
+   5| ## Run it
+   6| 
+   7| ```sh
+   8| npm install
+   9| npm run dev          # the API on :8080
+  10| ```
+  11| 
+  12| ## What is where
+  13| 
+  14| | Path             | What                           |
+commands:
+  "Go: Go to File" [cmd+k]
+  "Go: Show All Commands" [f1]
+  "Go: Switch to Open File" [cmd+e]
+  "Go: Go to Line" [cmd+l]
+  "View: Change Language"
+  "View: Compare with Last Commit" [shift+cmd+d]
+  "View: Collapse Unchanged Lines" [alt+cmd+[] (disabled)
+  "View: Show All Lines" [alt+cmd+]] (disabled)
+  "Go: Go to Next Change" [alt+f5] (disabled)
+  "Go: Go to Previous Change" [alt+shift+f5] (disabled)
+  "Edit: Revert Change" [ctrl+shift+backspace] (disabled)
+  "Go: Close the Peek of a Change or the Comparison" [escape] (disabled)
+  "Edit: Show Editor Menu" [shift+f10]
+  "File: Save" [cmd+s]
+  "File: Save All" [alt+cmd+s] (disabled)
+  "File: New File" [alt+cmd+n]
+  "File: New Folder"
+  "File: Rename" [f2]
+  "File: Delete File"
+  "File: Revert File" (disabled)
+  "File: Restore Unsaved Changes from Last Time" (disabled)
+  "File: Discard Unsaved Changes from Last Time" (disabled)
+  "File: Reload from Disk (Drop My Changes)" (disabled)
+  "File: Keep My Changes over the Disk" (disabled)
+  "File: Upload Files" (disabled)
+  "File: Download"
+  "File: Copy Path"
+  "File: Copy Absolute Path"
+  "File: Reveal in Files"
+  "File: Change Line Endings (LF / CRLF)"
+  "Tabs: Close Tab" [ctrl+w]
+  "Tabs: Close Other Tabs" (disabled)
+  "Tabs: Close All Tabs"
+  "Tabs: Reopen Closed Tab" [shift+cmd+t] (disabled)
+  "Tabs: Next Tab" [ctrl+page_down, ctrl+tab] (disabled)
+  "Tabs: Previous Tab" [ctrl+page_up, ctrl+shift+tab] (disabled)
+  "Tabs: Move Tab Right" [ctrl+shift+page_down] (disabled)
+  "Tabs: Move Tab Left" [ctrl+shift+page_up] (disabled)
+  "Tabs: Go to Tab 1" [ctrl+1]
+  "Tabs: Go to Tab 2" [ctrl+2] (disabled)
+  "Tabs: Go to Tab 3" [ctrl+3] (disabled)
+  "Tabs: Go to Tab 4" [ctrl+4] (disabled)
+  "Tabs: Go to Tab 5" [ctrl+5] (disabled)
+  "Tabs: Go to Tab 6" [ctrl+6] (disabled)
+  "Tabs: Go to Tab 7" [ctrl+7] (disabled)
+  "Tabs: Go to Tab 8" [ctrl+8] (disabled)
+  "Tabs: Go to Tab 9" [ctrl+9]
+  "View: Toggle Sidebar" [cmd+b]
+  "View: Show Files" [shift+cmd+e]
+  "View: Show Changes" [shift+cmd+g]
+  "View: Toggle Changes as a Tree" (disabled)
+  "View: Move Focus Between Sidebar and Editor" [f6]
+  "View: Toggle Word Wrap"
+  "View: Show Whitespace: None, Selection, Boundary, Trailing, All"
+  "View: Toggle Indent Guides"
+  "View: Line Numbers: On, Relative, Off"
+  "View: Toggle Markdown Preview" [shift+cmd+v]
+  "View: Toggle Changes in the Gutter"
+  "View: Toggle Ignored Files in the Tree"
+  "View: Indentation"
+  "textpen: Settings" [cmd+,]
+  "textpen: Keyboard Shortcuts" [shift+cmd+/, cmd+?]
+  "textpen: Open a Shell Here" [cmd+j]
+  "textpen: Quit textpen" [ctrl+q]
+  "Search: Find" [cmd+f]
+  "Search: Replace" [alt+cmd+f]
+  "Search: Search in Files" [shift+cmd+f]
+  "Search: Next Search Result" [f4] (disabled)
+  "Search: Previous Search Result" [shift+f4] (disabled)
+  "Edit: Undo"
+  "Edit: Redo"
+  "Edit: Toggle Comment"
+  "Edit: Toggle Block Comment"
+  "Edit: Delete Line" [shift+cmd+k, ctrl+shift+k]
+  "Selection: Select Line" [cmd+i]
+  "Edit: Duplicate Line Up" [alt+shift+up]
+  "Edit: Join Lines" [ctrl+j]
+  "Edit: Insert Line Below"
+  "Edit: Split Line at the Caret"
+  "Edit: Transpose Characters"
+  "Edit: Delete to Start of Line"
+  "Edit: Delete to End of Line"
+  "Edit: Move Line Up"
+  "Edit: Move Line Down"
+  "Edit: Duplicate Line"
+  "Edit: Indent Line"
+  "Edit: Outdent Line"
+  "Edit: Fold"
+  "Edit: Unfold"
+  "Edit: Fold All" [ctrl+alt+[]
+  "Edit: Unfold All" [ctrl+alt+]]
+  "Selection: Select All"
+  "Selection: Add Next Occurrence" [ctrl+g]
+  "Selection: Select All Occurrences" [shift+cmd+l]
+  "Selection: Add Cursor Above" [ctrl+shift+up]
+  "Selection: Add Cursor Below" [ctrl+shift+down]
+  "PDF: Zoom In" (disabled)
+  "PDF: Zoom Out" (disabled)
+  "PDF: Fit Width" (disabled)
+  "View: Bigger Text" [cmd++, cmd+=]
+  "View: Smaller Text" [cmd+-]
+  "View: Actual Text Size" [cmd+0]
+  "Picture: Zoom In" (disabled)
+  "Picture: Zoom Out" (disabled)
+  "Picture: Fit" (disabled)
+  "Go: Go to Page" (disabled)
+  "Search: Next Match in PDF" [cmd+g] (disabled)
+  "Search: Previous Match in PDF" (disabled)
+  "Edit: Copy" [cmd+c] (disabled)
+  "Selection: Select All" [cmd+a] (disabled)

@@ -36,18 +36,6 @@ local MODES = {
 	indent = { label = "Indent", icon = "command", hint = "Choose spaces or tabs, and the tab size" },
 }
 
--- What a press on the dimmed part around the palette does, said for a screen reader, which has no words
--- in it.
-local CLOSES = {
-	files = "Close file search",
-	commands = "Close commands",
-	line = "Close go to line",
-	page = "Close go to page",
-	tabs = "Close open files",
-	language = "Close language list",
-	indent = "Close indent list",
-}
-
 local recent_commands = {}
 
 -- --- The project's files ---------------------------------------------------------------------------
@@ -623,7 +611,10 @@ function palette.view(size)
 	end
 	local box = b.div()
 		:press("palette")
+		:role("dialog")
 		:label(mode.label)
+		-- The way out, read: the dimmed part has no words, and escape is a key.
+		:command("dismiss", "Close")
 		:col()
 		:w(width)
 		:rounded(11)
@@ -653,7 +644,8 @@ function palette.view(size)
 	end
 	return b.div()
 		:press("palette-scrim")
-		:label(CLOSES[overlay.mode] or "Close palette")
+		:role("none")
+		:layer(true)
 		:overlay()
 		:inset(0, 0, 0, 0)
 		:bg(b.alpha("shadow", 0.18))
@@ -752,6 +744,10 @@ function palette.command(id)
 		return true
 	elseif id == "commands" then
 		act.open_palette("commands")
+		return true
+	elseif id == "dismiss" then
+		-- The palette's own "Close", done by a screen reader or an agent as escape is.
+		close()
 		return true
 	end
 	close()

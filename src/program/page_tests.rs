@@ -3782,19 +3782,24 @@ fn chosen_of(page: &Page, names: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// The dimmed part beside the sidebar's drawer closes it at a press, and says so: it has neither a
-/// label, a kind nor words inside, so that it was a button with no name.
+/// The dimmed part beside the sidebar's drawer closes it at a press and is not read: the drawer is the
+/// dialog, a layer, and the page behind it is out of the reading (its own "Close" button is read).
 #[test]
 #[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
-fn the_dimmed_part_beside_the_drawer_is_a_button_that_closes_it() -> Result<(), Error> {
+fn the_dimmed_part_beside_the_drawer_is_not_read_and_a_press_on_it_closes_the_drawer()
+-> Result<(), Error> {
     let project = lantern();
     let session = project.session_on(&["README.md"]);
     let mut page = project.open(&session, PANE)?;
     page.press("cmd+b")?;
     assert!(page.bounds("sidebar").is_some(), "the drawer comes over");
-    let scrim = told_of(&page, "drawer-scrim");
-    assert_eq!(scrim.role, pencere_view::AccessibleRole::Button);
-    assert_eq!(scrim.words, "Close sidebar");
+    let reading = page.reading().text();
+    assert!(reading.contains("dialog \"Sidebar\""), "{reading}");
+    assert!(
+        reading.contains("note: behind the modal in front"),
+        "{reading}"
+    );
+    assert!(!reading.contains("Close sidebar"), "{reading}");
     page.click("drawer-scrim")?;
     page.advance(0.3)?;
     assert!(
@@ -3917,30 +3922,51 @@ fn the_search_result_that_is_chosen_is_the_one_a_screen_reader_is_told_of() -> R
 }
 
 /// The dimmed part around a dialog, the settings, the sheet of keys and the palette closes it at a
-/// press, and is labelled with what the press does: it has no words of its own to be read by.
+/// press and is not read: the card is the dialog, named, a layer that puts the page behind it out of the
+/// reading; the palette lists the way out, "Close", for a screen reader or an agent that cannot press a key.
 #[test]
 #[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
-fn the_dimmed_part_around_a_sheet_a_dialog_and_the_palette_is_labelled_with_what_closes_it()
+fn the_dimmed_part_around_a_sheet_a_dialog_and_the_palette_is_a_layer_that_is_not_read()
 -> Result<(), Error> {
     let project = lantern();
     let session = project.session(&["README.md", "src/server.ts"]);
     let mut page = project.open(&session, WIDE)?;
-    let scenes: [(&str, &str, &str); 6] = [
-        ("cmd+,", "sheet-scrim", "Close settings"),
-        ("cmd+shift+/", "sheet-scrim", "Close keyboard shortcuts"),
-        ("cmd+alt+n", "dialog-scrim", "Close dialog"),
-        ("f1", "palette-scrim", "Close commands"),
-        ("cmd+k", "palette-scrim", "Close file search"),
-        ("cmd+e", "palette-scrim", "Close open files"),
+    let scenes: [(&str, &str, &str, bool); 6] = [
+        ("cmd+,", "sheet-scrim", "Settings", false),
+        ("cmd+shift+/", "sheet-scrim", "Keyboard shortcuts", false),
+        ("cmd+alt+n", "dialog-scrim", "New file", false),
+        ("f1", "palette-scrim", "Commands", true),
+        ("cmd+k", "palette-scrim", "Files", true),
+        ("cmd+e", "palette-scrim", "Open", true),
     ];
-    for (keys, scrim, words) in scenes {
+    for (keys, scrim, title, closes) in scenes {
         page.press(keys)?;
         page.advance(0.3)?;
-        assert_eq!(
-            meta_of(&page, scrim).label.as_deref(),
-            Some(words),
-            "{keys}"
+        let reading = page.reading().text();
+        assert!(
+            reading.contains(&format!("dialog \"{title}\"")),
+            "{keys}: {reading}"
         );
+        assert!(
+            reading.contains("note: behind the modal in front"),
+            "{keys}: {reading}"
+        );
+        assert!(
+            !reading.contains("Close dialog") && !reading.contains("Close commands"),
+            "{keys}: {reading}"
+        );
+        assert_eq!(
+            reading.contains("[action \"Close\"]"),
+            closes,
+            "{keys}: only the palette lists its way out: {reading}"
+        );
+        if closes {
+            // Done as a screen reader's action or `bateri view command` does it.
+            page.command_on("palette-box", "dismiss")?;
+            page.advance(0.3)?;
+            assert!(page.bounds(scrim).is_none(), "{keys}: the action closes it");
+            continue;
+        }
         page.press("escape")?;
         page.advance(0.3)?;
         assert!(page.bounds(scrim).is_none(), "{keys}: escape closes it");

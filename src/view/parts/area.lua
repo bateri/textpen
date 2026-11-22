@@ -214,6 +214,7 @@ function area.view(size)
 		local alone = front and compared and entry.tab.compare.result ~= nil and not columns
 		if columns then
 			local left = b.editor(entry.tab.compare.left, area.options(entry.tab, entry.doc, "left"))
+				:label(text.basename(entry.tab.path) .. " (the last commit)")
 				:grow(1):min_w(0):h_full():bg("background")
 			if front then
 				column:child(compare.header(entry.tab))

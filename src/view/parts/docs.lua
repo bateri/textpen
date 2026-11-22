@@ -1176,7 +1176,7 @@ function docs.editors(options_of)
 	for _, tab in S.tabs do
 		local doc = tab.doc
 		if doc and not doc.closed then
-			out[#out + 1] = { tab = tab, doc = doc, element = b.editor(doc.id, options_of(tab, doc)) }
+			out[#out + 1] = { tab = tab, doc = doc, element = b.editor(doc.id, options_of(tab, doc)):label(text.basename(tab.path)) }
 		end
 	end
 	return out

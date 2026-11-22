@@ -115,11 +115,13 @@ function act.drawer_view(size)
 	local width = math.min(math.max(size.w - 64, MIN_W), 320, size.w)
 	return b.div()
 		:overlay()
+		:layer(true)
 		:inset(0, 0, SIZE.status, 0)
 		:row()
-		:child(sidebar.view(width, true):shadow(8, 0, 24, b.alpha("shadow", 0.4)))
-		-- The dimmed part is what a press closes the drawer by: it has no words of its own to be read by.
-		:child(b.div():press("drawer-scrim"):label("Close sidebar"):grow(1):h_full():bg(b.alpha("shadow", 0.25)))
+		:child(sidebar.view(width, true):role("dialog"):label("Sidebar"):shadow(8, 0, 24, b.alpha("shadow", 0.4)))
+		-- The dimmed part is what a press closes the drawer by: it has no words of its own and is not read (the
+		-- sidebar's own "Close" button is).
+		:child(b.div():press("drawer-scrim"):role("none"):grow(1):h_full():bg(b.alpha("shadow", 0.25)))
 end
 
 -- --- The resizer's drag --------------------------------------------------------------------------------

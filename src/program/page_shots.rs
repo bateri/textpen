@@ -256,6 +256,100 @@ fn the_pictures_of_the_docs() -> Result<(), Error> {
     Ok(())
 }
 
+/// What comes over the page, each in its state, written as `SHOTS_OUT/<name>.png` (the folder of the
+/// pictures the change of an overlay is compared by; `target/shots/overlays` where it is not named). For
+/// looking at: the dialogs, the sheets and the palette must look as they did when they are made again.
+#[test]
+#[ignore = "shots: draws the overlays in the fonts of this machine; SHOTS_OUT names the folder"]
+fn the_pictures_of_the_overlays() -> Result<(), Error> {
+    let fonts = fonts();
+    let dir = std::env::var_os("SHOTS_OUT").map_or_else(
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("target/shots/overlays"),
+        PathBuf::from,
+    );
+    std::fs::create_dir_all(&dir).expect("a folder for the pictures");
+    let keep = |page: &Page, name: &str| {
+        let png = page.shot_in(&fonts, Palette::Dark).expect("a picture");
+        std::fs::write(dir.join(format!("{name}.png")), png).expect("the picture written");
+    };
+    let tabs = ["src/server.ts", "README.md"];
+    let size = (1280.0, 800.0);
+    let fresh = || -> Result<Page, Error> {
+        let project = lantern();
+        with_git(&project);
+        // The project outlives the page in the process: the folder is let go of with the test.
+        let page = open(&project, &tabs, size, &fonts)?;
+        std::mem::forget(project);
+        Ok(page)
+    };
+
+    // The quick open: empty, and with what is typed.
+    let mut page = fresh()?;
+    page.press("cmd+k")?;
+    page.advance(0.5)?;
+    keep(&page, "palette_empty");
+    page.type_text("ord")?;
+    page.advance(0.5)?;
+    keep(&page, "palette_files");
+    // The command palette and the open files.
+    let mut page = fresh()?;
+    page.press("f1")?;
+    page.advance(0.5)?;
+    keep(&page, "palette_commands");
+    let mut page = fresh()?;
+    page.press("cmd+e")?;
+    page.advance(0.5)?;
+    keep(&page, "palette_open_files");
+    // The settings sheet, the second row chosen, and the sheet of keys, filtered.
+    let mut page = fresh()?;
+    page.press("cmd+,")?;
+    page.advance(0.5)?;
+    keep(&page, "settings_first");
+    page.press("down")?;
+    page.advance(0.3)?;
+    keep(&page, "settings");
+    let mut page = fresh()?;
+    page.press("cmd+shift+/")?;
+    page.advance(0.5)?;
+    keep(&page, "keys");
+    page.type_text("close tab")?;
+    page.advance(0.3)?;
+    keep(&page, "keys_filtered");
+    // A dialog with a field: a new file; and one with buttons: closing a tab with changes.
+    let mut page = fresh()?;
+    page.press("cmd+alt+n")?;
+    page.advance(0.5)?;
+    keep(&page, "dialog_new");
+    let mut page = fresh()?;
+    let editor = shown(&page).expect("an editor");
+    page.caret_to(&editor, 0)?;
+    page.type_text("x")?;
+    page.advance(1.0)?;
+    page.press("ctrl+w")?;
+    wait(&mut page, |page| {
+        shows(page, "Save the changes to server.ts?")
+    })?;
+    page.advance(0.5)?;
+    keep(&page, "dialog_save");
+    // The same in a pane of 80 by 24, where the overlays are narrower than they would be.
+    let project = lantern();
+    with_git(&project);
+    let mut page = open(&project, &tabs, PANE, &fonts)?;
+    page.press("cmd+,")?;
+    page.advance(0.5)?;
+    keep(&page, "settings_80x24");
+    let mut page = open(&project, &["README.md"], PANE, &fonts)?;
+    page.press("cmd+b")?;
+    wait(&mut page, |page| page.bounds("sidebar").is_some())?;
+    page.advance(0.5)?;
+    keep(&page, "drawer_80x24");
+    let mut page = open(&project, &tabs, PANE, &fonts)?;
+    page.press("cmd+alt+n")?;
+    page.advance(0.5)?;
+    keep(&page, "dialog_new_80x24");
+    Ok(())
+}
+
 /// A picture in its tab as the status line says it: fitted, larger by a pinch, a small one at eight
 /// times its size, in an 80×24 pane. For looking at; written to target/shots/.
 #[test]

@@ -57,6 +57,7 @@ end
 local function sheet(width, size, name)
 	return b.div()
 		:press("sheet")
+		:role("dialog")
 		:label(name)
 		:col()
 		:w(math.min(width, size.w - 24))
@@ -70,11 +71,12 @@ local function sheet(width, size, name)
 		:id("sheet-box")
 end
 
--- `closes` is what a press on the dimmed part does, said for a screen reader, which has no words in it.
-local function scrim(box, size, closes)
+-- The dimmed part: a layer over the page that a press gives up and no one reads (the sheet is the dialog).
+local function scrim(box, size)
 	return b.div()
 		:press("sheet-scrim")
-		:label(closes)
+		:role("none")
+		:layer(true)
 		:overlay()
 		:inset(0, 0, 0, 0)
 		:bg(b.alpha("shadow", 0.22))
@@ -134,7 +136,7 @@ local function help_view(size)
 		body:child(b.text(kit.keys_of("ctrl+c") .. " always reaches textpen and ends it; what is not saved is kept as a draft and offered the next "
 			.. "time. " .. keeps):color("dim"):wrap():text_size(12))
 	end
-	return scrim(sheet(760, size, "Keyboard shortcuts"):child(head):child(kit.rule_x()):child(body), size, "Close keyboard shortcuts")
+	return scrim(sheet(760, size, "Keyboard shortcuts"):child(head):child(kit.rule_x()):child(body), size)
 end
 
 -- --- The settings' sheet ------------------------------------------------------------------------------------
@@ -267,7 +269,7 @@ local function settings_view(size)
 		:child(b.text("↑ ↓ choose"))
 		:child(b.text("Space ← → change"))
 		:child(b.text("Esc close"))
-	return scrim(sheet(560, size, "Settings"):child(head):child(kit.rule_x()):child(body):child(kit.rule_x()):child(foot), size, "Close settings")
+	return scrim(sheet(560, size, "Settings"):child(head):child(kit.rule_x()):child(body):child(kit.rule_x()):child(foot), size)
 end
 
 -- --- The page's hooks --------------------------------------------------------------------------------------

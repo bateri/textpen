@@ -7,6 +7,13 @@
 -- search, and remembers where the person was; the page talks to it only by the calls of
 -- docs/calls.md.
 
+-- Asked of the kit before anything is used that an older one does not have: where it has not, a screen
+-- that says so, and nothing else.
+local needs = require("./lib/needs")
+if not needs.met() then
+	return needs.screen()
+end
+
 local kit = require("./lib/kit")
 local docs = require("./parts/docs")
 local actions = require("./parts/actions")

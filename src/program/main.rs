@@ -28,6 +28,8 @@ mod page_compare;
 #[cfg(test)]
 mod page_pdf;
 #[cfg(test)]
+mod page_reading;
+#[cfg(test)]
 mod page_shots;
 #[cfg(test)]
 mod page_tests;
