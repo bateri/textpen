@@ -634,24 +634,31 @@ local function named(path)
 		end
 	end
 	local whole = "/" .. table.concat(parts, "/")
-	local root = S.boot and S.boot.root or ""
-	if root == "/" then
-		return string.sub(whole, 2)
-	end
-	if root ~= "" and text.starts(whole, root .. "/") then
-		return string.sub(whole, #root + 2)
+	-- The root as it was given, then with its links followed: a terminal may hand the file by either.
+	for _, root in { S.boot and S.boot.root or "", S.boot and S.boot.realRoot or "" } do
+		if root == "/" then
+			return string.sub(whole, 2)
+		end
+		if root ~= "" and text.starts(whole, root .. "/") then
+			return string.sub(whole, #root + 2)
+		end
 	end
 	return whole
 end
-
-act.named = named
 
 -- What the terminal hands textpen while it runs (the topic `pencere.take`): a file the person opened from a link
 -- in another pane is a tab of its own and in front, or the tab it already has, with the caret at the line and
 -- column it names. A folder is not taken (`takes` says so), and what is not a file is left.
 local function on_take(take)
-	if take.file == nil then
+	-- Not while the pane goes to a shell or textpen closes: the tab that opened now would be gone when
+	-- the page comes back, its list of tabs having been kept already.
+	if take.file == nil or S.handing_off ~= nil then
 		return kit.take(nil)
+	end
+	-- What is over the page goes first (a dialog is answered with nothing), so that the tab that comes
+	-- in front is not changed under a palette that is about to act on the one that was.
+	if S.overlay ~= nil then
+		act.set_overlay(nil)
 	end
 	act.open_file(named(take.file), { line = take.line, column = take.column, focus = true })
 	return kit.take(true)

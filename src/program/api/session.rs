@@ -61,6 +61,11 @@ impl From<Returned> for ShellEnded {
 #[serde(rename_all = "camelCase")]
 struct Boot {
     root: String,
+    /// The root with its links followed, where that is another path (`/var/folders` is
+    /// `/private/var/folders` on macOS): a terminal may hand a file by either, and the page names it
+    /// from the root by both.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    real_root: Option<String>,
     root_name: String,
     home: String,
     user: String,
@@ -99,7 +104,12 @@ fn boot(session: &Session, (): (), _: &Gone<'_>) -> Result<Boot, Failure> {
     repos.truncate(fitting(&repos, |repo| {
         serde_json::to_string(repo).map_or(0, |told| told.len())
     }));
+    let real_root = std::fs::canonicalize(&root)
+        .ok()
+        .map(|real| real.to_string_lossy().into_owned())
+        .filter(|real| *real != root);
     Ok(Boot {
+        real_root,
         root_name: if name.is_empty() {
             root.clone()
         } else {

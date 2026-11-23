@@ -72,6 +72,9 @@ local function booting()
 	if S.boot_error then
 		box:child(b.text("The program did not answer"):weight(650))
 		box:child(b.text(S.boot_error):color("dim"):wrap():max_w(520):align("center"))
+		for _, path in S.unopened or {} do
+			box:child(b.text("Not opened: " .. path):color("dim"):wrap():max_w(520):align("center"))
+		end
 	else
 		box:child(kit.spinner(20, "quiet"))
 	end
@@ -391,6 +394,16 @@ end
 kit.call("boot", {}, function(boot, err)
 	if err then
 		S.boot_error = err.message or err.code
+		-- No tabs to open them in: what the terminal hands is said under the error, so that the person
+		-- has the path still.
+		b.subscribe("pencere.take", {}, function(take)
+			if take.file == nil then
+				return kit.take(nil)
+			end
+			S.unopened = S.unopened or {}
+			table.insert(S.unopened, take.file)
+			return kit.take(true)
+		end)
 		return true
 	end
 	act.start(boot)

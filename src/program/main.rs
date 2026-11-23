@@ -110,10 +110,14 @@ fn options(
         .program("textpen")
         // What a terminal writes above the view.
         .title("Editor")
-        // A file the person opens in the terminal while textpen runs is handed to it, to open in a tab
-        // (the page subscribes to `pencere.take`).
-        .takes(&[pencere::TakeKind::File])
         .control(session.desk.control());
+    // A file the person opens in the terminal while textpen runs is handed to it, to open in a tab
+    // (the page subscribes to `pencere.take`). Not by a textpen opened on files, as `$EDITOR` is (a
+    // commit message, a file for `crontab -e`): it is a run of its own that ends with its files and
+    // is waited for, and a file of another pane does not belong in it.
+    if files.is_empty() {
+        options = options.takes(&[pencere::TakeKind::File]);
+    }
     for (png, theme) in ICONS {
         options = options.icon(icon(png, theme));
     }

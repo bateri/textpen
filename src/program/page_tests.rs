@@ -599,6 +599,20 @@ fn a_file_the_terminal_hands_the_program_is_a_tab_in_front_at_its_line() -> Resu
         shown(page).as_deref() != Some(editor.as_str())
     })?;
     assert!(page.bounds("tab:README.md").is_some());
+    let readme = project.root().join("README.md");
+    assert!(
+        page.bounds(&format!("tab:{}", readme.to_string_lossy()))
+            .is_none()
+    );
+    // By the path with its links followed (a temporary folder is `/private/var/…` on macOS): the
+    // same tab, not a second one by its whole path.
+    let real = std::fs::canonicalize(project.root().join("src/lib/orders.ts")).expect("the file");
+    assert!(page.hand_over(&file(&real, Some(2), None))?);
+    wait(&mut page, |page| shows(page, "Ln 2, Col 1"))?;
+    assert!(
+        page.bounds(&format!("tab:{}", real.to_string_lossy()))
+            .is_none()
+    );
     // The same file again, at another line: the tab is the one it had, the caret moves.
     assert!(page.hand_over(&file(
         &project.root().join("src/lib/orders.ts"),
@@ -623,7 +637,7 @@ fn a_file_the_terminal_hands_the_program_is_a_tab_in_front_at_its_line() -> Resu
         page.bounds("tab:src/lib/format.ts").is_some()
     })?;
 
-    // A folder is not what it takes.
+    // A folder is not what the program said it takes: the library does not hand it to the page.
     assert!(!page.hand_over(&Take::Folder(project.root().to_string_lossy().into_owned()))?);
     Ok(())
 }
