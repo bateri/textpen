@@ -916,6 +916,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 [[package]]
 name = "pencere"
 version = "0.4.1"
+source = "git+https://github.com/bateri/pencere?rev=f59fe58d15c9740c2d0f42d3ec1711cc87f68745#f59fe58d15c9740c2d0f42d3ec1711cc87f68745"
 dependencies = [
  "libc",
  "pencere-wire",
@@ -926,6 +927,7 @@ dependencies = [
 [[package]]
 name = "pencere-drive"
 version = "0.4.1"
+source = "git+https://github.com/bateri/pencere?rev=f59fe58d15c9740c2d0f42d3ec1711cc87f68745#f59fe58d15c9740c2d0f42d3ec1711cc87f68745"
 dependencies = [
  "memmap2",
  "miniz_oxide 0.8.9",
@@ -942,6 +944,7 @@ dependencies = [
 [[package]]
 name = "pencere-editor"
 version = "0.4.1"
+source = "git+https://github.com/bateri/pencere?rev=f59fe58d15c9740c2d0f42d3ec1711cc87f68745#f59fe58d15c9740c2d0f42d3ec1711cc87f68745"
 dependencies = [
  "pencere-view",
  "regex",
@@ -952,6 +955,7 @@ dependencies = [
 [[package]]
 name = "pencere-sandbox"
 version = "0.4.1"
+source = "git+https://github.com/bateri/pencere?rev=f59fe58d15c9740c2d0f42d3ec1711cc87f68745#f59fe58d15c9740c2d0f42d3ec1711cc87f68745"
 dependencies = [
  "hayro",
  "pencere-view",
@@ -967,6 +971,7 @@ dependencies = [
 [[package]]
 name = "pencere-tui"
 version = "0.4.1"
+source = "git+https://github.com/bateri/pencere?rev=f59fe58d15c9740c2d0f42d3ec1711cc87f68745#f59fe58d15c9740c2d0f42d3ec1711cc87f68745"
 dependencies = [
  "miniz_oxide 0.8.9",
  "pencere",
@@ -979,6 +984,7 @@ dependencies = [
 [[package]]
 name = "pencere-view"
 version = "0.4.1"
+source = "git+https://github.com/bateri/pencere?rev=f59fe58d15c9740c2d0f42d3ec1711cc87f68745#f59fe58d15c9740c2d0f42d3ec1711cc87f68745"
 dependencies = [
  "taffy",
 ]
@@ -986,6 +992,7 @@ dependencies = [
 [[package]]
 name = "pencere-wire"
 version = "0.4.1"
+source = "git+https://github.com/bateri/pencere?rev=f59fe58d15c9740c2d0f42d3ec1711cc87f68745#f59fe58d15c9740c2d0f42d3ec1711cc87f68745"
 dependencies = [
  "serde",
  "serde_json",
