@@ -7,6 +7,8 @@ change what the previous one did.
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-23
+
 ### Added
 
 - **Files you ⌘-click in bateri open in the textpen you have open.** Each one comes in as a new tab at the right
@@ -14,14 +16,9 @@ change what the previous one did.
 
 ### Fixed
 
-- A screen reader, and an agent that reads the pane, are told what colour and fill alone showed: the
-  settings row and the search result that are chosen, whether the preview, the comparison and the
-  changes tree are on. The dialogs, the settings, the keyboard shortcuts, the command palette and the
-  sidebar's drawer are read as dialogs, named, with the page behind them left out of what is read, and
-  the dimmed part around them is not read (it was an unnamed button). The palette lists a way out,
-  "Close", for a screen reader or an agent that has no key to press. Each file's editor is named by
-  the file. A file in the tree is no longer read as a closed folder. A pencere too old for this shows a screen that says to update bateri, instead of a page
-  that does not run.
+- **Screen readers and agents read textpen in full.** The chosen row, the toggles, the dialogs, the command
+  palette and each file's editor are named and read, and the palette has a Close item.
+- **An older bateri shows a clear "update bateri" screen** instead of a page that does not run.
 
 ## [0.9.0] - 2026-11-18
 
