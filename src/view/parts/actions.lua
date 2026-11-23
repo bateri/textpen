@@ -621,7 +621,44 @@ local function apply(changes)
 	end
 end
 
+-- A path of the machine as the project names it: from its root where it lies inside it, whole where it does not
+-- (a file of another folder has its whole path for a tab's name, as the program names it). The dots of the
+-- path are taken out first.
+local function named(path)
+	local parts = {}
+	for _, piece in string.split(path, "/") do
+		if piece == ".." then
+			table.remove(parts)
+		elseif piece ~= "." and piece ~= "" then
+			parts[#parts + 1] = piece
+		end
+	end
+	local whole = "/" .. table.concat(parts, "/")
+	local root = S.boot and S.boot.root or ""
+	if root == "/" then
+		return string.sub(whole, 2)
+	end
+	if root ~= "" and text.starts(whole, root .. "/") then
+		return string.sub(whole, #root + 2)
+	end
+	return whole
+end
+
+act.named = named
+
+-- What the terminal hands textpen while it runs (the topic `pencere.take`): a file the person opened from a link
+-- in another pane is a tab of its own and in front, or the tab it already has, with the caret at the line and
+-- column it names. A folder is not taken (`takes` says so), and what is not a file is left.
+local function on_take(take)
+	if take.file == nil then
+		return kit.take(nil)
+	end
+	act.open_file(named(take.file), { line = take.line, column = take.column, focus = true })
+	return kit.take(true)
+end
+
 local function start_sync()
+	b.subscribe("pencere.take", {}, on_take)
 	b.subscribe("changes", {}, function(changes)
 		apply(changes)
 		return kit.take(true)

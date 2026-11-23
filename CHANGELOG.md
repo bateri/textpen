@@ -7,6 +7,12 @@ change what the previous one did.
 
 ## [Unreleased]
 
+### Added
+
+- **A file opened from a terminal's link joins the running textpen.** A file a terminal hands textpen while it
+  runs opens as a tab at once, at its line and column, or switches to the tab it already has, a file outside the
+  project's folder too (it is named by its whole path).
+
 ### Fixed
 
 - A screen reader, and an agent that reads the pane, are told what colour and fill alone showed: the

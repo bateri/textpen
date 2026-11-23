@@ -47,6 +47,10 @@ there the last time. Settings are kept in `~/.config/textpen/`, drafts and each 
 open files in `~/.local/state/textpen/` (or where `XDG_CONFIG_HOME` and `XDG_STATE_HOME`
 say).
 
+**From a terminal's links.** A file you open from a terminal's pane (⌘-click in bateri) opens in the textpen
+that is already running beside it, as a tab at its line, or switches to the tab it already has; a file outside the
+project's folder is a tab named by its whole path. Without one running, a textpen of its own starts.
+
 **As your `$EDITOR`.** `export EDITOR=textpen` and `git commit` opens the message in the
 pane: save it and close the tab, and git goes on. Opened on files named on the
 command line, textpen ends when the last of them is closed, and the files beside the editor

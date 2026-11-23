@@ -13,6 +13,7 @@ use std::process::ExitStatus;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use pencere::Take;
 use pencere_drive::headless::{Error, Focus, Headless, InProcess};
 use pencere_view::{GesturePhase, Id, MenuEntry, Paint, Point, Shortcut};
 use serde_json::Value;
@@ -561,6 +562,69 @@ fn a_column_and_what_is_selected_are_counted_in_characters_where_the_editor_coun
     // After the emoji on the second line: the line is twelve characters in, nine within the line.
     page.caret_to(&editor, 21)?;
     assert!(shows(&page, "Ln 2, Col 10"), "{:?}", page_words(&page));
+    Ok(())
+}
+
+/// A file the terminal hands the program while it runs (a link followed in another pane) is a tab at once,
+/// in front, with the caret at the line and column it names; one that is open is switched to and not made
+/// again; one outside the project's folder is a tab named by its whole path. A folder is not heard.
+#[test]
+#[ignore = "page: compiles the kit's interpreter and drives the page; make test-page"]
+fn a_file_the_terminal_hands_the_program_is_a_tab_in_front_at_its_line() -> Result<(), Error> {
+    let project = lantern();
+    let outside = project.root().with_file_name("outside.txt");
+    std::fs::write(&outside, "one\ntwo\nthree\n").expect("a file outside the project");
+    let session = project.session(&["README.md"]);
+    let mut page = project.open(&session, WIDE)?;
+    let file = |path: &Path, line: Option<u32>, column: Option<u32>| Take::File {
+        path: path.to_string_lossy().into_owned(),
+        line,
+        column,
+    };
+    assert!(page.bounds("tab:src/lib/orders.ts").is_none());
+
+    // In the project: the tab is there, named from the project's root, and the caret is where it was named.
+    assert!(page.hand_over(&file(
+        &project.root().join("src/lib/orders.ts"),
+        Some(4),
+        Some(3)
+    ))?);
+    wait(&mut page, |page| shows(page, "Ln 4, Col 3"))?;
+    assert!(page.bounds("tab:src/lib/orders.ts").is_some());
+    let editor = shown(&page).expect("an editor");
+
+    // The file of the first tab, open already: switched to, and no tab is made for it again.
+    assert!(page.hand_over(&file(&project.root().join("README.md"), Some(1), None))?);
+    wait(&mut page, |page| {
+        shown(page).as_deref() != Some(editor.as_str())
+    })?;
+    assert!(page.bounds("tab:README.md").is_some());
+    // The same file again, at another line: the tab is the one it had, the caret moves.
+    assert!(page.hand_over(&file(
+        &project.root().join("src/lib/orders.ts"),
+        Some(7),
+        None
+    ))?);
+    wait(&mut page, |page| shows(page, "Ln 7, Col 1"))?;
+    assert_eq!(shown(&page), Some(editor));
+
+    // Outside the project: the whole path is the tab's name, as the program names it.
+    assert!(page.hand_over(&file(&outside, Some(2), None))?);
+    wait(&mut page, |page| shows(page, "Ln 2, Col 1"))?;
+    assert!(
+        page.bounds(&format!("tab:{}", outside.to_string_lossy()))
+            .is_some()
+    );
+
+    // A path with dots in it is the same file.
+    let dotted = project.root().join("src/../src/lib/./format.ts");
+    assert!(page.hand_over(&file(&dotted, None, None))?);
+    wait(&mut page, |page| {
+        page.bounds("tab:src/lib/format.ts").is_some()
+    })?;
+
+    // A folder is not what it takes.
+    assert!(!page.hand_over(&Take::Folder(project.root().to_string_lossy().into_owned()))?);
     Ok(())
 }
 

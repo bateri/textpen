@@ -255,3 +255,12 @@ folders that are not are asked in turn, each every ten seconds or so, and the fo
 as often. A buffer whose file changed and that has no changes of its own is read again by the program
 (its `version` goes up: the page reads its text with `buffer` `text`); one with changes is marked
 `conflict` for the page to ask.
+
+`pencere.take`, no params: what the terminal hands the program while it runs, one value for each, as it
+comes. textpen says in its `open` that it takes a file (`takes: ["file"]`); a terminal that has a file for
+it (a path followed in another pane of the same tab) hands it over instead of starting another textpen:
+`{ "file": "/home/alice/notes.txt", "line": 12, "column": 3 }` (`line` and `column` are missing where the
+terminal knew none). The page subscribes once, after `boot`; the library holds the few that came before and
+gives them to it first. The page opens each as a tab, in front, with the caret at the line, or switches to
+the tab the file already has; a path inside the project's folder is named from its root, one outside it by
+its whole path, as `open` names it. The program does not read it.

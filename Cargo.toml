@@ -108,3 +108,15 @@ strip = "symbols"
 [lints.clippy]
 unwrap_used = "deny"
 expect_used = "warn"
+
+# A pencere that is not pushed yet, from the checkout beside this one (what the terminal hands a running
+# program, `link_dropped`, a tab that carries). `make pin` accepts it on this branch and refuses it on
+# main: when pencere is pushed, move the `rev` above to it and drop this section.
+[patch."https://github.com/bateri/pencere"]
+pencere = { path = "../pencere-linkler/program" }
+pencere-wire = { path = "../pencere-linkler/wire" }
+pencere-view = { path = "../pencere-linkler/kit/view" }
+pencere-editor = { path = "../pencere-linkler/kit/editor" }
+pencere-sandbox = { path = "../pencere-linkler/kit/sandbox" }
+pencere-drive = { path = "../pencere-linkler/kit/drive" }
+pencere-tui = { path = "../pencere-linkler/host/tui" }

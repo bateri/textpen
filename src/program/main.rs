@@ -110,6 +110,9 @@ fn options(
         .program("textpen")
         // What a terminal writes above the view.
         .title("Editor")
+        // A file the person opens in the terminal while textpen runs is handed to it, to open in a tab
+        // (the page subscribes to `pencere.take`).
+        .takes(&[pencere::TakeKind::File])
         .control(session.desk.control());
     for (png, theme) in ICONS {
         options = options.icon(icon(png, theme));
